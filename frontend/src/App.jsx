@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Kategori from './pages/Kategori';
 import Produk from './pages/Produk';
 import Menu from './pages/Menu';
+import Vendor from './pages/Vendor';
 import MainLayout from './layouts/MainLayout';
 import { useAuth } from './context/AuthContext';
 
@@ -20,6 +21,7 @@ function App() {
       <Route path="/kategori" element={user ? <MainLayout><Kategori /></MainLayout> : <Navigate to="/login" />} />
       <Route path="/produk" element={user ? <MainLayout><Produk /></MainLayout> : <Navigate to="/login" />} />
       <Route path="/menu" element={user ? <MainLayout><Menu /></MainLayout> : <Navigate to="/login" />} />
+      <Route path="/vendor" element={user ? <MainLayout><Vendor /></MainLayout> : <Navigate to="/login" />} />
     </Routes>
   );
 }
