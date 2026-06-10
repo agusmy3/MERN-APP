@@ -14,7 +14,7 @@ export default function Produk() {
   const navigate = useNavigate();
 
   const [list, setList] = useState([]);
-  const [kategoris, setKategoris] = useState([]);
+  const [listKategoris, setListKategoris] = useState([]);
   const [form, setForm] = useState({ name: '', deskripsi: '', harga: 0, qty: 0, kategori: '' });
   const [editing, setEditing] = useState(null);
 
@@ -27,7 +27,7 @@ export default function Produk() {
     const produk = await getAllProduk(user.token);
     const kategori = await getAllKategori(user.token);
     setList(produk);
-    setKategoris(kategori);
+    setListKategoris(kategori);
   };
 
   const handleSubmit = async (e) => {
@@ -126,7 +126,7 @@ export default function Produk() {
               className="w-full px-4 py-2 border rounded"
             >
               <option value="">Pilih Kategori</option>
-              {kategoris.map((k) => (
+              {listKategoris.map((k) => (
                 <option key={k._id} value={k._id}>
                   {k.name}
                 </option>

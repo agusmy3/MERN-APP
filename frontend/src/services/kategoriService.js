@@ -9,7 +9,7 @@ const getHeaders = (token) => ({
 });
 
 export const getAllKategori = async (token) => {
-  const res = await axios.get(API, getHeaders(token));
+  const res = await axios.get(`${API}/all`, getHeaders(token));
   return res.data;
 };
 

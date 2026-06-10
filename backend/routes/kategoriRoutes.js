@@ -10,7 +10,7 @@ const {
 } = require('../controllers/kategoriController');
 const protect = require('../middlewares/authMiddleware');
 
-// router.get('/', protect, getAllKategori);
+router.get('/all', protect, getAllKategori);
 router.get('/', protect, getKategori);
 router.get('/:id', protect, getSingleKategori);
 router.post('/', protect, createKategori);
