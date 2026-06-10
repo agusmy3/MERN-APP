@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Pagination from "../components/Pagination";
 import {
+  getAllMenus,
   getMenus,
   createMenu,
   updateMenu,
@@ -13,6 +14,7 @@ export default function Menu() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [list, setList] = useState([]);
+  const [listAll, setListAll] = useState([]);
   const [form, setForm] = useState({
     menu: '',
     parent_id: '',
@@ -21,17 +23,52 @@ export default function Menu() {
     icon: ''
   });
   const [editing, setEditing] = useState(null);
+  const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [totalItems, setTotalItems] = useState(0);
+  const [sortField, setSortField] = useState('createdDate');
+  const [sortOrder, setSortOrder] = useState('asc');
+  const [searchInput, setSearchInput] = useState('');
 
   useEffect(() => {
     if (!user) return navigate('/login');
     loadData();
-  }, []);
+  }, [
+    currentPage,
+    pageSize,
+    search,
+    sortField,
+    sortOrder,
+  ]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearch(searchInput);
+      setCurrentPage(1);
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   const loadData = async () => {
-    const res = await getMenus(user.token);
-    setList(res);
+    try {
+      const res = await getMenus(user.token, {
+        search,
+        page: currentPage,
+        pageSize,
+        sortField,
+        sortOrder,
+      });
+
+      setList(res.data.data);
+      setTotalItems(res.data.totalData);
+
+      const resAll = await getAllMenus(user.token);
+      setListAll(resAll);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleChange = (e) => {
@@ -70,11 +107,6 @@ export default function Menu() {
     await deleteMenu(id, user.token);
     loadData();
   };
-
-  const totalItems = list.length;
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const paginatedData = list.slice(startIndex, endIndex);
 
   return (
     
@@ -117,7 +149,7 @@ export default function Menu() {
                   px-4 py-2'
               >
                 <option value=''>-- Tidak Ada (Root) --</option>
-                {list.filter((m) => m._id !== editing).map((p) => (
+                {listAll.filter((m) => m._id !== editing).map((p) => (
                   <option key={p._id} value={p._id}>
                     {p.menu}
                   </option>
@@ -193,27 +225,89 @@ export default function Menu() {
           </form>
         </div>
         <div className="lg:w-2/3 w-full min-h-0 flex flex-col p-4 bg-white shadow rounded">
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-600 mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Type Keyword..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="
+              w-full 
+              border-b
+              border-b-gray-300
+              focus:outline-0 focus:border-b-sky-400 
+              px-4 py-2 
+              rounded"
+            />
+          </div>
           <div className='min-h-0 flex-1 overflow-auto'>
             <table className='w-full bg-white shadow rounded'>
               <thead className='bg-blue-600 text-white sticky top-0 z-10'>
                 <tr className='overflow-x-hidden'>
                   <th className='px-4 py-2'>No</th>
-                  <th className='px-4 py-2'>Parent</th>
-                  <th className='px-4 py-2'>Menu</th>
+                  <th 
+                    className="text-left cursor-pointer px-4 py-2"
+                    onClick={() => {
+                      setSortField("parent_id");
+                      setSortOrder(
+                        sortField === "parent_id" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Parent</span>
+                      <i
+                        className={`fa ${
+                          sortField === "parent_id"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
+                  <th 
+                    className="text-left cursor-pointer px-4 py-2"
+                    onClick={() => {
+                      setSortField("menu");
+                      setSortOrder(
+                        sortField === "menu" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Menu</span>
+                      <i
+                        className={`fa ${
+                          sortField === "menu"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
                   <th className='px-4 py-2'>Component</th>
                   <th className='px-4 py-2'>Icon</th>
-                  <th className='px-4 py-2'>Aksi</th>
+                  <th className='px-4 py-2'>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {paginatedData.map((m, index) => (
+                {list.map((m, index) => (
                   <tr key={m._id} className='border-t'>
-                    <td className='px-4 py-2'>{startIndex + index + 1}</td>
+                    <td className='px-4 py-2'>{(currentPage - 1) * pageSize + index + 1}</td>
                     <td className='px-4 py-2'>{m.parent_id?.menu || '-'}</td>
                     <td className='px-4 py-2'>{m.menu}</td>
                     <td className='px-4 py-2'>{m.component || '-'}</td>
-                    <td className='px-4 py-2'>{m.icon || '-'}</td>
-                    <td className='px-4 py-2 space-x-2'>
+                    <td className='px-4 py-2'><i className={`ml-2 ${m.icon || ''}`}></i> {m.icon || '-'}</td>
+                    <td className='px-4 py-2 flex flex-row'>
                       <button
                           type="button"
                           onClick={() => handleEdit(m)}

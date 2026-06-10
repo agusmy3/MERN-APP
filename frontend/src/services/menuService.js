@@ -8,9 +8,19 @@ const getHeaders = (token) => ({
   }
 });
 
-export const getMenus = async (token) => {
-    const res = await axios.get(API, getHeaders(token));
-    return res.data;
+export const getAllMenus = async (token) => {
+  const res = await axios.get(`${API}/all`, {
+   ...getHeaders(token)
+  });
+  return res.data;
+};
+
+export const getMenus = async (token, params) => {
+  const res = await axios.get(API, {
+   ...getHeaders(token), 
+   params
+  });
+  return res;
 };
 
 export const getMenuHierarchy = async (token) => {

@@ -156,31 +156,29 @@ export default function Kategori() {
           </form>
         </div>
         <div className="lg:w-2/3 w-full min-h-0 flex flex-col p-4 bg-white shadow rounded">
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-600 mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Type Keyword..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="
+              w-full 
+              border-b
+              border-b-gray-300
+              focus:outline-0 focus:border-b-sky-400 
+              px-4 py-2 
+              rounded"
+            />
+          </div>
           <div className='min-h-0 flex-1 overflow-auto'>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-600 mb-1">Search</label>
-              <input
-                type="text"
-                placeholder="Type Keyword..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="
-                w-full 
-                border-b
-                border-b-gray-300
-                focus:outline-0 focus:border-b-sky-400 
-                px-4 py-2 
-                rounded"
-              />
-            </div>
-
             <table className="w-full bg-white shadow rounded">
               <thead className="bg-blue-600 text-white sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-2">No</th>
                   <th 
-                    className="text-left cursor-pointer px-4 py-2 flex items-center"
+                    className="text-left cursor-pointer px-4 py-2"
                     onClick={() => {
                       setSortField("name");
                       setSortOrder(
@@ -190,20 +188,22 @@ export default function Kategori() {
                       );
                     }}
                   >
-                    Nama
-                    <i
-                      className={`ml-2 fa ${
-                        sortField === "name"
-                          ? sortOrder === "asc"
-                            ? "fa-sort-up"
-                            : "fa-sort-down"
-                          : "fa-sort"
-                      }`}
-                    />
+                    <div className="flex items-center gap-2">
+                      <span>Nama</span>
+                      <i
+                        className={`fa ${
+                          sortField === "name"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
                   </th>
                   <th className="text-left px-4 py-2">Deskripsi</th>
                   <th 
-                    className="text-left cursor-pointer px-4 py-2 flex items-center"
+                    className="text-left cursor-pointer px-4 py-2"
                     onClick={() => {
                       setSortField("createdDate");
                       setSortOrder(
@@ -213,16 +213,18 @@ export default function Kategori() {
                       );
                     }}
                   >
-                    Created Date
-                    <i
-                      className={`ml-2 fa ${
-                        sortField === "createdDate"
-                          ? sortOrder === "asc"
-                            ? "fa-sort-up"
-                            : "fa-sort-down"
-                          : "fa-sort"
-                      }`}
-                    />
+                    <div className="flex items-center gap-2">
+                      <span>Created Date</span>
+                      <i
+                        className={`fa ${
+                          sortField === "createdDate"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
                   </th>
                   <th className="text-left px-4 py-2">Created By</th>
                   <th className="text-left px-4 py-2">Aksi</th>

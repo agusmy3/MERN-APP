@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getAllMenu,
+  getMenu,
   getHierarchy,
   getMenuTree,
   createMenu,
@@ -11,7 +12,8 @@ const {
 
 const protect = require('../middlewares/authMiddleware');
 
-router.get("/", protect, getAllMenu);
+router.get("/all", protect, getAllMenu);
+router.get("/", protect, getMenu);
 router.get("/getHierarchy", protect, getHierarchy);
 router.get("/tree", getMenuTree);
 router.post("/", protect, createMenu);

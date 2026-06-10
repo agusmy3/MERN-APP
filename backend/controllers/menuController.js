@@ -9,6 +9,49 @@ exports.getAllMenu = async (req, res) => {
   res.json(menus);
 };
 
+exports.getMenu = async (req, res) => {
+  try {
+    console.log(req.query);
+    const search = req.query.search || '';
+    const page = parseInt(req.query.page || 1);
+    const pageSize = parseInt(req.query.pageSize || 5);
+    const sortField = req.query.sortField || 'createdDate';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    let filter = {};
+
+    if (search) {
+      filter.menu = {
+        $regex: search,
+        $options: "i"
+      }
+    }
+
+    const totalData = await Menu.countDocuments(filter);
+
+    const data = await Menu.find(filter)
+      .populate("parent_id")
+      .populate("createdBy", "name")
+      .populate("updatedBy", "name")
+      .sort({
+        [sortField]: sortOrder
+      })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+
+    res.json({
+      data,
+      totalData,
+      currentPage: page,
+      totalPages: Math.ceil(totalData / pageSize)
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
 async function getMenuWithChildren(parentId = null) {
   const menus = await Menu.find({ parent_id: parentId }).lean();
 
