@@ -233,7 +233,7 @@ export default function Vendor() {
             />
           </div>
           <div className='min-h-0 flex-1 overflow-auto'>
-            <table className="w-full bg-white shadow rounded">
+            <table className="w-full bg-white shadow rounded border-separate border-spacing-0">
               <thead className="bg-blue-600 text-white sticky top-0 z-10">
                 <tr>
                   <th rowSpan='2' className="px-4 py-2 border">No</th>
@@ -346,30 +346,30 @@ export default function Vendor() {
                   <th className="text-left px-4 py-2 border">By</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className='text-sm'>
                 {list.map((Vendor, index) => (
-                  <tr key={Vendor._id} className="border-t">
-                    <td className="px-4 py-2">{(currentPage - 1) * pageSize + index + 1}</td>
-                    <td className="px-4 py-2">{Vendor.picName}</td>
-                    <td className="px-4 py-2">{Vendor.picContact}</td>
-                    <td className="px-4 py-2">{Vendor.companyName}</td>
-                    <td className="px-4 py-2">{Vendor.companyAddress}</td>
-                    <td className="px-4 py-2">{Vendor.createdDate}</td>
-                    <td className="px-4 py-2">{Vendor.createdBy?.name}</td>
-                    <td className="px-4 py-2">{Vendor.updatedDate || '-'}</td>
-                    <td className="px-4 py-2">{Vendor.updatedBy?.name || '-'}</td>
-                    <td className="px-4 py-2 flex flex-row">
+                  <tr key={Vendor._id}>
+                    <td className="px-4 py-2 border-t border-t-black">{(currentPage - 1) * pageSize + index + 1}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.picName}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.picContact}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.companyName}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.companyAddress}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.createdDate}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.createdBy?.name}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.updatedDate || '-'}</td>
+                    <td className="px-4 py-2 border-t border-t-black">{Vendor.updatedBy?.name || '-'}</td>
+                    <td className="px-4 py-2 border-t border-t-black text-nowrap">
                       <button
                         type="button"
                         onClick={() => handleEdit(Vendor)}
-                        className="bg-yellow-600 hover:bg-yellow-700 cursor-pointer text-white px-4 py-2 rounded"
+                        className="bg-yellow-600 hover:bg-yellow-700 cursor-pointer text-white w-8 h-8 mr-2 rounded"
                       >
                         <i className='fa fa-pen'></i>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(Vendor._id)}
-                        className="bg-red-600 hover:bg-red-700 cursor-pointer text-white px-4 py-2 rounded mx-2"
+                        className="bg-red-600 hover:bg-red-700 cursor-pointer text-white h-8 w-8 rounded"
                       >
                         <i className='fa fa-trash'></i>
                       </button>
