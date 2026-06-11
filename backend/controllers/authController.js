@@ -8,7 +8,15 @@ exports.register = async (req, res) => {
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
 
-    const user = await User.create({ name, email, password });
+    const getSystem = await User.findOne({ email : 'system@mern.com'});
+
+    const user = await User.create({ 
+      name: name,
+      email: email,
+      password: password,
+      createdBy: getSystem._id
+    });
+
     res.status(201).json({
       _id: user._id,
       name: user.name,

@@ -2,7 +2,7 @@ const Kategori = require('../models/Kategori');
 
 // GET semua kategori
 exports.getAllKategori = async (req, res) => {
-  const kategori = await Kategori.find().populate('createdBy', 'name');
+  const kategori = await Kategori.find().populate('createdBy', 'name').populate('updatedBy', 'name');
   res.json(kategori);
 };
 
@@ -37,6 +37,7 @@ exports.getKategori = async (req, res) => {
 
     const data = await Kategori.find(filter)
       .populate('createdBy', 'name')
+      .populate('updatedBy', 'name')
       .sort({
         [sortField]: sortOrder
       })
@@ -59,7 +60,7 @@ exports.getKategori = async (req, res) => {
 
 // GET single kategori
 exports.getSingleKategori = async (req, res) => {
-  const kategori = await Kategori.findById(req.params.id).populate('createdBy', 'name');
+  const kategori = await Kategori.findById(req.params.id);
   if (!kategori) return res.status(404).json({ message: 'Kategori tidak ditemukan' });
   res.json(kategori);
 };
@@ -81,6 +82,8 @@ exports.updateKategori = async (req, res) => {
 
   kategori.name = req.body.name || kategori.name;
   kategori.deskripsi = req.body.deskripsi || kategori.deskripsi;
+  kategori.updatedDate = new Date()
+  kategori.updatedBy = req.user._id
   await kategori.save();
   res.json(kategori);
 };

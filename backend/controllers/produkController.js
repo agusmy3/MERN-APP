@@ -4,7 +4,8 @@ const Produk = require('../models/Produk');
 exports.getAllProduk = async (req, res) => {
   const produk = await Produk.find()
     .populate('kategori', 'name')
-    .populate('createdBy', 'name');
+    .populate('createdBy', 'name')
+    .populate('updatedBy', 'name');
   res.json(produk);
 };
 
@@ -36,6 +37,8 @@ exports.updateProduk = async (req, res) => {
   produk.harga = harga || produk.harga;
   produk.qty = qty ?? produk.qty;
   produk.kategori = kategori || produk.kategori;
+  produk.updatedDate = new Date();
+  produk.updatedBy = req.user._id;
 
   await produk.save();
   res.json(produk);

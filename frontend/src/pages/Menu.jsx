@@ -242,12 +242,13 @@ export default function Menu() {
             />
           </div>
           <div className='min-h-0 flex-1 overflow-auto'>
-            <table className='w-full bg-white shadow rounded'>
+            <table className='w-full bg-white shadow rounded border-separate border-spacing-0'>
               <thead className='bg-blue-600 text-white sticky top-0 z-10'>
-                <tr className='overflow-x-hidden'>
-                  <th className='px-4 py-2'>No</th>
+                <tr>
+                  <th rowspan='2' className='px-4 py-2 border'>No</th>
                   <th 
-                    className="text-left cursor-pointer px-4 py-2"
+                    rowspan='2'
+                    className="cursor-pointer px-4 py-2 border"
                     onClick={() => {
                       setSortField("parent_id");
                       setSortOrder(
@@ -270,8 +271,9 @@ export default function Menu() {
                       />
                     </div>
                   </th>
-                  <th 
-                    className="text-left cursor-pointer px-4 py-2"
+                  <th
+                    rowspan='2' 
+                    className="cursor-pointer px-4 py-2 border"
                     onClick={() => {
                       setSortField("menu");
                       setSortOrder(
@@ -294,41 +296,99 @@ export default function Menu() {
                       />
                     </div>
                   </th>
-                  <th className='px-4 py-2'>Component</th>
-                  <th className='px-4 py-2'>Icon</th>
-                  <th className='px-4 py-2'>Action</th>
+                  <th rowspan='2' className='px-4 py-2 border'>Component</th>
+                  <th rowspan='2' className='px-4 py-2 border'>Icon</th>
+                  <th colspan='2' className='px-4 py-2 border'>Created</th>
+                  <th colspan='2' className='px-4 py-2 border'>Updated</th>
+                  <th rowspan='2' className='px-4 py-2 border'>Action</th>
+                </tr>
+                <tr>
+                  <th
+                    className="cursor-pointer px-4 py-2 border"
+                    onClick={() => {
+                      setSortField("createdDate");
+                      setSortOrder(
+                        sortField === "createdDate" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Date</span>
+                      <i
+                        className={`fa ${
+                          sortField === "createdDate"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
+                  <th className='px-4 py-2 border'>By</th>
+                  <th
+                    className="cursor-pointer px-4 py-2 border"
+                    onClick={() => {
+                      setSortField("updatedDate");
+                      setSortOrder(
+                        sortField === "updatedDate" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Date</span>
+                      <i
+                        className={`fa ${
+                          sortField === "updatedDate"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
+                  <th className='px-4 py-2 border'>By</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className='text-sm'>
                 {list.map((m, index) => (
-                  <tr key={m._id} className='border-t'>
-                    <td className='px-4 py-2'>{(currentPage - 1) * pageSize + index + 1}</td>
-                    <td className='px-4 py-2'>{m.parent_id?.menu || '-'}</td>
-                    <td className='px-4 py-2'>{m.menu}</td>
-                    <td className='px-4 py-2'>{m.component || '-'}</td>
-                    <td className='px-4 py-2'><i className={`ml-2 ${m.icon || ''}`}></i> {m.icon || '-'}</td>
-                    <td className='px-4 py-2 flex flex-row'>
+                  <tr key={m._id}>
+                    <td className='px-4 py-2 border-t border-t-black'>{(currentPage - 1) * pageSize + index + 1}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.parent_id?.menu || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.menu}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.component || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black text-nowrap'><i className={m.icon || ''}></i> {m.icon || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.createdDate}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy.name}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.createdDate || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy.name || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black text-nowrap'>
                       <button
                           type="button"
                           onClick={() => handleEdit(m)}
-                          className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 cursor-pointer rounded"
+                          className="bg-yellow-600 hover:bg-yellow-700 text-white h-8 w-8 cursor-pointer rounded mr-2"
                         >
-                          <i className='fa fa-pen'></i>
+                          <i className='fa fa-pen text-xs'></i>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(m._id)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 cursor-pointer rounded mx-2"
+                          className="bg-red-600 hover:bg-red-700 text-white h-8 w-8 cursor-pointer rounded"
                         >
-                          <i className='fa fa-trash'></i>
+                          <i className='fa fa-trash text-xs'></i>
                         </button>
                     </td>
                   </tr>
                 ))}
                 {list.length === 0 && (
                   <tr>
-                    <td colSpan='6' className='text-center py-4 text-gray-500'>
-                      Tidak ada data
+                    <td colSpan='10' className='text-center py-4 text-gray-500'>
+                      Data Category is Empty
                     </td>
                   </tr>
                 )}
