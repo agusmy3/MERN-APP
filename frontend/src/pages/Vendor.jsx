@@ -294,9 +294,55 @@ export default function Vendor() {
                     </div>
                   </th>
                   <th className="text-left px-4 py-2 border">Address</th>
-                  <th className="text-left px-4 py-2 border">Date</th>
+                  <th 
+                    className="text-left cursor-pointer px-4 py-2 border"
+                    onClick={() => {
+                      setSortField("createdDate");
+                      setSortOrder(
+                        sortField === "createdDate" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Date</span>
+                      <i
+                        className={`fa ${
+                          sortField === "createdDate"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
                   <th className="text-left px-4 py-2 border">By</th>
-                  <th className="text-left px-4 py-2 border">Date</th>
+                  <th 
+                    className="text-left cursor-pointer px-4 py-2 border"
+                    onClick={() => {
+                      setSortField("updatedDate");
+                      setSortOrder(
+                        sortField === "updatedDate" && sortOrder === "asc"
+                          ? "desc"
+                          : "asc"
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Date</span>
+                      <i
+                        className={`fa ${
+                          sortField === "updatedDate"
+                            ? sortOrder === "asc"
+                              ? "fa-sort-up"
+                              : "fa-sort-down"
+                            : "fa-sort"
+                        }`}
+                      />
+                    </div>
+                  </th>
                   <th className="text-left px-4 py-2 border">By</th>
                 </tr>
               </thead>
@@ -310,8 +356,8 @@ export default function Vendor() {
                     <td className="px-4 py-2">{Vendor.companyAddress}</td>
                     <td className="px-4 py-2">{Vendor.createdDate}</td>
                     <td className="px-4 py-2">{Vendor.createdBy?.name}</td>
-                    <td className="px-4 py-2">{Vendor.updatedDate}</td>
-                    <td className="px-4 py-2">{Vendor.updatedBy?.name}</td>
+                    <td className="px-4 py-2">{Vendor.updatedDate || '-'}</td>
+                    <td className="px-4 py-2">{Vendor.updatedBy?.name || '-'}</td>
                     <td className="px-4 py-2 flex flex-row">
                       <button
                         type="button"

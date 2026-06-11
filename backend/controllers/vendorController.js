@@ -52,6 +52,7 @@ exports.getVendor = async (req, res) => {
 
         const dataVendor = await Vendor.find(filter)
             .populate('createdBy', 'name')
+            .populate('updatedBy', 'name')
             .sort({
                 [sortField]: sortOrder
             })
