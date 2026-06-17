@@ -63,11 +63,11 @@ export default function Menu() {
       });
 
       if (res.data.success) {
-        setList(res.data.dataMenu);
-        setTotalItems(res.data.totalData);
+        setList(res.data.data.dataMenu);
+        setTotalItems(res.data.data.totalData);
 
         const resAll = await getAllMenus(user.token);
-        setListAll(resAll);
+        setListAll(resAll.data.data);
       }  
     } catch (err) {
       console.error(err);
@@ -378,9 +378,9 @@ export default function Menu() {
                     <td className='px-4 py-2 border-t border-t-black'>{m.component || '-'}</td>
                     <td className='px-4 py-2 border-t border-t-black text-nowrap'><i className={m.icon || ''}></i> {m.icon || '-'}</td>
                     <td className='px-4 py-2 border-t border-t-black'>{m.createdDate}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy.name}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.createdDate || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy.name || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy?.name}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.updatedDate || '-'}</td>
+                    <td className='px-4 py-2 border-t border-t-black'>{m.updatedBy?.name || '-'}</td>
                     <td className='px-4 py-2 border-t border-t-black text-nowrap'>
                       <button
                           type="button"

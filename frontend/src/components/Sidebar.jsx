@@ -64,7 +64,7 @@ export default function Sidebar() {
 
   const loadMenus = async () => {
     const res = await getMenuTree(user.token);
-    setMenus(res.data);
+    setMenus(res.data.data);
   };
 
   return (
