@@ -55,8 +55,10 @@ export default function Kategori() {
         sortOrder,
       });
 
-      setList(res.data.data);
-      setTotalItems(res.data.totalData);
+      if (res.data.success) {
+        setList(res.data.data.dataKategori);
+        setTotalItems(res.data.data.totalData);
+      }    
     } catch (err) {
       console.error(err);
     }
@@ -70,15 +72,18 @@ export default function Kategori() {
     e.preventDefault();
     try {
       if (editing) {
-        await updateKategori(editing, form, user.token);
+        const res = await updateKategori(editing, form, user.token);
+        alert(res.data.message);
       } else {
-        await createKategori(form, user.token);
+        const res = await createKategori(form, user.token);
+        alert(res.data.message);
       }
+
       setForm({ name: '', deskripsi: '' });
       setEditing(null);
       loadData();
     } catch (err) {
-      alert('Gagal simpan kategori');
+      console.error(err);
     }
   };
 
@@ -93,8 +98,9 @@ export default function Kategori() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Yakin ingin menghapus?')) return;
-    await deleteKategori(id, user.token);
+    if (!confirm('Are you sure to delete data?')) return;
+    const res = await deleteKategori(id, user.token);
+    alert(res.data.message);
     loadData();
   };
 

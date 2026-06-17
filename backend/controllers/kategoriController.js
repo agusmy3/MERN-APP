@@ -1,9 +1,25 @@
 const Kategori = require('../models/Kategori');
+const {
+  successResponse,
+  errorResponse
+} = require("../helpers/responseHelper");
 
 // GET semua kategori
 exports.getAllKategori = async (req, res) => {
-  const kategori = await Kategori.find().populate('createdBy', 'name').populate('updatedBy', 'name');
-  res.json(kategori);
+  try {
+    const kategori = await Kategori.find().populate('createdBy', 'name').populate('updatedBy', 'name');
+
+    return successResponse(
+      res,
+      kategori
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
 
 exports.getKategori = async (req, res) => {
@@ -35,7 +51,7 @@ exports.getKategori = async (req, res) => {
 
     const totalData = await Kategori.countDocuments(filter);
 
-    const data = await Kategori.find(filter)
+    const dataKategori = await Kategori.find(filter)
       .populate('createdBy', 'name')
       .populate('updatedBy', 'name')
       .sort({
@@ -44,55 +60,136 @@ exports.getKategori = async (req, res) => {
       .skip((page - 1) * pageSize)
       .limit(pageSize);
 
-    res.json({
-      data,
+    const pagination = {
+      dataKategori,
       totalData,
       currentPage: page,
       totalPages: Math.ceil(totalData / pageSize)
-    });
+    };
+
+    return successResponse(
+      res,
+      pagination
+    );
 
   } catch (error) {
-    res.status(500).json({
-      message: error.message
-    });
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
   }
 };
 
 // GET single kategori
 exports.getSingleKategori = async (req, res) => {
-  const kategori = await Kategori.findById(req.params.id);
-  if (!kategori) return res.status(404).json({ message: 'Kategori tidak ditemukan' });
-  res.json(kategori);
+  try {
+    const kategori = await Kategori.findById(req.params.id);
+    if (!kategori) {
+      return errorResponse(
+        res,
+        'Category not found',
+        404
+      );
+    }
+
+    return successResponse(
+      res,
+      kategori
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
+
+  
 };
 
 // POST tambah kategori
 exports.createKategori = async (req, res) => {
-  const kategori = await Kategori.create({
-    name: req.body.name,
-    deskripsi: req.body.deskripsi,
-    createdBy: req.user._id,
-  });
-  res.status(201).json(kategori);
+  try {
+    const kategori = await Kategori.create({
+      name: req.body.name,
+      deskripsi: req.body.deskripsi,
+      createdBy: req.user._id,
+    });
+
+    return successResponse(
+      res,
+      kategori,
+      "Category successfully added",
+      201
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
 
 // PUT update kategori
 exports.updateKategori = async (req, res) => {
-  const kategori = await Kategori.findById(req.params.id);
-  if (!kategori) return res.status(404).json({ message: 'Kategori tidak ditemukan' });
+  try {
+    const kategori = await Kategori.findById(req.params.id);
+    if (!kategori) {
+      return errorResponse(
+        res,
+        'Category not found',
+        404
+      );
+    }
 
-  kategori.name = req.body.name || kategori.name;
-  kategori.deskripsi = req.body.deskripsi || kategori.deskripsi;
-  kategori.updatedDate = new Date()
-  kategori.updatedBy = req.user._id
-  await kategori.save();
-  res.json(kategori);
+    kategori.name = req.body.name || kategori.name;
+    kategori.deskripsi = req.body.deskripsi || kategori.deskripsi;
+    kategori.updatedDate = new Date()
+    kategori.updatedBy = req.user._id
+    await kategori.save();
+    
+    return successResponse(
+      res,
+      kategori,
+      "Category successfully updated",
+      200
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
 
 // DELETE kategori
 exports.deleteKategori = async (req, res) => {
-  const kategori = await Kategori.findById(req.params.id);
-  if (!kategori) return res.status(404).json({ message: 'Kategori tidak ditemukan' });
+  try {
+    const kategori = await Kategori.findById(req.params.id);
+    if (!kategori) {
+      return errorResponse(
+        res,
+        'Category not found',
+        404
+      );
+    }
 
-  await kategori.deleteOne();
-  res.json({ message: 'Kategori dihapus' });
+    await kategori.deleteOne();
+
+    return successResponse(
+      res,
+      kategori,
+      "Category successfully deleted",
+      200
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
