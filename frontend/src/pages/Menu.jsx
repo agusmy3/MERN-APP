@@ -11,17 +11,18 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 export default function Menu() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [list, setList] = useState([]);
-  const [listAll, setListAll] = useState([]);
-  const [form, setForm] = useState({
+  const initForm = {
     menu: '',
     parent_id: '',
     component: '',
     img: '',
     icon: ''
-  });
+  }
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [list, setList] = useState([]);
+  const [listAll, setListAll] = useState([]);
+  const [form, setForm] = useState(initForm);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,11 +62,13 @@ export default function Menu() {
         sortOrder,
       });
 
-      setList(res.data.data);
-      setTotalItems(res.data.totalData);
+      if (res.data.success) {
+        setList(res.data.dataMenu);
+        setTotalItems(res.data.totalData);
 
-      const resAll = await getAllMenus(user.token);
-      setListAll(resAll);
+        const resAll = await getAllMenus(user.token);
+        setListAll(resAll);
+      }  
     } catch (err) {
       console.error(err);
     }
@@ -78,12 +81,15 @@ export default function Menu() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (editing) {
-      await updateMenu(editing, form, user.token);
-      setEditing(null);
+      const res = await updateMenu(editing, form, user.token);
+      alert(res.data.message);
     } else {
-      await createMenu(form, user.token);
+      const res = await createMenu(form, user.token);
+      alert(res.data.message);
     }
-    setForm({ menu: '', parent_id: '', component: '', img: '', icon: '' });
+
+    setForm(initForm);
+    setEditing(null);
     loadData();
   };
 
@@ -99,13 +105,19 @@ export default function Menu() {
   };
 
   const handleCancelEdit = () => {
-    setForm({ menu: '', parent_id: '', component: '', img: '', icon: '' });
+    setForm(initForm);
     setEditing(null);
   };
 
   const handleDelete = async (id) => {
-    await deleteMenu(id, user.token);
-    loadData();
+    try{
+      if (!confirm('Are you sure to delete data?')) return;
+      const res = await deleteMenu(id, user.token);
+      alert(res.data.message);
+      loadData();
+    }catch(err){
+      console.error(err);
+    }
   };
 
   return (

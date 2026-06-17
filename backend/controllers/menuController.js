@@ -1,17 +1,32 @@
 const Menu = require ('../models/Menu');
+const {
+  successResponse,
+  errorResponse
+} = require("../helpers/responseHelper");
 
 exports.getAllMenu = async (req, res) => {
-  const menus = await Menu.find()
-    .populate("parent_id")
-    .populate("createdBy", "name")
-    .populate("updatedBy", "name")
-    .sort({ parent_id: 1 });
-  res.json(menus);
+  try {
+    const menus = await Menu.find()
+      .populate("parent_id")
+      .populate("createdBy", "name")
+      .populate("updatedBy", "name")
+      .sort({ parent_id: 1 });
+
+    return successResponse(
+      res,
+      menus
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
 
 exports.getMenu = async (req, res) => {
   try {
-    console.log(req.query);
     const search = req.query.search || '';
     const page = parseInt(req.query.page || 1);
     const pageSize = parseInt(req.query.pageSize || 5);
@@ -28,7 +43,7 @@ exports.getMenu = async (req, res) => {
 
     const totalData = await Menu.countDocuments(filter);
 
-    const data = await Menu.find(filter)
+    const dataMenu = await Menu.find(filter)
       .populate("parent_id")
       .populate("createdBy", "name")
       .populate("updatedBy", "name")
@@ -38,17 +53,23 @@ exports.getMenu = async (req, res) => {
       .skip((page - 1) * pageSize)
       .limit(pageSize);
 
-    res.json({
-      data,
+    const pagination = {
+      dataMenu,
       totalData,
       currentPage: page,
       totalPages: Math.ceil(totalData / pageSize)
-    });
+    };
 
+    return successResponse(
+      res,
+      pagination
+    );
   } catch (error) {
-    res.status(500).json({
-      message: error.message
-    });
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
   }
 };
 
@@ -87,59 +108,127 @@ async function getMenuHierarchy(parentId = null) {
 exports.getHierarchy = async (req, res) => {
   try {
     const tree = await getMenuWithChildren();
-    res.json(tree);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    return successResponse(
+      res,
+      tree
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
   }
 };
 
 exports.getMenuTree = async (req, res) => {
   try {
     const tree = await getMenuHierarchy();
-    res.json(tree);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    return successResponse(
+      res,
+      tree
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
   }
 };
 
 exports.createMenu = async (req, res) => {
-  const menu = new Menu({
-    menu: req.body.menu,
-    parent_id: req.body.parent_id === "" ? null : req.body.parent_id,
-    component: req.body.component,
-    img: req.body.img,
-    icon: req.body.icon,
-    createdDate: new Date(),
-    createdBy: req.user._id,
-    updatedDate: null,
-    updatedBy: null
-  });
+  try {
+    const menu = new Menu({
+      menu: req.body.menu,
+      parent_id: req.body.parent_id === "" ? null : req.body.parent_id,
+      component: req.body.component,
+      img: req.body.img,
+      icon: req.body.icon,
+      createdDate: new Date(),
+      createdBy: req.user._id,
+      updatedDate: null,
+      updatedBy: null
+    });
 
-  await menu.save();
-  res.status(201).json(menu);
+    await menu.save();
+
+    return successResponse(
+      res,
+      menu,
+      "Menu successfully added",
+      201
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
 };
 
 exports.updateMenu = async (req, res) => {
-  const { id } = req.params;
-  const menu = await Menu.findByIdAndUpdate(
-    id,
-    {
-        menu: req.body.menu,
-        parent_id: req.body.parent_id === "" ? null : req.body.parent_id,
-        component: req.body.component,
-        img: req.body.img,
-        icon: req.body.icon,
-        updatedDate: new Date(),
-        updatedBy: req.user._id
-    },
-    { new: true }
-  );
+  try {
+    const menu = await Menu.findById(req.params.id);
+    if (!menu){
+      return errorResponse(
+        res,
+        'Menu not found',
+        404
+      );
+    }
+    
+    menu.menu = req.body.menu;
+    menu.parent_id = req.body.parent_id === "" ? null : req.body.parent_id;
+    menu.component = req.body.component;
+    menu.img = req.body.img;
+    menu.icon = req.body.icon;
+    menu.updatedDate = new Date();
+    menu.updatedBy = req.user._id;
+    await menu.save();
 
-  res.json(menu);
+    return successResponse(
+      res,
+      menu,
+      "Menu successfully Updated",
+      201
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
+  
 };
 
 exports.deleteMenu = async (req, res) => {
-  const { id } = req.params;
-  await Menu.findByIdAndDelete(id);
-  res.json({ message: "Menu deleted" });
+  try {
+    const menu = await Menu.findById(req.params.id);
+    if (!menu){
+      return errorResponse(
+        res,
+        'Menu not found',
+        404
+      );
+    }
+
+    await menu.deleteOne();
+    
+    return successResponse(
+      res,
+      menu,
+      "Menu successfully deleted",
+      201
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error.message,
+      500
+    );
+  }
+  
 };

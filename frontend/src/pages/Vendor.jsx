@@ -11,14 +11,14 @@ import { useAuth } from '../context/AuthContext';
 import Pagination from "../components/Pagination";
 
 export default function Vendor() {
-  const intiForm = {
+  const initForm = {
     companyName: '',
     picName: '',
     picContact: '',
     companyAddress: '',
   }
   const [list, setList] = useState([]);
-  const [form, setForm] = useState(intiForm);
+  const [form, setForm] = useState(initForm);
   const [editing, setEditing] = useState(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -85,7 +85,7 @@ export default function Vendor() {
         alert(res.data.message);
       }
 
-      setForm(intiForm);
+      setForm(initForm);
       setEditing(null);
       loadData();
     } catch (err) {
@@ -104,7 +104,7 @@ export default function Vendor() {
   };
 
   const handleCancelEdit = () => {
-    setForm(intiForm);
+    setForm(initForm);
     setEditing(null);
   };
 

@@ -181,7 +181,7 @@ exports.deleteVendor = async (req, res) => {
             );
         } 
 
-        await Vendor.deleteOne();
+        await vendor.deleteOne();
 
         return successResponse(
             res,

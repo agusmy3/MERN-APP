@@ -11,8 +11,12 @@ import { useAuth } from '../context/AuthContext';
 import Pagination from "../components/Pagination";
 
 export default function Kategori() {
+  const initForm = {
+    name: '', 
+    deskripsi: ''
+  }
   const [list, setList] = useState([]);
-  const [form, setForm] = useState({ name: '', deskripsi: '' });
+  const [form, setForm] = useState(initForm);
   const [editing, setEditing] = useState(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -79,7 +83,7 @@ export default function Kategori() {
         alert(res.data.message);
       }
 
-      setForm({ name: '', deskripsi: '' });
+      setForm(initForm);
       setEditing(null);
       loadData();
     } catch (err) {
@@ -93,7 +97,7 @@ export default function Kategori() {
   };
 
   const handleCancelEdit = () => {
-    setForm({ name: '', deskripsi: '' });
+    setForm(initForm);
     setEditing(null);
   };
 
