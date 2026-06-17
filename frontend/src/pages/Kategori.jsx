@@ -100,16 +100,16 @@ export default function Kategori() {
 
   return (
     <div  className='h-full p-4 flex flex-col'>
-      <h1 className="text-2xl/7 font-bold text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight mb-4 py-1 shrink-0">Manajemen Kategori</h1>
+      <h1 className="text-2xl/7 font-bold text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight mb-4 py-1 shrink-0">Managament of Category</h1>
       <div className="min-h-0 flex flex-col lg:flex-row gap-4">
         <div className="lg:w-1/3 w-full p-4 bg-white shadow rounded flex-1 min-h-0 overflow-auto">
           <form onSubmit={handleSubmit} className="mb-6 bg-white space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Nama Kategori</label>
+              <label className="block text-sm font-medium text-gray-600 mb-1">Name</label>
               <input
                 type="text"
                 name="name"
-                placeholder="Nama kategori"
+                placeholder="Name"
                 autoComplete='off'
                 value={form.name}
                 onChange={handleChange}
@@ -124,10 +124,10 @@ export default function Kategori() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Deskripsi Kategori</label>
+              <label className="block text-sm font-medium text-gray-600 mb-1">Description</label>
               <textarea
                 name="deskripsi"
-                placeholder="Deskripsi kategori"
+                placeholder="Description"
                 value={form.deskripsi}
                 onChange={handleChange}
                 className="
@@ -140,17 +140,20 @@ export default function Kategori() {
               />
             </div>
             <div>
-              {!editing &&
-                <>
-                  <button type="submit" className="bg-blue-600 text-white px-4 py-2 cursor-pointer rounded hover:bg-blue-700">Tambah</button>
-                </>
-              }
-              {editing && 
-                <>
-                  <button type="submit" className="bg-yellow-600 text-white px-4 py-2 cursor-pointer rounded hover:bg-yellow-700">Update</button>                  
-                </>
-              }
-              <button type="button" className="bg-red-600 text-white px-4 py-2 mx-2 cursor-pointer rounded hover:bg-red-700" onClick={handleCancelEdit}>Batal</button>
+              <button 
+                type="submit" 
+                className={`
+                  text-white 
+                  px-4 py-2 
+                  cursor-pointer 
+                  rounded
+                  ${
+                    (!editing) ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"
+                  }`}
+              >
+                <i className='fa fa-save'></i> Save
+              </button>
+              <button type="button" className="bg-red-600 text-white px-4 py-2 mx-2 cursor-pointer rounded hover:bg-red-700" onClick={handleCancelEdit}><i className='fa fa-close'></i> Cancel</button>
             </div>
             
           </form>
@@ -189,7 +192,7 @@ export default function Kategori() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Name</span>
                       <i
                         className={`fa ${
@@ -219,7 +222,7 @@ export default function Kategori() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Date</span>
                       <i
                         className={`fa ${
@@ -244,7 +247,7 @@ export default function Kategori() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Date</span>
                       <i
                         className={`fa ${
@@ -263,7 +266,7 @@ export default function Kategori() {
               <tbody className='text-sm'>
                 {list.map((kategori, index) => (
                   <tr key={kategori._id}>
-                    <td className="px-4 py-2 border-t border-t-black">{(currentPage - 1) * pageSize + index + 1}</td>
+                    <td className="px-4 py-2 border-t border-t-black text-center">{(currentPage - 1) * pageSize + index + 1}</td>
                     <td className="px-4 py-2 border-t border-t-black">{kategori.name}</td>
                     <td className="px-4 py-2 border-t border-t-black">{kategori.deskripsi || '-'}</td>
                     <td className="px-4 py-2 border-t border-t-black">{kategori.createdDate}</td>

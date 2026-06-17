@@ -111,12 +111,12 @@ export default function Menu() {
   return (
     
     <div className='h-full p-4 flex flex-col'>
-      <h1 className="text-2xl/7 font-bold text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight mb-4 py-1 shrink-0">Manajemen Menu</h1>
+      <h1 className="text-2xl/7 font-bold text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight mb-4 py-1 shrink-0">Managament of Menu</h1>
       <div className="min-h-0 flex flex-col lg:flex-row gap-4">
         <div className="lg:w-1/3 w-full p-4 bg-white shadow rounded flex-1 min-h-0 overflow-auto">
           <form onSubmit={handleSubmit} className='mb-6 bg-white space-y-4'>
             <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Nama Menu</label>
+              <label className='block text-sm font-medium text-gray-600 mb-1'>Name</label>
               <input
                 type='text'
                 name='menu'
@@ -148,7 +148,7 @@ export default function Menu() {
                   rounded 
                   px-4 py-2'
               >
-                <option value=''>-- Tidak Ada (Root) --</option>
+                <option value=''>-- (Root) --</option>
                 {listAll.filter((m) => m._id !== editing).map((p) => (
                   <option key={p._id} value={p._id}>
                     {p.menu}
@@ -192,7 +192,7 @@ export default function Menu() {
             </div>
 
             <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Gambar</label>
+              <label className='block text-sm font-medium text-gray-600 mb-1'>Image</label>
               <input
                 type='text'
                 name='img'
@@ -209,18 +209,20 @@ export default function Menu() {
             </div>
 
             <div>
-              {!editing &&
-              <>
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 cursor-pointer rounded hover:bg-blue-700">Tambah</button>
-              </>
-              }
-              {editing && 
-                <>
-                  <button type="submit" className="bg-yellow-600 text-white px-4 py-2 cursor-pointer rounded hover:bg-yellow-700">Update</button>
-                </>
-              }
-
-              <button type="button" className="bg-red-600 text-white px-4 py-2 mx-2 cursor-pointer rounded hover:bg-red-700" onClick={handleCancelEdit}>Batal</button>
+              <button 
+                type="submit" 
+                className={`
+                  text-white 
+                  px-4 py-2 
+                  cursor-pointer 
+                  rounded
+                  ${
+                    (!editing) ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"
+                  }`}
+              >
+                <i className='fa fa-save'></i> Save
+              </button>
+              <button type="button" className="bg-red-600 text-white px-4 py-2 mx-2 cursor-pointer rounded hover:bg-red-700" onClick={handleCancelEdit}><i className='fa fa-close'></i> Cancel</button>
             </div>
           </form>
         </div>
@@ -258,7 +260,7 @@ export default function Menu() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Parent</span>
                       <i
                         className={`fa ${
@@ -283,7 +285,7 @@ export default function Menu() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Menu</span>
                       <i
                         className={`fa ${
@@ -314,7 +316,7 @@ export default function Menu() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Date</span>
                       <i
                         className={`fa ${
@@ -339,7 +341,7 @@ export default function Menu() {
                       );
                     }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-center items-center gap-2">
                       <span>Date</span>
                       <i
                         className={`fa ${
@@ -358,7 +360,7 @@ export default function Menu() {
               <tbody className='text-sm'>
                 {list.map((m, index) => (
                   <tr key={m._id}>
-                    <td className='px-4 py-2 border-t border-t-black'>{(currentPage - 1) * pageSize + index + 1}</td>
+                    <td className='px-4 py-2 border-t border-t-black text-center'>{(currentPage - 1) * pageSize + index + 1}</td>
                     <td className='px-4 py-2 border-t border-t-black'>{m.parent_id?.menu || '-'}</td>
                     <td className='px-4 py-2 border-t border-t-black'>{m.menu}</td>
                     <td className='px-4 py-2 border-t border-t-black'>{m.component || '-'}</td>
