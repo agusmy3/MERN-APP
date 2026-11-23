@@ -16,6 +16,11 @@ import Gudang from './pages/Gudang';
 import StockAdjustment from './pages/StockAdjustment';
 import StockAdjustmentDetail from './pages/StockAdjustmentDetail';
 import StockMovement from './pages/StockMovement';
+import PurchaseOrder from './pages/PurchaseOrder';
+import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
+import GoodsReceipt from './pages/GoodsReceipt';
+import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
+import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import PublicLayout from './layouts/PublicLayout';
 import ProtectedLayout from './layouts/ProtectedLayout';
@@ -48,6 +53,13 @@ function App() {
         {/* :id = 'new' (?type=ADJUSTMENT|OPNAME) atau id dokumen */}
         <Route path="/stock-adjustment/:id" element={guard('stockAdjustment', <StockAdjustmentDetail />)} />
         <Route path="/stock-movement" element={guard('stockMovement', <StockMovement />)} />
+        <Route path="/purchase-order" element={guard('purchaseOrder', <PurchaseOrder />)} />
+        {/* :id = 'new' atau id dokumen */}
+        <Route path="/purchase-order/:id" element={guard('purchaseOrder', <PurchaseOrderDetail />)} />
+        <Route path="/goods-receipt" element={guard('goodsReceipt', <GoodsReceipt />)} />
+        {/* :id = 'new' (?po=<poId>) atau id dokumen */}
+        <Route path="/goods-receipt/:id" element={guard('goodsReceipt', <GoodsReceiptDetail />)} />
+        <Route path="/settings" element={guard('setting', <Settings />)} />
         <Route path="/menu" element={guard('menu', <Menu />)} />
         <Route path="/users" element={guard('user', <Users />)} />
         <Route path="/roles" element={guard('role', <Roles />)} />

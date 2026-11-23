@@ -17,6 +17,7 @@ const mongoose = require('mongoose');
 const AuditLog = require('../models/AuditLog');
 const { getResourceLabel } = require('../config/permissions');
 const { ADJUSTMENT_TYPES, REASONS } = require('../config/stock');
+const { getDefinition: getSettingDefinition } = require('../config/settings');
 
 // model diambil lewat nama (lazy) supaya tidak terjadi circular require
 const model = (name) => mongoose.model(name);
@@ -145,6 +146,43 @@ const ENTITIES = {
     },
     label: (doc) => doc.no,
   },
+  purchaseOrder: {
+    fields: {
+      vendor: { label: 'Vendor', ref: ['Vendor', 'companyName'] },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      date: { label: 'Date', format: 'date' },
+      expectedDate: { label: 'Expected Date', format: 'date' },
+      taxRate: { label: 'Tax Rate (%)', format: 'number' },
+      isPKP: { label: 'PKP', format: 'bool' },
+      lines: { label: 'Items', format: 'poLines' },
+      total: { label: 'Total', format: 'money' },
+      status: { label: 'Status' },
+      note: { label: 'Note' },
+      closeReason: { label: 'Close Reason' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
+  goodsReceipt: {
+    fields: {
+      purchaseOrder: { label: 'Purchase Order', ref: ['PurchaseOrder', 'no'] },
+      date: { label: 'Date', format: 'date' },
+      deliveryNoteNo: { label: 'Delivery Note No.' },
+      lines: { label: 'Items', format: 'grLines' },
+      status: { label: 'Status' },
+      note: { label: 'Note' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+    // histori PO ikut memuat penerimaannya
+    parent: (doc) => ({ entity: 'purchaseOrder', id: doc.purchaseOrder?._id ?? doc.purchaseOrder }),
+  },
+  setting: {
+    fields: {
+      value: { label: 'Value' },
+    },
+    label: (doc) => getSettingDefinition(doc._id)?.label || doc._id,
+  },
   menu: {
     fields: {
       menu: { label: 'Menu' },
@@ -184,8 +222,11 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
-      if (def.format === 'stockLines') {
-        (doc[field] || []).forEach((l) => add('ProdukSku', 'sku', idOf(l.sku)));
+      if (['stockLines', 'poLines', 'grLines'].includes(def.format)) {
+        (doc[field] || []).forEach((l) => {
+          add('ProdukSku', 'sku', idOf(l.sku));
+          if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
+        });
       }
     }
   }
@@ -229,6 +270,19 @@ const normalizeValue = (def, value, texts) => {
       return `${sku}: ${parts.join(' ') || '-'}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
+  if (def.format === 'poLines' || def.format === 'grLines') {
+    // mis. "KAOS-M: 10 BOX x 120,000 -5%" (PO) / "KAOS-M: 4 BOX" (GR)
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((l) => {
+      const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
+      const uom = texts.get(`Uom:${idOf(l.uomBeli)}`) ?? '';
+      let text = `${sku}: ${num(l.qty)} ${uom}`.trim();
+      if (def.format === 'poLines') {
+        text += ` x ${num(l.hargaBeli)}${l.diskonPersen ? ` -${num(l.diskonPersen)}%` : ''}`;
+      }
+      return `${text}${l.note ? ` · ${l.note}` : ''}`;
+    });
+  }
   if (def.format === 'resource') return value ? getResourceLabel(value) : null;
   if (def.format === 'list') return Array.isArray(value) ? [...value] : [];
   if (def.format === 'permissions') {
@@ -253,6 +307,9 @@ const snap = async (entity, docs) => {
     flat: Object.fromEntries(Object.entries(fields).map(([f, def]) => [f, normalizeValue(def, raw[f], texts)])),
   }]));
 };
+
+// format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {
@@ -286,11 +343,11 @@ const diff = (entity, before, after, { rawBefore, rawAfter } = {}) => {
 
     const sorted = (v) => (Array.isArray(v) ? [...v].sort() : v);
     const changed = def.ref ? !sameRef(a, b)
-      : ['list', 'stockLines'].includes(def.format) ? !same(sorted(a), sorted(b)) // urutan saja bukan perubahan
+      : LIST_FORMATS.includes(def.format) ? !same(sorted(a), sorted(b)) // urutan saja bukan perubahan
         : !same(a, b);
     if (changed && !(isEmpty(a) && isEmpty(b))) {
       // stockLines ditampilkan sebagai daftar (+ ditambah / - dihapus) di frontend
-      const format = def.format === 'stockLines' ? 'list' : def.format || (def.ref ? 'ref' : 'text');
+      const format = LIST_FORMATS.includes(def.format) ? 'list' : def.format || (def.ref ? 'ref' : 'text');
       changes.push({ field, label: def.label, format, from: a, to: b });
     }
   }
@@ -317,7 +374,7 @@ const base = (entity, raw, flat, opts) => {
   const def = ENTITIES[entity];
   return {
     entity,
-    entityId: raw._id,
+    entityId: mongoose.isValidObjectId(raw._id) && String(raw._id).length === 24 ? raw._id : null,
     entityLabel: def.label(raw, flat),
     parent: def.parent ? def.parent(raw) : undefined,
     batchId: opts.batchId || null,

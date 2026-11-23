@@ -9,6 +9,7 @@
     "seed:rbac": "node scripts/seed-rbac.js",
     "migrate:produk-sku": "node scripts/migrate-produk-sku.js",
     "migrate:stock-opening": "node scripts/migrate-stock-opening.js",
+    "migrate:avg-cost": "node scripts/migrate-avg-cost.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",
     "test": "echo \"Error: no test specified\" && exit 1"

@@ -23,6 +23,13 @@ const changeSummary = (log) => {
   return (log.changes || []).map((c) => c.label || c.field).join(', ');
 };
 
+// dokumen -> halamannya
+const DOC_ROUTES = {
+  stockAdjustment: '/stock-adjustment',
+  purchaseOrder: '/purchase-order',
+  goodsReceipt: '/goods-receipt',
+};
+
 // produk / SKU / harga vendor -> halaman detail produk (tab History)
 const produkIdOf = (log) => (log.entity === 'produk' ? log.entityId : log.parent?.entity === 'produk' ? log.parent.id : null);
 
@@ -180,8 +187,8 @@ export default function AuditLog() {
               <AuditChanges log={selected} />
             </div>
 
-            {selected.entity === 'stockAdjustment' && selected.action !== 'delete' && (
-              <Link to={`/stock-adjustment/${selected.entityId}`} className="inline-block text-sm text-primary hover:underline">
+            {DOC_ROUTES[selected.entity] && selected.action !== 'delete' && (
+              <Link to={`${DOC_ROUTES[selected.entity]}/${selected.entityId}`} className="inline-block text-sm text-primary hover:underline">
                 <i className="fa fa-arrow-up-right-from-square mr-1"></i> Open document {selected.entityLabel}
               </Link>
             )}

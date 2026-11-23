@@ -29,11 +29,17 @@ const RESOURCES = [
   { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // kartu stok & laporan pergerakan (baca saja; stok hanya berubah lewat dokumen)
   { key: 'stockMovement', label: 'Stock Movement', group: 'Inventory', actions: ['view'] },
+  // PO: create = buat draft / terbitkan; update = ubah draft, close & cancel PO; delete = hapus draft
+  { key: 'purchaseOrder', label: 'Purchase Order', group: 'Purchasing' },
+  // Penerimaan barang: create/update/delete = draft; post = posting & pembatalan (mengubah stok & HPP)
+  { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },
   { key: 'role', label: 'Role', group: 'Settings' },
   { key: 'user', label: 'User', group: 'Settings' },
   // halaman Audit Log global (histori per record mengikuti izin view resource-nya)
   { key: 'auditLog', label: 'Audit Log', group: 'Settings', actions: ['view'] },
+  // variabel global (mis. PKP & tarif PPN)
+  { key: 'setting', label: 'System Settings', group: 'Settings', actions: ['view', 'update'] },
 ];
 
 const allowedActions = (key) => RESOURCES.find((r) => r.key === key)?.actions || DEFAULT_ACTIONS;

@@ -57,6 +57,7 @@ exports.listSku = async (req, res) => {
 
     // harga beli = data sensitif: hanya dikirim jika user punya izin vendorPrice:view
     const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
+    if (!canSeeCost) skus.forEach((s) => { delete s.avgCost; }); // HPP = data biaya
     if (canSeeCost) {
       const costs = await getUnitCosts(skus.map((s) => s._id));
       skus.forEach((s) => {

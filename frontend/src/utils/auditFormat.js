@@ -16,6 +16,9 @@ export const ENTITY_META = {
   menu: { label: 'Menu', icon: 'fa-bars' },
   gudang: { label: 'Warehouse', icon: 'fa-warehouse' },
   stockAdjustment: { label: 'Stock Adjustment', icon: 'fa-boxes-stacked' },
+  purchaseOrder: { label: 'Purchase Order', icon: 'fa-file-invoice' },
+  goodsReceipt: { label: 'Goods Receipt', icon: 'fa-truck-ramp-box' },
+  setting: { label: 'System Settings', icon: 'fa-sliders' },
 };
 
 export const ACTION_META = {

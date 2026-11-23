@@ -32,6 +32,9 @@ app.use('/api/audit-log', require('./routes/auditLogRoutes'));
 app.use('/api/gudang', require('./routes/gudangRoutes'));
 app.use('/api/stock-adjustment', require('./routes/stockRoutes').adjustment);
 app.use('/api/stock-movement', require('./routes/stockRoutes').movement);
+app.use('/api/purchase-order', require('./routes/purchaseRoutes').purchaseOrder);
+app.use('/api/goods-receipt', require('./routes/purchaseRoutes').goodsReceipt);
+app.use('/api/setting', require('./routes/settingRoutes'));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

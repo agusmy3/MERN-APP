@@ -142,8 +142,9 @@ exports.deleteUom = async (req, res) => {
       await lock(ref('uom', uom._id)); // bentrok dengan produk / harga vendor yang memakainya
       const produkCount = await Produk.countDocuments({ uom: uom._id });
       const priceCount = await VendorPrice.countDocuments({ uomBeli: uom._id });
-      if (produkCount || priceCount) {
-        throw new HttpError(`UoM is still used by ${produkCount} product(s) and ${priceCount} vendor price(s)`, 400);
+      const poCount = await require('../models/PurchaseOrder').countDocuments({ 'lines.uomBeli': uom._id });
+      if (produkCount || priceCount || poCount) {
+        throw new HttpError(`UoM is still used by ${produkCount} product(s), ${priceCount} vendor price(s) and ${poCount} purchase order(s)`, 400);
       }
 
       const before = await audit.snap('uom', [uom]);

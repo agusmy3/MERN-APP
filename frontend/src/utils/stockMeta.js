@@ -38,4 +38,5 @@ export const MOVEMENT_TYPES = {
   OPENING: 'Opening Balance',
   ADJUSTMENT: 'Adjustment',
   OPNAME: 'Stock Opname',
+  PURCHASE: 'Purchase (Goods Receipt)',
 };

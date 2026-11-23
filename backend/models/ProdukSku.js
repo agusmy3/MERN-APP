@@ -19,6 +19,9 @@ const produkSkuSchema = new mongoose.Schema({
   // total saldo semua gudang (cache dari StockBalance/StockMovement). JANGAN diubah langsung:
   // stok hanya berubah lewat dokumen stok (helpers/stockHelper.js applyMovements).
   stok: { type: Number, default: 0, min: 0 },
+  // HPP rata-rata bergerak per satuan dasar, 1 nilai untuk semua gudang (2 desimal).
+  // null = belum diketahui. Hanya diubah oleh applyMovements (pembelian) / migrate:avg-cost.
+  avgCost: { type: Number, default: null },
   isActive: { type: Boolean, default: true },
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

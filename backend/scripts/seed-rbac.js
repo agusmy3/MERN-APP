@@ -9,6 +9,7 @@
  * 5. Membuat menu "User" (/users), "Role" (/roles) & "Audit Log" (/audit-log) jika belum ada
  * 6. Membuat menu "Warehouse" (/gudang, di grup yang sama dengan /uom) dan grup "Inventory"
  *    berisi "Stock Adjustment" (/stock-adjustment) & "Stock Movement" (/stock-movement)
+ * 7. Grup "Purchasing" (Purchase Order, Goods Receipt) & menu "System Settings" (/settings)
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -33,7 +34,15 @@ const ROUTE_RESOURCE = {
   '/gudang': 'gudang',
   '/stock-adjustment': 'stockAdjustment',
   '/stock-movement': 'stockMovement',
+  '/purchase-order': 'purchaseOrder',
+  '/goods-receipt': 'goodsReceipt',
+  '/settings': 'setting',
 };
+
+const PURCHASING_MENUS = [
+  { menu: 'Purchase Order', component: '/purchase-order', icon: 'fa-solid fa-file-invoice', resource: 'purchaseOrder', deskripsi: 'Pesanan pembelian ke vendor' },
+  { menu: 'Goods Receipt', component: '/goods-receipt', icon: 'fa-solid fa-truck-ramp-box', resource: 'goodsReceipt', deskripsi: 'Penerimaan barang dari PO: stok & HPP bertambah saat diposting' },
+];
 
 const INVENTORY_MENUS = [
   { menu: 'Stock Adjustment', component: '/stock-adjustment', icon: 'fa-solid fa-boxes-stacked', resource: 'stockAdjustment', deskripsi: 'Penyesuaian stok & stock opname (draft, posting, pembatalan)' },
@@ -130,6 +139,36 @@ async function main() {
     }
     await Menu.create({ ...item, parent_id: inventory._id, createdBy: admin?._id });
     console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
+  }
+
+  // 7. Purchasing + System Settings
+  let purchasing = await Menu.findOne({ menu: 'Purchasing', component: null });
+  for (const item of PURCHASING_MENUS) {
+    if (await Menu.exists({ component: item.component })) {
+      console.log(`[=] Menu ${item.component} sudah ada`);
+      continue;
+    }
+    if (!purchasing) {
+      purchasing = await Menu.create({ menu: 'Purchasing', icon: 'fa-solid fa-cart-shopping', createdBy: admin?._id });
+      console.log('[+] Menu grup "Purchasing" dibuat');
+    }
+    await Menu.create({ ...item, parent_id: purchasing._id, createdBy: admin?._id });
+    console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
+  }
+  if (await Menu.exists({ component: '/settings' })) {
+    console.log('[=] Menu /settings sudah ada');
+  } else {
+    const menuMenu2 = await Menu.findOne({ component: '/menu' });
+    await Menu.create({
+      menu: 'System Settings',
+      component: '/settings',
+      icon: 'fa-solid fa-sliders',
+      resource: 'setting',
+      deskripsi: 'Variabel global aplikasi, mis. status PKP & tarif PPN',
+      parent_id: menuMenu2?.parent_id ?? null,
+      createdBy: admin?._id,
+    });
+    console.log('[+] Menu "System Settings" (/settings) dibuat');
   }
 
   // Ringkasan user tanpa role (bisa login tapi tidak punya akses ke menu mana pun)

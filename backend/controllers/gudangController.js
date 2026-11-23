@@ -187,7 +187,8 @@ exports.deleteGudang = async (req, res) => {
         StockMovement.exists({ gudang: gudang._id }),
         StockAdjustment.countDocuments({ gudang: gudang._id }),
       ]);
-      if (balance || movement || docs) {
+      const poCount = await require('../models/PurchaseOrder').countDocuments({ gudang: gudang._id });
+      if (balance || movement || docs || poCount) {
         throw new HttpError('Warehouse already has stock history or documents. Deactivate it instead.', 400);
       }
 

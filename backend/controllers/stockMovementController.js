@@ -7,6 +7,7 @@ const {
   errorResponse
 } = require('../helpers/responseHelper');
 const { MOVEMENT_TYPES } = require('../config/stock');
+const { hasPermission } = require('../config/permissions');
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -41,9 +42,12 @@ exports.getMovements = async (req, res) => {
       filter.$or = [{ refNo: rx }, { sku: { $in: skuIds } }];
     }
 
+    // HPP & nilai rupiah = data biaya: hanya untuk yang boleh melihat harga beli (vendorPrice:view)
+    const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
     const [totalData, movements] = await Promise.all([
       StockMovement.countDocuments(filter),
       StockMovement.find(filter)
+        .select(canSeeCost ? {} : { unitCost: 0, value: 0, avgCostAfter: 0 })
         .populate('sku', 'sku variantValues')
         .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
         .populate('gudang', 'code name')
@@ -56,6 +60,7 @@ exports.getMovements = async (req, res) => {
 
     return successResponse(res, {
       dataMovement: movements,
+      canSeeCost,
       totalData,
       currentPage: page,
       totalPages: Math.ceil(totalData / pageSize),

@@ -7,7 +7,9 @@ const mongoose = require('mongoose');
  * - qty          : bertanda, + masuk / - keluar, dalam satuan dasar produk (maks. 2 desimal)
  * - balanceAfter : saldo SKU di gudang tsb setelah movement ini
  * - ref*         : dokumen sumber (mis. StockAdjustment ADJ-202611-0007)
- * - unitCost     : dicadangkan untuk HPP rata-rata (modul pembelian)
+ * - unitCost     : harga per satuan dasar: harga beli (PURCHASE) atau HPP saat itu (lainnya)
+ * - value        : qty x unitCost (bertanda)
+ * - avgCostAfter : HPP rata-rata SKU setelah movement ini
  * Tidak dicatat di AuditLog: movement sendiri sudah jejak yang tidak bisa diubah.
  */
 const stockMovementSchema = new mongoose.Schema({
@@ -24,6 +26,8 @@ const stockMovementSchema = new mongoose.Schema({
   note: { type: String, default: null },
   isReversal: { type: Boolean, default: false },
   unitCost: { type: Number, default: null },
+  value: { type: Number, default: null },
+  avgCostAfter: { type: Number, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   date: { type: Date, default: Date.now },
 }, { versionKey: false });

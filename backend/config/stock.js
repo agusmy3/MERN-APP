@@ -27,6 +27,7 @@ const MOVEMENT_TYPES = {
   OPENING: 'Opening Balance',
   ADJUSTMENT: 'Adjustment',
   OPNAME: 'Stock Opname',
+  PURCHASE: 'Purchase (Goods Receipt)',
 };
 
 // batas baris per dokumen (opname 1 gudang bisa ratusan SKU)

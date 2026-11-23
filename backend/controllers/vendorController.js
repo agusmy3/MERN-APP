@@ -174,6 +174,8 @@ exports.deleteVendor = async (req, res) => {
 
       await lock(ref('vendor', vendor._id)); // bentrok dengan penambahan harga dari vendor ini
       // vendor yang masih punya daftar harga produk tidak boleh dihapus
+      const poCount = await require('../models/PurchaseOrder').countDocuments({ vendor: vendor._id });
+      if (poCount) throw new HttpError(`Vendor already has ${poCount} purchase order(s) and cannot be deleted`, 400);
       const priceCount = await VendorPrice.countDocuments({ vendor: vendor._id });
       if (priceCount > 0) {
         throw new HttpError(
