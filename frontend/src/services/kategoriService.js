@@ -35,3 +35,9 @@ export const deleteKategori = async (id, token) => {
   const res = await axios.delete(`${API}/${id}`, getHeaders(token));
   return res;
 };
+
+/** Pilihan kategori untuk form lain (cukup login): [{ _id, name }] */
+export const getKategoriDropdown = async (token) => {
+  const res = await axios.get(`${API}/dropdown`, getHeaders(token));
+  return res.data.data;
+};

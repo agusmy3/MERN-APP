@@ -6,6 +6,11 @@ const menuSchema = new mongoose.Schema({
   component: { type: String, default: null }, // path komponen tujuan
   img: { type: String, default: null },
   icon: { type: String, default: null },
+  deskripsi: { type: String, default: null }, // tampil sebagai subjudul halaman
+  // key resource di config/permissions.js. Menu tampil di sidebar hanya jika user punya izin 'view'.
+  // null = tidak butuh izin (mis. Dashboard, Appearance) atau menu grup.
+  resource: { type: String, default: null },
+
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   updatedDate: { type: Date, default: null },

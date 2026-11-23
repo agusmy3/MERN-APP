@@ -1,0 +1,361 @@
+/**
+ * Audit log eksplisit: dipanggil dari controller DI DALAM runInTransaction (helpers/transaction.js),
+ * setelah perubahan ditulis. Log ikut transaksi: data & log berhasil atau batal BERSAMA.
+ *
+ *   const before = await audit.snap('vendorPrice', [price]);   // sebelum diubah
+ *   ... ubah & simpan ...
+ *   await audit.logUpdate(req, 'vendorPrice', before, [price], { batchId });
+ *   await audit.logCreate(req, 'produkSku', docs, { batchId });
+ *   await audit.logDelete(req, 'vendorPrice', docs, { batchId });
+ *
+ * Gagal menulis log -> error di-throw -> transaksi (dan perubahan datanya) dibatalkan.
+ * Pengecualian: logLogin (di luar transaksi; login tetap jalan walau log gagal).
+ * Entity baru: tambahkan definisinya di ENTITIES.
+ */
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const AuditLog = require('../models/AuditLog');
+const { getResourceLabel } = require('../config/permissions');
+
+// model diambil lewat nama (lazy) supaya tidak terjadi circular require
+const model = (name) => mongoose.model(name);
+
+/**
+ * Definisi per entity:
+ * - fields : field yang dicatat -> { label, format?, ref?: [modelName, textField], secret? }
+ * - label  : teks pengenal record (disimpan, tetap terbaca walau record dihapus)
+ * - parent : induk record untuk histori gabungan
+ */
+const ENTITIES = {
+  produk: {
+    fields: {
+      name: { label: 'Name' },
+      kategori: { label: 'Category', ref: ['Kategori', 'name'] },
+      uom: { label: 'Base UoM', ref: ['Uom', 'code'] },
+      variants: { label: 'Variant Types', ref: ['Variant', 'code'] },
+      deskripsi: { label: 'Description' },
+    },
+    label: (doc) => doc.name,
+  },
+  produkSku: {
+    fields: {
+      sku: { label: 'SKU Code' },
+      variantValues: { label: 'Variant', format: 'variantValues' },
+      hargaJual: { label: 'Selling Price', format: 'money' },
+      stok: { label: 'Stock', format: 'number' },
+      isActive: { label: 'Active', format: 'bool' },
+    },
+    label: (doc) => doc.sku,
+    parent: (doc) => ({ entity: 'produk', id: doc.produk?._id ?? doc.produk }),
+  },
+  vendorPrice: {
+    fields: {
+      vendor: { label: 'Vendor', ref: ['Vendor', 'companyName'] },
+      sku: { label: 'SKU', ref: ['ProdukSku', 'sku'] },
+      uomBeli: { label: 'Purchase UoM', ref: ['Uom', 'code'] },
+      konversi: { label: 'Conversion', format: 'number' },
+      hargaBeli: { label: 'Purchase Price', format: 'money' },
+      isPreferred: { label: 'Preferred', format: 'bool' },
+      minOrder: { label: 'Min. Order', format: 'number' },
+      catatan: { label: 'Notes' },
+    },
+    label: (doc, flat) => `${flat.vendor?.text || '?'} · ${flat.sku?.text || '?'}`,
+    parent: (doc) => ({ entity: 'produk', id: doc.produk?._id ?? doc.produk }),
+  },
+  role: {
+    fields: {
+      name: { label: 'Name' },
+      deskripsi: { label: 'Description' },
+      permissions: { label: 'Permission', format: 'permissions' },
+    },
+    label: (doc) => doc.name,
+  },
+  user: {
+    fields: {
+      name: { label: 'Name' },
+      email: { label: 'Email' },
+      role: { label: 'Role', ref: ['Role', 'name'] },
+      isActive: { label: 'Active', format: 'bool' },
+      password: { label: 'Password', secret: true },
+    },
+    label: (doc) => `${doc.name} (${doc.email})`,
+  },
+
+  // ---------- fase 2: master data ----------
+  kategori: {
+    fields: {
+      name: { label: 'Name' },
+      deskripsi: { label: 'Description' },
+    },
+    label: (doc) => doc.name,
+  },
+  vendor: {
+    fields: {
+      companyName: { label: 'Company Name' },
+      picName: { label: 'PIC Name' },
+      picContact: { label: 'PIC Contact' },
+      companyAddress: { label: 'Company Address' },
+    },
+    label: (doc) => doc.companyName,
+  },
+  uom: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      deskripsi: { label: 'Description' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  variant: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      values: { label: 'Values', format: 'list' },
+      deskripsi: { label: 'Description' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  menu: {
+    fields: {
+      menu: { label: 'Menu' },
+      parent_id: { label: 'Parent', ref: ['Menu', 'menu'] },
+      component: { label: 'Route' },
+      icon: { label: 'Icon' },
+      img: { label: 'Image' },
+      deskripsi: { label: 'Description' },
+      resource: { label: 'Permission', format: 'resource' },
+    },
+    label: (doc) => doc.menu,
+  },
+};
+
+const newBatchId = () => crypto.randomUUID();
+
+const toPlain = (doc) => (doc && typeof doc.toObject === 'function' ? doc.toObject({ depopulate: true }) : doc);
+const idOf = (v) => (v && typeof v === 'object' && v._id ? v._id : v);
+const isEmpty = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+
+/** Ambil teks semua referensi sekaligus: Map "<Model>:<id>" -> teks */
+const resolveRefs = async (entity, docs) => {
+  const wanted = new Map(); // modelName -> { textField, ids:Set }
+  const add = (modelName, textField, id) => {
+    if (!id || !mongoose.isValidObjectId(id)) return;
+    if (!wanted.has(modelName)) wanted.set(modelName, { textField, ids: new Set() });
+    wanted.get(modelName).ids.add(String(id));
+  };
+
+  const { fields } = ENTITIES[entity];
+  for (const doc of docs) {
+    for (const [field, def] of Object.entries(fields)) {
+      if (def.ref) {
+        const value = doc[field];
+        (Array.isArray(value) ? value : [value]).forEach((v) => add(def.ref[0], def.ref[1], idOf(v)));
+      }
+      if (def.format === 'variantValues') {
+        (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
+      }
+    }
+  }
+
+  const texts = new Map();
+  await Promise.all([...wanted.entries()].map(async ([modelName, { textField, ids }]) => {
+    const rows = await model(modelName).find({ _id: { $in: [...ids] } }).select(textField).lean();
+    rows.forEach((r) => texts.set(`${modelName}:${r._id}`, r[textField]));
+  }));
+  return texts;
+};
+
+/** Nilai 1 field dalam bentuk yang mudah dibaca & dibandingkan */
+const normalizeValue = (def, value, texts) => {
+  if (def.secret) return undefined; // tidak pernah disimpan
+  if (def.ref) {
+    const toRef = (v) => {
+      const id = idOf(v);
+      if (!id) return null;
+      return { id: String(id), text: texts.get(`${def.ref[0]}:${id}`) ?? '(deleted)' };
+    };
+    return Array.isArray(value) ? value.map(toRef).filter(Boolean) : toRef(value);
+  }
+  if (def.format === 'variantValues') {
+    return (value || [])
+      .map((vv) => `${texts.get(`Variant:${idOf(vv.variant)}`) || '?'}: ${vv.value}`)
+      .join(', ') || 'Default';
+  }
+  if (def.format === 'resource') return value ? getResourceLabel(value) : null;
+  if (def.format === 'list') return Array.isArray(value) ? [...value] : [];
+  if (def.format === 'permissions') {
+    // { produk: 'view, create', ... } -> dibandingkan per resource
+    return Object.fromEntries((value || []).map((p) => [p.resource, (p.actions || []).join(', ')]));
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === 'object' && value._bsontype) return String(value);
+  return value ?? null;
+};
+
+/**
+ * Snapshot "rata" untuk banyak dokumen: Map id -> { raw, flat }.
+ * Panggil SEBELUM perubahan (untuk update/delete) dan sesudahnya (otomatis di logUpdate).
+ */
+const snap = async (entity, docs) => {
+  const plain = docs.filter(Boolean).map(toPlain);
+  const texts = await resolveRefs(entity, plain);
+  const { fields } = ENTITIES[entity];
+  return new Map(plain.map((raw) => [String(raw._id), {
+    raw,
+    flat: Object.fromEntries(Object.entries(fields).map(([f, def]) => [f, normalizeValue(def, raw[f], texts)])),
+  }]));
+};
+
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const sameRef = (a, b) => {
+  const ids = (v) => (Array.isArray(v) ? v.map((x) => x.id).sort().join(',') : v?.id ?? null);
+  return ids(a) === ids(b);
+};
+
+/** Daftar perubahan antara 2 snapshot rata. Permission dipecah per resource. */
+const diff = (entity, before, after, { rawBefore, rawAfter } = {}) => {
+  const { fields } = ENTITIES[entity];
+  const changes = [];
+  for (const [field, def] of Object.entries(fields)) {
+    if (def.secret) {
+      const a = rawBefore?.[field];
+      const b = rawAfter?.[field];
+      if ((a || b) && a !== b) changes.push({ field, label: def.label, format: 'secret', from: null, to: null });
+      continue;
+    }
+    const a = before?.[field] ?? null;
+    const b = after?.[field] ?? null;
+
+    if (def.format === 'permissions') {
+      const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+      for (const key of keys) {
+        const from = a?.[key] || null;
+        const to = b?.[key] || null;
+        if (from !== to) changes.push({ field: `${field}.${key}`, label: `${def.label}: ${getResourceLabel(key)}`, format: 'text', from, to });
+      }
+      continue;
+    }
+
+    const sorted = (v) => (Array.isArray(v) ? [...v].sort() : v);
+    const changed = def.ref ? !sameRef(a, b)
+      : def.format === 'list' ? !same(sorted(a), sorted(b)) // urutan saja bukan perubahan
+        : !same(a, b);
+    if (changed && !(isEmpty(a) && isEmpty(b))) {
+      changes.push({ field, label: def.label, format: def.format || (def.ref ? 'ref' : 'text'), from: a, to: b });
+    }
+  }
+  return changes;
+};
+
+const clientIp = (req) => String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || null;
+
+/** Tulis log (ikut transaksi yang sedang berjalan). Error di-throw supaya transaksi batal. */
+const write = async (req, entries, actor) => {
+  if (!entries.length) return;
+  const user = actor !== undefined ? actor : req.user;
+  const now = new Date();
+  await AuditLog.insertMany(entries.map((e) => ({
+    ...e,
+    user: user?._id ?? null,
+    userName: user?.name ?? null,
+    ip: clientIp(req),
+    date: now,
+  })));
+};
+
+const base = (entity, raw, flat, opts) => {
+  const def = ENTITIES[entity];
+  return {
+    entity,
+    entityId: raw._id,
+    entityLabel: def.label(raw, flat),
+    parent: def.parent ? def.parent(raw) : undefined,
+    batchId: opts.batchId || null,
+  };
+};
+
+// beberapa log dari 1 aksi otomatis dikelompokkan
+const withBatch = (opts, count) => ({ ...opts, batchId: opts.batchId || (count > 1 ? newBatchId() : null) });
+
+/** Record baru: semua field yang terisi dicatat sebagai perubahan dari kosong. */
+const logCreate = async (req, entity, docs, opts = {}) => {
+  const snaps = await snap(entity, docs);
+  const o = withBatch(opts, snaps.size);
+  const entries = [...snaps.values()].map(({ raw, flat }) => ({
+    ...base(entity, raw, flat, o),
+    action: 'create',
+    changes: diff(entity, {}, flat, { rawAfter: raw }),
+  }));
+  await write(req, entries);
+};
+
+/**
+ * Perubahan: `before` = hasil snap() sebelum diubah, `afterDocs` = dokumen sesudah diubah.
+ * Record tanpa perubahan nyata tidak dicatat.
+ */
+const logUpdate = async (req, entity, before, afterDocs, opts = {}) => {
+  const after = await snap(entity, afterDocs);
+  const entries = [];
+  for (const [id, cur] of after) {
+    const prev = before.get(id);
+    if (!prev) continue;
+    const changes = diff(entity, prev.flat, cur.flat, { rawBefore: prev.raw, rawAfter: cur.raw });
+    if (changes.length) entries.push({ raw: cur.raw, flat: cur.flat, changes });
+  }
+  const o = withBatch(opts, entries.length);
+  await write(req, entries.map(({ raw, flat, changes }) => ({
+    ...base(entity, raw, flat, o),
+    action: 'update',
+    changes,
+  })));
+};
+
+/**
+ * Penghapusan: `snapshots` = hasil snap() SEBELUM dihapus.
+ * Nilai terakhir dicatat sebagai perubahan ke kosong + snapshot dokumen lengkap.
+ */
+const logDelete = async (req, entity, snapshots, opts = {}) => {
+  const o = withBatch(opts, snapshots.size);
+  const secretFields = Object.entries(ENTITIES[entity].fields).filter(([, d]) => d.secret).map(([f]) => f);
+  await write(req, [...snapshots.values()].map(({ raw, flat }) => {
+    const snapshot = { ...raw };
+    secretFields.forEach((f) => delete snapshot[f]);
+    return {
+      ...base(entity, raw, flat, o),
+      action: 'delete',
+      changes: diff(entity, flat, {}).filter((c) => c.format !== 'secret'),
+      snapshot,
+    };
+  }));
+};
+
+/** Login berhasil / gagal. `user` boleh null (email tidak terdaftar). Tidak pernah throw. */
+const logLogin = async (req, { success, user, email, reason }) => {
+  try {
+    await writeLogin(req, { success, user, email, reason });
+  } catch (err) {
+    console.error('[audit] failed to write login log:', err.message);
+  }
+};
+
+const writeLogin = (req, { success, user, email, reason }) => write(req, [{
+    entity: 'auth',
+    entityId: user?._id ?? null,
+    entityLabel: String(email || user?.email || '').slice(0, 200) || null,
+    action: success ? 'login' : 'login_failed',
+    meta: {
+      ...(reason ? { reason } : {}),
+      userAgent: String(req.headers?.['user-agent'] || '').slice(0, 300) || undefined,
+    },
+  }], user || null);
+
+module.exports = {
+  ENTITIES,
+  newBatchId,
+  snap,
+  diff,
+  logCreate,
+  logUpdate,
+  logDelete,
+  logLogin,
+};

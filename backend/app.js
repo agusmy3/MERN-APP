@@ -23,6 +23,12 @@ app.use('/api/kategori', require('./routes/kategoriRoutes'));
 app.use('/api/produk', require('./routes/produkRoutes'));
 app.use('/api/menu', require('./routes/menuRoutes'));
 app.use('/api/vendor', require('./routes/vendorRoutes'));
+app.use('/api/uom', require('./routes/uomRoutes'));
+app.use('/api/variant', require('./routes/variantRoutes'));
+app.use('/api/vendor-price', require('./routes/vendorPriceRoutes'));
+app.use('/api/role', require('./routes/roleRoutes'));
+app.use('/api/user', require('./routes/userRoutes'));
+app.use('/api/audit-log', require('./routes/auditLogRoutes'));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

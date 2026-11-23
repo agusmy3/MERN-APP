@@ -5,6 +5,9 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  theme: { type: String, default: null }, // palet tampilan pilihan user (null = default aplikasi)
+  role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null }, // satu user = satu role
+  isActive: { type: Boolean, default: true }, // false = tidak bisa login, sesi aktif langsung ditolak
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   updatedDate: { type: Date, default: null },

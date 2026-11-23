@@ -3,6 +3,20 @@ const {
   successResponse,
   errorResponse
 } = require("../helpers/responseHelper");
+const { hasPermission, isValidResource } = require('../config/permissions');
+const audit = require('../helpers/auditLogger');
+const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+
+const handleError = (res, error) => {
+  if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
+  if (error.name === 'ValidationError' || error.name === 'CastError') {
+    return errorResponse(res, error.message, 400);
+  }
+  return errorResponse(res, error.message, 500);
+};
+
+// resource tidak dikenal / kosong -> null (menu tanpa batasan izin)
+const toResource = (value) => (isValidResource(value) ? value : null);
 
 exports.getAllMenu = async (req, res) => {
   try {
@@ -121,9 +135,33 @@ exports.getHierarchy = async (req, res) => {
   }
 };
 
+/**
+ * Saring pohon menu sesuai izin user:
+ * - menu dengan `resource` tampil jika user punya izin 'view' untuk resource itu
+ * - menu tanpa `resource` yang punya route (mis. Dashboard, Appearance) tampil untuk semua user
+ * - menu grup (tanpa route) tampil jika minimal satu anaknya tampil
+ * - menu yang tidak diizinkan tapi punya anak yang diizinkan tetap tampil sebagai grup (route dikosongkan)
+ */
+function filterMenuTree(nodes, user) {
+  const result = [];
+  for (const node of nodes || []) {
+    const children = filterMenuTree(node.children, user);
+    const allowed = node.resource
+      ? hasPermission(user, node.resource, 'view')
+      : !!node.component;
+
+    if (allowed) {
+      result.push({ ...node, children: children.length ? children : undefined });
+    } else if (children.length) {
+      result.push({ ...node, component: null, children });
+    }
+  }
+  return result;
+}
+
 exports.getMenuTree = async (req, res) => {
   try {
-    const tree = await getMenuHierarchy();
+    const tree = filterMenuTree(await getMenuHierarchy(), req.user);
     return successResponse(
       res,
       tree
@@ -139,96 +177,81 @@ exports.getMenuTree = async (req, res) => {
 
 exports.createMenu = async (req, res) => {
   try {
-    const menu = new Menu({
-      menu: req.body.menu,
-      parent_id: req.body.parent_id === "" ? null : req.body.parent_id,
-      component: req.body.component,
-      img: req.body.img,
-      icon: req.body.icon,
-      createdDate: new Date(),
-      createdBy: req.user._id,
-      updatedDate: null,
-      updatedBy: null
+    const menu = await runInTransaction(async () => {
+      await lock(ref('menu', req.body.parent_id || null)); // parent tidak boleh terhapus bersamaan
+      const menu = new Menu({
+        menu: req.body.menu,
+        parent_id: req.body.parent_id === "" ? null : req.body.parent_id,
+        component: req.body.component,
+        img: req.body.img,
+        icon: req.body.icon,
+        deskripsi: req.body.deskripsi,
+        resource: toResource(req.body.resource),
+        createdDate: new Date(),
+        createdBy: req.user._id,
+        updatedDate: null,
+        updatedBy: null
+      });
+      await menu.save();
+      await audit.logCreate(req, 'menu', [menu]);
+      return menu;
     });
 
-    await menu.save();
-
-    return successResponse(
-      res,
-      menu,
-      "Menu successfully added",
-      201
-    );
+    return successResponse(res, menu, "Menu successfully added", 201);
   } catch (error) {
-    return errorResponse(
-      res,
-      error.message,
-      500
-    );
+    return handleError(res, error);
   }
 };
 
 exports.updateMenu = async (req, res) => {
   try {
-    const menu = await Menu.findById(req.params.id);
-    if (!menu){
-      return errorResponse(
-        res,
-        'Menu not found',
-        404
-      );
-    }
-    
-    menu.menu = req.body.menu;
-    menu.parent_id = req.body.parent_id === "" ? null : req.body.parent_id;
-    menu.component = req.body.component;
-    menu.img = req.body.img;
-    menu.icon = req.body.icon;
-    menu.updatedDate = new Date();
-    menu.updatedBy = req.user._id;
-    await menu.save();
+    const menu = await runInTransaction(async () => {
+      const menu = await Menu.findById(req.params.id);
+      if (!menu) throw new HttpError('Menu not found', 404);
 
-    return successResponse(
-      res,
-      menu,
-      "Menu successfully Updated",
-      201
-    );
+      await lock(ref('menu', req.body.parent_id || null));
+      const before = await audit.snap('menu', [menu]);
+      menu.menu = req.body.menu;
+      menu.parent_id = req.body.parent_id === "" ? null : req.body.parent_id;
+      menu.component = req.body.component;
+      menu.img = req.body.img;
+      menu.icon = req.body.icon;
+      menu.deskripsi = req.body.deskripsi;
+      menu.resource = toResource(req.body.resource);
+      menu.updatedDate = new Date();
+      menu.updatedBy = req.user._id;
+      await menu.save();
+      await audit.logUpdate(req, 'menu', before, [menu]);
+      return menu;
+    });
+
+    return successResponse(res, menu, "Menu successfully Updated", 200);
   } catch (error) {
-    return errorResponse(
-      res,
-      error.message,
-      500
-    );
+    return handleError(res, error);
   }
-  
 };
 
 exports.deleteMenu = async (req, res) => {
   try {
-    const menu = await Menu.findById(req.params.id);
-    if (!menu){
-      return errorResponse(
-        res,
-        'Menu not found',
-        404
-      );
-    }
+    const menu = await runInTransaction(async () => {
+      const menu = await Menu.findById(req.params.id);
+      if (!menu) throw new HttpError('Menu not found', 404);
 
-    await menu.deleteOne();
-    
-    return successResponse(
-      res,
-      menu,
-      "Menu successfully deleted",
-      201
-    );
+      await lock(ref('menu', menu._id)); // bentrok dengan menu baru / pindah ke bawah menu ini
+      // sub-menu akan kehilangan induknya: minta dipindah/dihapus dulu
+      const childCount = await Menu.countDocuments({ parent_id: menu._id });
+      if (childCount > 0) {
+        throw new HttpError(`Menu still has ${childCount} sub-menu(s). Move or delete them first.`, 400);
+      }
+
+      const before = await audit.snap('menu', [menu]);
+      await menu.deleteOne();
+      await audit.logDelete(req, 'menu', before);
+      return menu;
+    });
+
+    return successResponse(res, menu, "Menu successfully deleted", 200);
   } catch (error) {
-    return errorResponse(
-      res,
-      error.message,
-      500
-    );
+    return handleError(res, error);
   }
-  
 };

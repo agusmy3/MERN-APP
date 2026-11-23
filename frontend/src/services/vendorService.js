@@ -35,3 +35,9 @@ export const deleteVendor = async (id, token) => {
   const res = await axios.delete(`${API}/${id}`, getHeaders(token));
   return res;
 };
+
+/** Pilihan untuk form lain (cukup login): [{ _id, companyName }] */
+export const getVendorDropdown = async (token) => {
+  const res = await axios.get(`${API}/dropdown`, getHeaders(token));
+  return res.data.data;
+};

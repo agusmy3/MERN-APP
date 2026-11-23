@@ -1,1 +1,162 @@
 @import "tailwindcss";
+
+/*
+ * ============================================================
+ *  TEMA / PALET
+ * ============================================================
+ * Komponen TIDAK memakai warna Tailwind langsung (bg-blue-600, text-gray-700, ...),
+ * tapi token semantik di bawah: bg-primary, text-fg, border-line, bg-side, dst.
+ *
+ * Setiap tema hanya mendefinisikan ulang variabel --t-* lewat atribut
+ * data-theme di <html>. Tema default: slate-indigo (juga dipakai jika data-theme kosong).
+ * Daftar tema untuk UI ada di src/theme/themes.js (id harus sama).
+ *
+ * `@theme inline` membuat utility langsung memakai var(--t-*), sehingga elemen
+ * dengan data-theme sendiri (mis. kartu pratinjau di halaman Appearance) ikut berubah.
+ */
+@theme inline {
+  /* area konten */
+  --color-page: var(--t-page);                 /* latar halaman */
+  --color-surface: var(--t-surface);           /* kartu, tabel, drawer */
+  --color-subtle: var(--t-subtle);             /* hover / latar halus */
+  --color-input: var(--t-input);
+  --color-fg: var(--t-fg);                     /* teks utama */
+  --color-muted: var(--t-muted);               /* teks sekunder */
+  --color-line: var(--t-line);                 /* garis/border */
+  --color-line-soft: var(--t-line-soft);       /* garis antar baris tabel */
+
+  /* navbar */
+  --color-nav: var(--t-nav);
+  --color-nav-fg: var(--t-nav-fg);
+  --color-nav-line: var(--t-nav-line);
+  --color-nav-hover: var(--t-nav-hover);
+
+  /* sidebar */
+  --color-side: var(--t-side);
+  --color-side-fg: var(--t-side-fg);
+  --color-side-muted: var(--t-side-muted);
+  --color-side-line: var(--t-side-line);
+  --color-side-hover: var(--t-side-hover);
+  --color-side-active: var(--t-side-active);
+  --color-side-active-fg: var(--t-side-active-fg);
+  --color-side-bar: var(--t-side-bar);         /* garis penanda menu aktif */
+
+  /* warna utama (aksi) */
+  --color-primary: var(--t-primary);
+  --color-primary-hover: var(--t-primary-hover);
+  --color-primary-fg: var(--t-primary-fg);
+  --color-primary-soft: var(--t-primary-soft);
+  --color-primary-soft-fg: var(--t-primary-soft-fg);
+
+  /* tabel */
+  --color-head: var(--t-head);
+  --color-head-fg: var(--t-head-fg);
+  --color-highlight: var(--t-highlight);       /* baris yang sedang diedit */
+
+  /* status (terpisah dari warna utama) */
+  --color-danger: var(--t-danger);
+  --color-danger-fg: var(--t-danger-fg);          /* teks di atas bg-danger */
+  --color-danger-soft: var(--t-danger-soft);
+  --color-danger-line: var(--t-danger-line);
+  --color-warning-soft: var(--t-warning-soft);
+  --color-warning-fg: var(--t-warning-fg);
+  --color-success-soft: var(--t-success-soft);
+  --color-success-fg: var(--t-success-fg);
+}
+
+/* ---------- Slate & Indigo (default) ---------- */
+:root,
+[data-theme="slate-indigo"] {
+  --t-page: #f8fafc; --t-surface: #ffffff; --t-subtle: #f1f5f9; --t-input: #ffffff;
+  --t-fg: #0f172a; --t-muted: #64748b; --t-line: #e2e8f0; --t-line-soft: #f1f5f9;
+  --t-nav: #ffffff; --t-nav-fg: #0f172a; --t-nav-line: #e2e8f0; --t-nav-hover: #f1f5f9;
+  --t-side: #0f172a; --t-side-fg: #cbd5e1; --t-side-muted: #64748b; --t-side-line: #0f172a;
+  --t-side-hover: #1e293b; --t-side-active: #1e293b; --t-side-active-fg: #ffffff; --t-side-bar: #818cf8;
+  --t-primary: #4f46e5; --t-primary-hover: #4338ca; --t-primary-fg: #ffffff;
+  --t-primary-soft: #e0e7ff; --t-primary-soft-fg: #3730a3;
+  --t-head: #f8fafc; --t-head-fg: #475569; --t-highlight: #eef2ff;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Navy & Amber ---------- */
+[data-theme="navy-amber"] {
+  --t-page: #f4f6f9; --t-surface: #ffffff; --t-subtle: #eef2f7; --t-input: #ffffff;
+  --t-fg: #102a43; --t-muted: #627d98; --t-line: #d9e2ec; --t-line-soft: #eef2f7;
+  --t-nav: #102a43; --t-nav-fg: #f0f4f8; --t-nav-line: #102a43; --t-nav-hover: #243b53;
+  --t-side: #102a43; --t-side-fg: #bcccdc; --t-side-muted: #627d98; --t-side-line: #243b53;
+  --t-side-hover: #1b3552; --t-side-active: #243b53; --t-side-active-fg: #ffffff; --t-side-bar: #f59e0b;
+  --t-primary: #1d4ed8; --t-primary-hover: #1e40af; --t-primary-fg: #ffffff;
+  --t-primary-soft: #dbeafe; --t-primary-soft-fg: #1e3a8a;
+  --t-head: #f0f4f8; --t-head-fg: #334e68; --t-highlight: #fffbeb;
+  --t-danger: #c81e1e; --t-danger-fg: #ffffff; --t-danger-soft: #fdf2f2; --t-danger-line: #f8b4b4;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Emerald & Stone ---------- */
+[data-theme="emerald-stone"] {
+  --t-page: #fafaf9; --t-surface: #ffffff; --t-subtle: #f5f5f4; --t-input: #ffffff;
+  --t-fg: #1c1917; --t-muted: #78716c; --t-line: #e7e5e4; --t-line-soft: #f5f5f4;
+  --t-nav: #ffffff; --t-nav-fg: #1c1917; --t-nav-line: #e7e5e4; --t-nav-hover: #f5f5f4;
+  --t-side: #022c22; --t-side-fg: #a7f3d0; --t-side-muted: #5f9e86; --t-side-line: #022c22;
+  --t-side-hover: #053f31; --t-side-active: #064e3b; --t-side-active-fg: #ffffff; --t-side-bar: #34d399;
+  --t-primary: #059669; --t-primary-hover: #047857; --t-primary-fg: #ffffff;
+  --t-primary-soft: #d1fae5; --t-primary-soft-fg: #065f46;
+  --t-head: #f5f5f4; --t-head-fg: #57534e; --t-highlight: #ecfdf5;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Light & Teal ---------- */
+[data-theme="light-teal"] {
+  --t-page: #f9fafb; --t-surface: #ffffff; --t-subtle: #f3f4f6; --t-input: #ffffff;
+  --t-fg: #111827; --t-muted: #6b7280; --t-line: #e5e7eb; --t-line-soft: #f3f4f6;
+  --t-nav: #ffffff; --t-nav-fg: #111827; --t-nav-line: #e5e7eb; --t-nav-hover: #f3f4f6;
+  --t-side: #ffffff; --t-side-fg: #374151; --t-side-muted: #9ca3af; --t-side-line: #e5e7eb;
+  --t-side-hover: #f3f4f6; --t-side-active: #f0fdfa; --t-side-active-fg: #0f766e; --t-side-bar: #14b8a6;
+  --t-primary: #0d9488; --t-primary-hover: #0f766e; --t-primary-fg: #ffffff;
+  --t-primary-soft: #ccfbf1; --t-primary-soft-fg: #115e59;
+  --t-head: #f9fafb; --t-head-fg: #4b5563; --t-highlight: #f0fdfa;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Zinc & Sky (gelap) ---------- */
+[data-theme="zinc-sky"] {
+  --t-page: #09090b; --t-surface: #18181b; --t-subtle: #232327; --t-input: #09090b;
+  --t-fg: #f4f4f5; --t-muted: #a1a1aa; --t-line: #27272a; --t-line-soft: #232327;
+  --t-nav: #18181b; --t-nav-fg: #f4f4f5; --t-nav-line: #27272a; --t-nav-hover: #27272a;
+  --t-side: #09090b; --t-side-fg: #a1a1aa; --t-side-muted: #52525b; --t-side-line: #27272a;
+  --t-side-hover: #18181b; --t-side-active: #18181b; --t-side-active-fg: #f4f4f5; --t-side-bar: #38bdf8;
+  --t-primary: #0ea5e9; --t-primary-hover: #38bdf8; --t-primary-fg: #082f49;
+  --t-primary-soft: #0c4a6e; --t-primary-soft-fg: #e0f2fe;
+  --t-head: #1f1f23; --t-head-fg: #a1a1aa; --t-highlight: #0c2a3d;
+  --t-danger: #f87171; --t-danger-fg: #450a0a; --t-danger-soft: #2a1215; --t-danger-line: #7f1d1d;
+  --t-warning-soft: #422006; --t-warning-fg: #fde68a;
+  --t-success-soft: #052e16; --t-success-fg: #86efac;
+  color-scheme: dark;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-page);
+    color: var(--color-fg);
+  }
+
+  /* Daftar pilihan <select> bawaan browser: select memakai bg-transparent, sehingga di Windows
+     popup-nya tetap putih sementara teks option mewarisi warna teks tema (terang di tema gelap)
+     -> tidak terbaca. Beri warna eksplisit dari token agar semua dropdown mengikuti tema. */
+  select option,
+  select optgroup {
+    background-color: var(--t-surface);
+    color: var(--t-fg);
+  }
+}

@@ -1,431 +1,293 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Pagination from "../components/Pagination";
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  getAllMenus,
+  getMenuDropdown,
   getMenus,
   createMenu,
   updateMenu,
   deleteMenu
 } from '../services/menuService';
+import { getRoleResources } from '../services/roleService';
 import { useAuth } from '../context/AuthContext';
+import useMenus from '../hooks/useMenus';
+import useDataTable from '../hooks/useDataTable';
+import useCrudDrawer from '../hooks/useCrudDrawer';
+import DataPage from '../components/DataPage';
+import FormDrawer from '../components/FormDrawer';
+import FormField from '../components/FormField';
+import TruncateText from '../components/TruncateText';
+import { AuditDetail } from '../components/AuditInfo';
+import { historyAside } from '../utils/historyAside';
+import { auditColumn, actionColumn } from '../utils/tableColumns';
+import { inputClass } from '../utils/formStyles';
+
+const EMPTY_FORM = {
+  menu: '',
+  parent_id: '',
+  component: '',
+  img: '',
+  icon: '',
+  deskripsi: '',
+  resource: ''
+};
+
+// id menu beserta seluruh turunannya, supaya menu tidak bisa dipindah ke bawah anak/cucunya sendiri
+const getSelfAndDescendantIds = (id, menus) => {
+  const ids = new Set([id]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const m of menus) {
+      const parentId = m.parent_id?._id ?? m.parent_id;
+      if (parentId && ids.has(String(parentId)) && !ids.has(m._id)) {
+        ids.add(m._id);
+        added = true;
+      }
+    }
+  }
+  return ids;
+};
 
 export default function Menu() {
-  const initForm = {
-    menu: '',
-    parent_id: '',
-    component: '',
-    img: '',
-    icon: ''
-  }
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [list, setList] = useState([]);
+  // pohon menu bersama (sidebar + judul halaman), dimuat ulang setelah data menu berubah
+  const { reloadMenus } = useMenus();
+
+  const fetchMenus = useCallback(async (params) => {
+    const res = await getMenus(user.token, params);
+    return { items: res.data.data.dataMenu, total: res.data.data.totalData };
+  }, [user.token]);
+
+  const table = useDataTable(fetchMenus, { defaultSortField: 'createdDate', defaultSortOrder: 'asc' });
+
+  // semua menu untuk pilihan Parent (endpoint /dropdown: _id, menu, parent_id)
   const [listAll, setListAll] = useState([]);
-  const [form, setForm] = useState(initForm);
-  const [editing, setEditing] = useState(null);
-  const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
-  const [totalItems, setTotalItems] = useState(0);
-  const [sortField, setSortField] = useState('createdDate');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [searchInput, setSearchInput] = useState('');
-
-  useEffect(() => {
-    if (!user) return navigate('/login');
-    loadData();
-  }, [
-    currentPage,
-    pageSize,
-    search,
-    sortField,
-    sortOrder,
-  ]);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      setSearch(searchInput);
-      setCurrentPage(1);
-    }, 500);
-
-    return () => clearTimeout(timeout);
-  }, [searchInput]);
-
-  const loadData = async () => {
+  const loadAllMenus = useCallback(async () => {
     try {
-      const res = await getMenus(user.token, {
-        search,
-        page: currentPage,
-        pageSize,
-        sortField,
-        sortOrder,
-      });
-
-      if (res.data.success) {
-        setList(res.data.data.dataMenu);
-        setTotalItems(res.data.data.totalData);
-
-        const resAll = await getAllMenus(user.token);
-        setListAll(resAll.data.data);
-      }  
+      setListAll(await getMenuDropdown(user.token));
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [user.token]);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  useEffect(() => {
+    loadAllMenus();
+  }, [loadAllMenus]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (editing) {
-      const res = await updateMenu(editing, form, user.token);
-      alert(res.data.message);
-    } else {
-      const res = await createMenu(form, user.token);
-      alert(res.data.message);
-    }
+  // daftar resource izin (untuk field Resource): [{ key, label, group }]
+  const [resources, setResources] = useState([]);
+  useEffect(() => {
+    getRoleResources(user.token)
+      .then((data) => setResources(data.resources))
+      .catch((err) => console.error(err));
+  }, [user.token]);
 
-    setForm(initForm);
-    setEditing(null);
-    loadData();
-  };
+  const menuName = useMemo(() => new Map(listAll.map((m) => [m._id, m.menu])), [listAll]);
+  const resourceLabel = useMemo(() => new Map(resources.map((r) => [r.key, r.label])), [resources]);
 
-  const handleEdit = (menu) => {
-    setForm({
-      menu: menu.menu,
-      parent_id: menu.parent_id?._id || '',
-      component: menu.component || '',
-      img: menu.img || '',
-      icon: menu.icon || ''
-    });
-    setEditing(menu._id);
-  };
+  const crud = useCrudDrawer({
+    entityName: 'Menu',
+    resource: 'menu',
+    emptyForm: EMPTY_FORM,
+    toForm: (row) => ({
+      menu: row.menu,
+      parent_id: row.parent_id?._id || '',
+      component: row.component || '',
+      img: row.img || '',
+      icon: row.icon || '',
+      deskripsi: row.deskripsi || '',
+      resource: row.resource || ''
+    }),
+    getLabel: (row) => row.menu,
+    create: (payload) => createMenu(payload, user.token),
+    update: (id, payload) => updateMenu(id, payload, user.token),
+    remove: (id) => deleteMenu(id, user.token),
+    onSaved: () => {
+      table.reload();
+      loadAllMenus();
+      reloadMenus();
+    },
+    onDeleted: () => {
+      table.reloadAfterDelete();
+      loadAllMenus();
+      reloadMenus();
+    },
+  });
 
-  const handleCancelEdit = () => {
-    setForm(initForm);
-    setEditing(null);
-  };
+  const { editingRow, form } = crud;
 
-  const handleDelete = async (id) => {
-    try{
-      if (!confirm('Are you sure to delete data?')) return;
-      const res = await deleteMenu(id, user.token);
-      alert(res.data.message);
-      loadData();
-    }catch(err){
-      console.error(err);
-    }
-  };
+  const parentOptions = useMemo(() => {
+    if (!editingRow) return listAll;
+    const excluded = getSelfAndDescendantIds(editingRow._id, listAll);
+    return listAll.filter((m) => !excluded.has(m._id));
+  }, [listAll, editingRow]);
+
+  const columns = [
+    {
+      key: 'menu',
+      header: 'Menu',
+      sortField: 'menu',
+      width: 240,
+      render: (m) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <i className={`${m.icon || 'fa fa-circle text-[6px]'} w-5 shrink-0 text-center text-muted`}></i>
+          <TruncateText text={m.menu} className="font-medium" />
+        </div>
+      ),
+    },
+    {
+      key: 'parent',
+      header: 'Parent',
+      sortField: 'parent_id',
+      width: 180,
+      render: (m) => m.parent_id?.menu || <span className="text-muted italic">Root</span>,
+    },
+    {
+      key: 'component',
+      header: 'Route',
+      width: 180,
+      render: (m) => m.component
+        ? <TruncateText text={m.component} className="font-mono text-xs" />
+        : null,
+    },
+    {
+      key: 'resource',
+      header: 'Permission',
+      width: 160,
+      render: (m) => {
+        if (m.resource) return resourceLabel.get(m.resource) || m.resource;
+        return <span className="text-muted italic">{m.component ? 'All users' : 'Group'}</span>;
+      },
+    },
+    auditColumn(table.sortField),
+    actionColumn(crud),
+  ];
 
   return (
-    
-    <div className='h-full p-4 flex flex-col'>
-      <h1 className="text-2xl/7 font-bold text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight mb-4 py-1 shrink-0">Managament of Menu</h1>
-      <div className="min-h-0 flex flex-col lg:flex-row gap-4">
-        <div className="lg:w-1/3 w-full p-4 bg-white shadow rounded flex-1 min-h-0 overflow-auto">
-          <form onSubmit={handleSubmit} className='mb-6 bg-white space-y-4'>
-            <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Name</label>
-              <input
-                type='text'
-                name='menu'
-                value={form.menu}
-                onChange={handleChange}
-                autoComplete='off'
-                className='
-                  w-full 
-                  border-b border-b-gray-300 
-                  focus:outline-0 focus:border-b-sky-400 
-                  rounded 
-                  px-4 py-2'
-                required
-              />
-            </div>
+    <DataPage
+      fallbackTitle="Menu"
+      entityName="Menu"
+      onAdd={crud.addHandler}
+      table={table}
+      columns={columns}
+      highlightKey={crud.highlightKey}
+    >
+      <FormDrawer {...crud.drawerProps} aside={historyAside(crud, 'menu')}>
+        <FormField label="Name" htmlFor="menu-name" required>
+          <input
+            id="menu-name"
+            type='text'
+            name='menu'
+            placeholder="e.g. Unit of Measure"
+            value={form.menu}
+            onChange={crud.handleChange}
+            autoComplete='off'
+            autoFocus
+            className={inputClass}
+            required
+          />
+        </FormField>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Parent</label>
-              <select
-                name='parent_id'
-                value={form.parent_id}
-                onChange={handleChange}
-                autoComplete='off'
-                className='
-                  text-gray-600
-                  w-full 
-                  border-b border-b-gray-300 
-                  focus:outline-0 focus:border-b-sky-400 
-                  rounded 
-                  px-4 py-2'
-              >
-                <option value=''>-- (Root) --</option>
-                {listAll.filter((m) => m._id !== editing).map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.menu}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <FormField
+          label="Description"
+          htmlFor="menu-deskripsi"
+          hint="Tampil sebagai subjudul di bawah judul halaman. Opsional."
+        >
+          <textarea
+            id="menu-deskripsi"
+            name="deskripsi"
+            rows={2}
+            placeholder="e.g. Satuan yang dipakai untuk stok produk"
+            value={form.deskripsi}
+            onChange={crud.handleChange}
+            className={inputClass}
+          />
+        </FormField>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Component</label>
-              <input
-                type='text'
-                name='component'
-                value={form.component}
-                onChange={handleChange}
-                autoComplete='off'
-                className='
-                  w-full 
-                  border-b border-b-gray-300 
-                  focus:outline-0 focus:border-b-sky-400 
-                  rounded 
-                  px-4 py-2'
-              />
-            </div>
+        <FormField label="Parent" htmlFor="menu-parent">
+          <select
+            id="menu-parent"
+            name='parent_id'
+            value={form.parent_id}
+            onChange={crud.handleChange}
+            className={`${inputClass} text-fg`}
+          >
+            <option value=''>-- (Root) --</option>
+            {parentOptions.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.parent_id && menuName.get(p.parent_id) ? `${menuName.get(p.parent_id)} › ${p.menu}` : p.menu}
+              </option>
+            ))}
+          </select>
+        </FormField>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Icon</label>
-              <input
-                type='text'
-                name='icon'
-                value={form.icon}
-                onChange={handleChange}
-                autoComplete='off'
-                className='
-                  w-full 
-                  border-b border-b-gray-300 
-                  focus:outline-0 focus:border-b-sky-400 
-                  rounded 
-                  px-4 py-2'
-              />
-            </div>
+        <FormField
+          label="Route"
+          htmlFor="menu-component"
+          hint="Path halaman yang terdaftar di App.jsx. Kosongkan untuk menu grup (hanya punya submenu)."
+        >
+          <input
+            id="menu-component"
+            type='text'
+            name='component'
+            placeholder="e.g. /uom"
+            value={form.component}
+            onChange={crud.handleChange}
+            autoComplete='off'
+            className={inputClass}
+          />
+        </FormField>
 
-            <div>
-              <label className='block text-sm font-medium text-gray-600 mb-1'>Image</label>
-              <input
-                type='text'
-                name='img'
-                value={form.img}
-                onChange={handleChange}
-                autoComplete='off'
-                className='
-                  w-full 
-                  border-b border-b-gray-300 
-                  focus:outline-0 focus:border-b-sky-400 
-                  rounded 
-                  px-4 py-2'
-              />
-            </div>
+        <FormField
+          label="Permission"
+          htmlFor="menu-resource"
+          hint="Menu hanya tampil di sidebar untuk role yang punya akses View ke resource ini. Kosongkan untuk halaman yang boleh dibuka semua user (mis. Dashboard)."
+        >
+          <select
+            id="menu-resource"
+            name="resource"
+            value={form.resource}
+            onChange={crud.handleChange}
+            className={`${inputClass} text-fg`}
+          >
+            <option value="">-- All users / group --</option>
+            {resources.map((r) => (
+              <option key={r.key} value={r.key}>{r.group} › {r.label}</option>
+            ))}
+          </select>
+        </FormField>
 
-            <div>
-              <button 
-                type="submit" 
-                className={`
-                  text-white 
-                  px-4 py-2 
-                  cursor-pointer 
-                  rounded
-                  ${
-                    (!editing) ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"
-                  }`}
-              >
-                <i className='fa fa-save'></i> Save
-              </button>
-              <button type="button" className="bg-red-600 text-white px-4 py-2 mx-2 cursor-pointer rounded hover:bg-red-700" onClick={handleCancelEdit}><i className='fa fa-close'></i> Cancel</button>
-            </div>
-          </form>
-        </div>
-        <div className="lg:w-2/3 w-full min-h-0 flex flex-col p-4 bg-white shadow rounded">
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-600 mb-1">Search</label>
+        <FormField label="Icon" htmlFor="menu-icon" hint="Class Font Awesome, pratinjau tampil di kiri.">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 shrink-0 rounded bg-side text-side-fg flex items-center justify-center">
+              <i className={form.icon || 'fa fa-question text-muted'}></i>
+            </span>
             <input
-              type="text"
-              placeholder="Type Keyword..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="
-              w-full 
-              border-b
-              border-b-gray-300
-              focus:outline-0 focus:border-b-sky-400 
-              px-4 py-2 
-              rounded"
+              id="menu-icon"
+              type='text'
+              name='icon'
+              placeholder="e.g. fa-solid fa-ruler"
+              value={form.icon}
+              onChange={crud.handleChange}
+              autoComplete='off'
+              className={inputClass}
             />
           </div>
-          <div className='min-h-0 flex-1 overflow-auto'>
-            <table className='w-full bg-white shadow rounded border-separate border-spacing-0'>
-              <thead className='bg-blue-600 text-white sticky top-0 z-10'>
-                <tr>
-                  <th rowspan='2' className='px-4 py-2 border'>No</th>
-                  <th 
-                    rowspan='2'
-                    className="cursor-pointer px-4 py-2 border"
-                    onClick={() => {
-                      setSortField("parent_id");
-                      setSortOrder(
-                        sortField === "parent_id" && sortOrder === "asc"
-                          ? "desc"
-                          : "asc"
-                      );
-                    }}
-                  >
-                    <div className="flex justify-center items-center gap-2">
-                      <span>Parent</span>
-                      <i
-                        className={`fa ${
-                          sortField === "parent_id"
-                            ? sortOrder === "asc"
-                              ? "fa-sort-up"
-                              : "fa-sort-down"
-                            : "fa-sort"
-                        }`}
-                      />
-                    </div>
-                  </th>
-                  <th
-                    rowspan='2' 
-                    className="cursor-pointer px-4 py-2 border"
-                    onClick={() => {
-                      setSortField("menu");
-                      setSortOrder(
-                        sortField === "menu" && sortOrder === "asc"
-                          ? "desc"
-                          : "asc"
-                      );
-                    }}
-                  >
-                    <div className="flex justify-center items-center gap-2">
-                      <span>Menu</span>
-                      <i
-                        className={`fa ${
-                          sortField === "menu"
-                            ? sortOrder === "asc"
-                              ? "fa-sort-up"
-                              : "fa-sort-down"
-                            : "fa-sort"
-                        }`}
-                      />
-                    </div>
-                  </th>
-                  <th rowspan='2' className='px-4 py-2 border'>Component</th>
-                  <th rowspan='2' className='px-4 py-2 border'>Icon</th>
-                  <th colspan='2' className='px-4 py-2 border'>Created</th>
-                  <th colspan='2' className='px-4 py-2 border'>Updated</th>
-                  <th rowspan='2' className='px-4 py-2 border'>Action</th>
-                </tr>
-                <tr>
-                  <th
-                    className="cursor-pointer px-4 py-2 border"
-                    onClick={() => {
-                      setSortField("createdDate");
-                      setSortOrder(
-                        sortField === "createdDate" && sortOrder === "asc"
-                          ? "desc"
-                          : "asc"
-                      );
-                    }}
-                  >
-                    <div className="flex justify-center items-center gap-2">
-                      <span>Date</span>
-                      <i
-                        className={`fa ${
-                          sortField === "createdDate"
-                            ? sortOrder === "asc"
-                              ? "fa-sort-up"
-                              : "fa-sort-down"
-                            : "fa-sort"
-                        }`}
-                      />
-                    </div>
-                  </th>
-                  <th className='px-4 py-2 border'>By</th>
-                  <th
-                    className="cursor-pointer px-4 py-2 border"
-                    onClick={() => {
-                      setSortField("updatedDate");
-                      setSortOrder(
-                        sortField === "updatedDate" && sortOrder === "asc"
-                          ? "desc"
-                          : "asc"
-                      );
-                    }}
-                  >
-                    <div className="flex justify-center items-center gap-2">
-                      <span>Date</span>
-                      <i
-                        className={`fa ${
-                          sortField === "updatedDate"
-                            ? sortOrder === "asc"
-                              ? "fa-sort-up"
-                              : "fa-sort-down"
-                            : "fa-sort"
-                        }`}
-                      />
-                    </div>
-                  </th>
-                  <th className='px-4 py-2 border'>By</th>
-                </tr>
-              </thead>
-              <tbody className='text-sm'>
-                {list.map((m, index) => (
-                  <tr key={m._id}>
-                    <td className='px-4 py-2 border-t border-t-black text-center'>{(currentPage - 1) * pageSize + index + 1}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.parent_id?.menu || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.menu}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.component || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black text-nowrap'><i className={m.icon || ''}></i> {m.icon || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.createdDate}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.createdBy?.name}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.updatedDate || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black'>{m.updatedBy?.name || '-'}</td>
-                    <td className='px-4 py-2 border-t border-t-black text-nowrap'>
-                      <button
-                          type="button"
-                          onClick={() => handleEdit(m)}
-                          className="bg-yellow-600 hover:bg-yellow-700 text-white h-8 w-8 cursor-pointer rounded mr-2"
-                        >
-                          <i className='fa fa-pen text-xs'></i>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(m._id)}
-                          className="bg-red-600 hover:bg-red-700 text-white h-8 w-8 cursor-pointer rounded"
-                        >
-                          <i className='fa fa-trash text-xs'></i>
-                        </button>
-                    </td>
-                  </tr>
-                ))}
-                {list.length === 0 && (
-                  <tr>
-                    <td colSpan='10' className='text-center py-4 text-gray-500'>
-                      Data Category is Empty
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          <div>
-              <Pagination
-                currentPage={currentPage}
-                totalItems={totalItems}
-                pageSize={pageSize}
-                onPageChange={setCurrentPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setCurrentPage(1);
-                }}
-              />
-          </div>
-          
-        </div>
-      </div>
-    </div>
+        </FormField>
 
+        <FormField label="Image" htmlFor="menu-img">
+          <input
+            id="menu-img"
+            type='text'
+            name='img'
+            value={form.img}
+            onChange={crud.handleChange}
+            autoComplete='off'
+            className={inputClass}
+          />
+        </FormField>
+
+        {editingRow && <AuditDetail data={editingRow} />}
+      </FormDrawer>
+    </DataPage>
   );
 }

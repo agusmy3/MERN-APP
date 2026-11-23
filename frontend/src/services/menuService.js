@@ -45,3 +45,9 @@ export const deleteMenu = async (id, token) => {
     const res = await axios.delete(`${API}/${id}`, getHeaders(token));
     return res;
 };
+
+/** Pilihan menu untuk Parent (cukup login): [{ _id, menu, parent_id }] */
+export const getMenuDropdown = async (token) => {
+    const res = await axios.get(`${API}/dropdown`, getHeaders(token));
+    return res.data.data;
+};

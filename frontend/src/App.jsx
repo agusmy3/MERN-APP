@@ -1,27 +1,51 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Kategori from './pages/Kategori';
 import Produk from './pages/Produk';
+import ProdukDetail from './pages/ProdukDetail';
 import Menu from './pages/Menu';
 import Vendor from './pages/Vendor';
-import MainLayout from './layouts/MainLayout';
-import { useAuth } from './context/AuthContext';
+import Uom from './pages/Uom';
+import Variant from './pages/Variant';
+import Users from './pages/Users';
+import Roles from './pages/Roles';
+import Appearance from './pages/Appearance';
+import AuditLog from './pages/AuditLog';
+import NotFound from './pages/NotFound';
+import PublicLayout from './layouts/PublicLayout';
+import ProtectedLayout from './layouts/ProtectedLayout';
+import RequirePermission from './components/RequirePermission';
+
+// Halaman yang butuh izin 'view' untuk resource-nya (key = backend/config/permissions.js)
+const guard = (resource, element) => <RequirePermission resource={resource}>{element}</RequirePermission>;
 
 function App() {
-  const { user } = useAuth();
-
   return (
     <Routes>
-      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-      <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
-      
-      <Route path="/" element={user ? <MainLayout><Dashboard /></MainLayout> : <Navigate to="/login" />} />
-      <Route path="/kategori" element={user ? <MainLayout><Kategori /></MainLayout> : <Navigate to="/login" />} />
-      <Route path="/produk" element={user ? <MainLayout><Produk /></MainLayout> : <Navigate to="/login" />} />
-      <Route path="/menu" element={user ? <MainLayout><Menu /></MainLayout> : <Navigate to="/login" />} />
-      <Route path="/vendor" element={user ? <MainLayout><Vendor /></MainLayout> : <Navigate to="/login" />} />
+      {/* Hanya untuk user yang belum login. Registrasi publik dimatikan (user dibuat admin). */}
+      <Route element={<PublicLayout />}>
+        <Route path="/login" element={<Login />} />
+      </Route>
+
+      {/* Wajib login, dibungkus MainLayout (Navbar + Sidebar).
+          Halaman baru: daftarkan di sini (pakai guard jika butuh izin), lalu tambahkan
+          datanya di menu Menu dengan `component` = path & `resource` yang sama. */}
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/kategori" element={guard('kategori', <Kategori />)} />
+        <Route path="/produk" element={guard('produk', <Produk />)} />
+        <Route path="/produk/:id" element={guard('produk', <ProdukDetail />)} />
+        <Route path="/vendor" element={guard('vendor', <Vendor />)} />
+        <Route path="/uom" element={guard('uom', <Uom />)} />
+        <Route path="/variant" element={guard('variant', <Variant />)} />
+        <Route path="/menu" element={guard('menu', <Menu />)} />
+        <Route path="/users" element={guard('user', <Users />)} />
+        <Route path="/roles" element={guard('role', <Roles />)} />
+        <Route path="/audit-log" element={guard('auditLog', <AuditLog />)} />
+        <Route path="/appearance" element={<Appearance />} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
     </Routes>
   );
 }

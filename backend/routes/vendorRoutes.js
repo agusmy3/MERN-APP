@@ -8,13 +8,19 @@ const {
   updateVendor,
   deleteVendor
 } = require('../controllers/vendorController');
+const Vendor = require('../models/Vendor');
 const protect = require('../middlewares/authMiddleware');
+const authorize = require('../middlewares/authorize');
+const { dropdownHandler } = require('../helpers/dropdownHelper');
 
-router.get('/all', protect, getAllVendor);
-router.get('/', protect, getVendor);
-router.get('/:id', protect, getSingleVendor);
-router.post('/', protect, createVendor);
-router.put('/:id', protect, updateVendor);
-router.delete('/:id', protect, deleteVendor);
+// Izin: view = lihat/cari/detail, create/update/delete sesuai operasi (lihat config/permissions.js)
+// /dropdown cukup login: untuk pilihan di form resource lain, hanya field ringkas
+router.get('/dropdown', protect, dropdownHandler(Vendor, '_id companyName', { companyName: 1 }));
+router.get('/all', protect, authorize('vendor', 'view'), getAllVendor);
+router.get('/', protect, authorize('vendor', 'view'), getVendor);
+router.get('/:id', protect, authorize('vendor', 'view'), getSingleVendor);
+router.post('/', protect, authorize('vendor', 'create'), createVendor);
+router.put('/:id', protect, authorize('vendor', 'update'), updateVendor);
+router.delete('/:id', protect, authorize('vendor', 'delete'), deleteVendor);
 
 module.exports = router;
