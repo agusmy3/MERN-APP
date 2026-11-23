@@ -4,7 +4,7 @@ const {
   successResponse,
   errorResponse
 } = require("../helpers/responseHelper");
-const { ACTIONS, RESOURCES, normalizePermissions } = require('../config/permissions');
+const { ACTIONS, getResourceRegistry, normalizePermissions } = require('../config/permissions');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 
@@ -30,7 +30,7 @@ const withUserCount = async (roles) => {
 
 // GET /api/role/resources — daftar resource & action untuk matriks izin (cukup login)
 exports.getResources = async (req, res) => {
-  return successResponse(res, { resources: RESOURCES, actions: ACTIONS });
+  return successResponse(res, { resources: getResourceRegistry(), actions: ACTIONS });
 };
 
 // GET /api/role — search, sort, paginasi

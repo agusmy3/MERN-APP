@@ -91,8 +91,8 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
         toast.warning('Please select at least one SKU');
         return null;
       }
-      if (Number(form.konversi) < 1) {
-        toast.warning('Conversion must be at least 1');
+      if (!(Number(form.konversi) > 0)) {
+        toast.warning('Conversion must be greater than 0');
         return null;
       }
       return form;
@@ -120,7 +120,7 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
 
   const shown = skuFilter ? prices.filter((p) => p.sku?._id === skuFilter) : prices;
   const selectedUom = uoms.find((u) => u._id === form.uomBeli);
-  const unitPreview = Number(form.konversi) >= 1 ? Number(form.hargaBeli || 0) / Number(form.konversi) : null;
+  const unitPreview = Number(form.konversi) > 0 ? Number(form.hargaBeli || 0) / Number(form.konversi) : null;
 
   const columns = [
     { key: 'vendor', header: 'Vendor', width: 200, className: 'font-medium', render: (p) => p.vendor?.companyName },
@@ -292,8 +292,8 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
               id="price-konversi"
               type="number"
               name="konversi"
-              min="1"
-              step="any"
+              min="0.01"
+              step="0.01"
               value={form.konversi}
               onChange={crud.handleChange}
               className={`${inputClass} text-right`}
@@ -313,6 +313,7 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
             type="number"
             name="hargaBeli"
             min="0"
+            step="0.01"
             value={form.hargaBeli}
             onChange={crud.handleChange}
             className={`${inputClass} text-right`}
@@ -327,6 +328,7 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
               type="number"
               name="minOrder"
               min="0"
+              step="0.01"
               value={form.minOrder}
               onChange={crud.handleChange}
               placeholder="Optional"

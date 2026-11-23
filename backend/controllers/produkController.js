@@ -12,6 +12,7 @@ const {
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { generateSkuCode } = require('../helpers/skuHelper');
+const { skusWithStockHistory } = require('../helpers/stockHelper');
 
 const SORTABLE_FIELDS = ['name', 'createdDate', 'updatedDate'];
 
@@ -262,6 +263,12 @@ exports.deleteProduk = async (req, res) => {
 
       // bentrok dengan generate SKU / tambah harga vendor untuk produk ini
       await lock(ref('produk', produk._id));
+      // SKU yang sudah punya histori stok tidak boleh hilang (kartu stok ikut hilang)
+      const skuIds = await ProdukSku.find({ produk: produk._id }).distinct('_id');
+      const withHistory = await skusWithStockHistory(skuIds);
+      if (withHistory.size) {
+        throw new HttpError(`Product has ${withHistory.size} SKU(s) with stock history and cannot be deleted. Deactivate its SKUs instead.`, 400);
+      }
       const prices = await audit.snap('vendorPrice', await VendorPrice.find({ produk: produk._id }).lean());
       const skus = await audit.snap('produkSku', await ProdukSku.find({ produk: produk._id }).lean());
       const produkSnap = await audit.snap('produk', [produk]);

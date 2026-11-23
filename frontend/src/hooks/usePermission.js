@@ -17,5 +17,7 @@ export default function usePermission(resource) {
     canCreate: actions.includes('create'),
     canUpdate: actions.includes('update'),
     canDelete: actions.includes('delete'),
+    // posting & pembatalan dokumen stok (hanya resource yang punya action 'post')
+    canPost: actions.includes('post'),
   };
 }

@@ -1,0 +1,204 @@
+const Gudang = require('../models/Gudang');
+const StockBalance = require('../models/StockBalance');
+const StockMovement = require('../models/StockMovement');
+const StockAdjustment = require('../models/StockAdjustment');
+const {
+  successResponse,
+  errorResponse
+} = require("../helpers/responseHelper");
+const audit = require('../helpers/auditLogger');
+const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+
+const SORTABLE_FIELDS = ['code', 'name', 'provinsi', 'kota', 'createdDate', 'updatedDate'];
+
+const TEXT_FIELDS = ['alamat', 'provinsi', 'kota', 'kecamatan', 'deskripsi'];
+const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
+
+/**
+ * Validasi & normalisasi field lokasi dari body. Hanya field yang dikirim yang dikembalikan
+ * (update parsial). Koordinat: keduanya diisi atau keduanya kosong, maks. 7 desimal (~1 cm).
+ */
+const parseLocation = (body) => {
+  const out = {};
+  for (const f of TEXT_FIELDS) {
+    if (body[f] !== undefined) out[f] = isBlank(body[f]) ? '' : String(body[f]).trim();
+  }
+  if (body.kodePos !== undefined) {
+    const kodePos = isBlank(body.kodePos) ? '' : String(body.kodePos).trim();
+    if (kodePos && !/^\d{5}$/.test(kodePos)) throw new HttpError('Postal code must be 5 digits', 400);
+    out.kodePos = kodePos;
+  }
+  if (body.latitude !== undefined || body.longitude !== undefined) {
+    const latBlank = isBlank(body.latitude);
+    const lngBlank = isBlank(body.longitude);
+    if (latBlank !== lngBlank) throw new HttpError('Fill in both latitude and longitude, or leave both empty', 400);
+    if (latBlank) {
+      out.latitude = null;
+      out.longitude = null;
+    } else {
+      const lat = Number(body.latitude);
+      const lng = Number(body.longitude);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new HttpError('Latitude must be between -90 and 90', 400);
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) throw new HttpError('Longitude must be between -180 and 180', 400);
+      out.latitude = Math.round(lat * 1e7) / 1e7;
+      out.longitude = Math.round(lng * 1e7) / 1e7;
+    }
+  }
+  return out;
+};
+
+const handleError = (res, error) => {
+  if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
+  if (error.code === 11000) {
+    return errorResponse(res, 'Warehouse code already exists', 400);
+  }
+  if (error.name === 'ValidationError' || error.name === 'CastError') {
+    return errorResponse(res, error.message, 400);
+  }
+  return errorResponse(res, error.message, 500);
+};
+
+// GET semua gudang (tanpa paginasi)
+exports.getAllGudang = async (req, res) => {
+  try {
+    const gudang = await Gudang.find()
+      .populate('createdBy', 'name')
+      .populate('updatedBy', 'name')
+      .sort({ code: 1 });
+    return successResponse(res, gudang);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// GET gudang dengan search, sort, dan paginasi
+exports.getGudang = async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const page = parseInt(req.query.page || 1);
+    const pageSize = parseInt(req.query.pageSize || 5);
+    const sortField = SORTABLE_FIELDS.includes(req.query.sortField)
+      ? req.query.sortField
+      : 'createdDate';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const filter = {};
+
+    if (search) {
+      filter.$or = [
+        { code: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+        { alamat: { $regex: search, $options: 'i' } },
+        { provinsi: { $regex: search, $options: 'i' } },
+        { kota: { $regex: search, $options: 'i' } },
+        { kecamatan: { $regex: search, $options: 'i' } },
+        { kodePos: { $regex: search, $options: 'i' } },
+        { deskripsi: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const totalData = await Gudang.countDocuments(filter);
+    const dataGudang = await Gudang.find(filter)
+      .populate('createdBy', 'name')
+      .populate('updatedBy', 'name')
+      .collation({ locale: 'en', strength: 2 })
+      .sort({ [sortField]: sortOrder })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+
+    return successResponse(res, {
+      dataGudang,
+      totalData,
+      currentPage: page,
+      totalPages: Math.ceil(totalData / pageSize)
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// GET single gudang
+exports.getSingleGudang = async (req, res) => {
+  try {
+    const gudang = await Gudang.findById(req.params.id);
+    if (!gudang) return errorResponse(res, 'Warehouse not found', 404);
+    return successResponse(res, gudang);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// POST tambah gudang
+exports.createGudang = async (req, res) => {
+  try {
+    const location = parseLocation(req.body);
+    const gudang = await runInTransaction(async () => {
+      const gudang = await Gudang.create({
+        code: req.body.code,
+        name: req.body.name,
+        ...location,
+        isActive: req.body.isActive !== false,
+        createdBy: req.user._id
+      });
+      await audit.logCreate(req, 'gudang', [gudang]);
+      return gudang;
+    });
+
+    return successResponse(res, gudang, 'Warehouse successfully added', 201);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// PUT update gudang (termasuk menonaktifkan)
+exports.updateGudang = async (req, res) => {
+  try {
+    const gudang = await runInTransaction(async () => {
+      const gudang = await Gudang.findById(req.params.id);
+      if (!gudang) throw new HttpError('Warehouse not found', 404);
+
+      const before = await audit.snap('gudang', [gudang]);
+      gudang.code = req.body.code || gudang.code;
+      gudang.name = req.body.name || gudang.name;
+      Object.assign(gudang, parseLocation(req.body));
+      if (req.body.isActive !== undefined) gudang.isActive = req.body.isActive !== false;
+      gudang.updatedDate = new Date();
+      gudang.updatedBy = req.user._id;
+      await gudang.save();
+      await audit.logUpdate(req, 'gudang', before, [gudang]);
+      return gudang;
+    });
+
+    return successResponse(res, gudang, 'Warehouse successfully updated', 200);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// DELETE gudang: hanya jika belum pernah punya stok / dokumen stok
+exports.deleteGudang = async (req, res) => {
+  try {
+    const gudang = await runInTransaction(async () => {
+      const gudang = await Gudang.findById(req.params.id);
+      if (!gudang) throw new HttpError('Warehouse not found', 404);
+
+      await lock(ref('gudang', gudang._id)); // bentrok dengan dokumen stok baru untuk gudang ini
+      const [balance, movement, docs] = await Promise.all([
+        StockBalance.exists({ gudang: gudang._id }),
+        StockMovement.exists({ gudang: gudang._id }),
+        StockAdjustment.countDocuments({ gudang: gudang._id }),
+      ]);
+      if (balance || movement || docs) {
+        throw new HttpError('Warehouse already has stock history or documents. Deactivate it instead.', 400);
+      }
+
+      const before = await audit.snap('gudang', [gudang]);
+      await gudang.deleteOne();
+      await audit.logDelete(req, 'gudang', before);
+      return gudang;
+    });
+
+    return successResponse(res, gudang, 'Warehouse successfully deleted', 200);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};

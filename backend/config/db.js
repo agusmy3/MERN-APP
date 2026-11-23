@@ -24,7 +24,9 @@ const connectDB = async () => {
     }
 
     // koleksi dibuat di luar transaksi (pembuatan koleksi bersamaan di dalam transaksi bisa bentrok)
-    await require('../models/TxLock').createCollection().catch(() => {});
+    for (const name of ['TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment']) {
+      await require(`../models/${name}`).createCollection().catch(() => {});
+    }
 
     console.log(`MongoDB connected (replica set: ${hello.setName})`);
   } catch (err) {

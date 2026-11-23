@@ -1,6 +1,6 @@
 # mern-app
 
-Aplikasi admin full-stack MERN (MongoDB, Express, React, Node.js) untuk mengelola data master (**Kategori, Produk, Vendor, UoM, Variant, Menu**), dengan autentikasi JWT dan otorisasi berbasis role (RBAC: **User, Role**). Sidebar aplikasi dibangun secara dinamis dari data Menu di database.
+Aplikasi admin full-stack MERN (MongoDB, Express, React, Node.js) untuk mengelola data master (**Kategori, Produk, Vendor, UoM, Variant, Gudang, Menu**) dan **stok** (Stock Adjustment / Opname, kartu stok per gudang), dengan autentikasi JWT dan otorisasi berbasis role (RBAC: **User, Role**). Sidebar aplikasi dibangun secara dinamis dari data Menu di database.
 
 ## Struktur
 
@@ -18,8 +18,10 @@ Tidak ada package.json di root; backend dan frontend dijalankan terpisah.
 ```
 npm run dev      # node --watch app.js, auto-restart saat file berubah
 npm start        # node app.js
-npm run seed:rbac  # migrasi RBAC (idempotent): role Super Admin -> admin@mern.com, tautkan Menu ke resource, buat menu User, Role & Audit Log
+npm run seed:rbac  # migrasi RBAC (idempotent): role Super Admin -> admin@mern.com, tautkan Menu ke resource, buat menu User, Role, Audit Log, Warehouse & grup Inventory (Stock Adjustment, Stock Movement)
 npm run migrate:produk-sku  # migrasi produk lama (idempotent): UoM PCS, 1 SKU default per produk (harga -> hargaJual, qty -> stok)
+npm run migrate:stock-opening  # (idempotent) gudang MAIN + 1 dokumen Saldo Awal (POSTED) untuk stok SKU yang belum punya kartu stok; argumen opsional: kode gudang
+npm run stock:reconcile        # cek StockBalance & ProdukSku.stok vs kartu stok; `-- --fix` menulis ulang cache dari movement
 npm run rs:init  # inisialisasi replica set 1 node (idempotent; biasanya lewat setup-replica-set.ps1)
 ```
 Butuh `backend/.env` dengan `MONGO_URI`, `JWT_SECRET`, `PORT` (default 5000).
@@ -45,23 +47,25 @@ Belum ada test di kedua sisi.
 - Pola per resource: `models/` → `controllers/` → `routes/`.
 - Route yang terdaftar:
   - `/api/auth`: `POST /login` (publik), `GET /me` (profil + role + izin efektif), `PUT /theme`. **Registrasi publik dimatikan**; user dibuat admin lewat `/api/user`.
-  - `/api/kategori`, `/api/vendor`, `/api/produk`, `/api/uom`, `/api/variant`: `GET /dropdown`, `GET /all`, `GET /` (paginasi), `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`
+  - `/api/kategori`, `/api/vendor`, `/api/produk`, `/api/uom`, `/api/variant`, `/api/gudang`: `GET /dropdown`, `GET /all`, `GET /` (paginasi), `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`
   - `/api/menu`: `GET /tree` (sidebar, disaring sesuai izin user), `GET /dropdown`, `GET /all`, `GET /` (paginasi), `GET /getHierarchy`, `POST`, `PUT /:id`, `DELETE /:id`
   - `/api/role`: `GET /resources` (registri untuk matriks), `GET /dropdown`, CRUD standar. `/api/user`: CRUD standar (tanpa `/all`).
   - `/api/produk/:id/sku`: `GET` (list SKU + harga pokok jika boleh lihat harga vendor), `POST /generate` (kombinasi varian), `PUT` (bulk update), `DELETE /:skuId`. Mengelola SKU butuh izin `produk:update`.
-  - `/api/audit-log` (baca saja): `GET /history?entity=produk|role|user|kategori|vendor|uom|variant|menu&id=` (histori 1 record, izin = view resource record tsb; produk ikut memuat SKU & harga vendornya, user ikut memuat riwayat login), `GET /` (halaman global, izin `auditLog:view`, filter `search|entity|action|from|to`). Isi selalu disaring sesuai izin view per resource (log harga vendor butuh `vendorPrice:view`).
+  - `/api/audit-log` (baca saja): `GET /history?entity=produk|role|user|kategori|vendor|uom|variant|menu|gudang|stockAdjustment&id=` (histori 1 record, izin = view resource record tsb; produk ikut memuat SKU & harga vendornya, user ikut memuat riwayat login), `GET /` (halaman global, izin `auditLog:view`, filter `search|entity|action|from|to`). Isi selalu disaring sesuai izin view per resource (log harga vendor butuh `vendorPrice:view`).
+  - `/api/stock-adjustment`: `GET /` (paginasi; filter `search|status|type|reason|gudang|from|to`, tanpa baris + `lineCount`), `GET /:id` (draft: + `currentQty` per baris), `GET /skus?gudang=&search=|produk=|kategori=` (cari SKU lintas produk + saldo gudang), `POST /skus/balance` (`{ gudang, skus }` -> saldo), `POST /` / `PUT /:id` / `DELETE /:id` (**draft saja**), `POST /:id/post`, `POST /:id/cancel` (`{ reason }`). Izin: create/update/delete = draft, **`post`** = posting & pembatalan.
+  - `/api/stock-movement` (baca saja, izin `stockMovement:view`): `GET /` (kartu stok; filter `produk|sku|gudang|type|from|to|search`), `GET /balance?produk=` (saldo per SKU per gudang).
   - `/api/vendor-price`: `GET ?produk=|vendor=|sku=` (salah satu wajib; tiap baris + `hargaPerUnit`), `POST` (banyak SKU sekaligus, upsert per vendor+sku+uomBeli), `PUT /:id`, `DELETE /:id`. Izin resource `vendorPrice` (terpisah dari `produk`, karena harga beli sensitif).
 - Auth: [middlewares/authMiddleware.js](backend/middlewares/authMiddleware.js) (`protect`) memvalidasi `Authorization: Bearer <token>`, mengisi `req.user` (tanpa password, **role sudah di-populate**), menolak user yang dihapus atau `isActive: false` (401). Token dibuat oleh [utils/generateToken.js](backend/utils/generateToken.js) (berlaku 7 hari).
 
 ### Otorisasi (RBAC)
 
-- Satu user = satu role (`User.role`). Izin disimpan di `Role.permissions: [{ resource, actions }]`, action: `view` (buka menu, tabel, search, detail), `create`, `update`, `delete`. Action selain `view` hanya sah jika `view` juga ada.
+- Satu user = satu role (`User.role`). Izin disimpan di `Role.permissions: [{ resource, actions }]`, action: `view` (buka menu, tabel, search, detail), `create`, `update`, `delete`, dan `post` (hanya resource yang mendeklarasikannya, mis. `stockAdjustment`: posting/pembatalan dokumen stok, supaya pembuat draft dan pemosting bisa dipisah). Action selain `view` hanya sah jika `view` juga ada.
 - Registri resource: [config/permissions.js](backend/config/permissions.js) (sumber kebenaran; juga dikirim ke frontend lewat `GET /api/role/resources`).
 - **Setiap endpoint data wajib `protect` + `authorize(resource, action)`** ([middlewares/authorize.js](backend/middlewares/authorize.js)); tanpa izin -> **403** (bukan 401). Pola route: `GET /`, `GET /:id`, `GET /all` -> view; `POST` -> create; `PUT` -> update; `DELETE` -> delete.
 - `GET /dropdown` cukup `protect` (tanpa izin view), untuk pilihan di form resource lain; **hanya field ringkas** (`_id` + `name`/`code`) via `dropdownHandler` di [helpers/dropdownHelper.js](backend/helpers/dropdownHelper.js). Daftarkan sebelum `/:id`.
 - Role `isSystem` (Super Admin) melewati semua cek, tidak bisa diubah/dihapus. Backend mencegah: hapus role yang masih dipakai, ubah role/nonaktifkan/hapus akun sendiri, dan kehilangan Super Admin aktif terakhir.
 - `Menu.resource` menautkan menu ke resource: sidebar (`/api/menu/tree`) hanya memuat menu yang boleh di-view; menu tanpa resource tapi punya route = semua user; menu grup tampil jika ada anak yang tampil.
-- Resource boleh membatasi action-nya (`actions: ['view']`, mis. `auditLog`); matriks Role menampilkan "–" untuk action yang tidak berlaku.
+- Resource tanpa `actions` = `view/create/update/delete`; resource boleh membatasi/menambah action-nya (`actions: ['view']` untuk `auditLog` & `stockMovement`, `+ 'post'` untuk `stockAdjustment`). `GET /api/role/resources` mengirim daftar action efektif per resource; matriks Role menampilkan "–" untuk action yang tidak berlaku. UI: `usePermission(...).canPost`.
 - Menambah resource baru: tambah di `RESOURCES`, pasang `authorize` di route, guard di `App.jsx`, `resource` di `useCrudDrawer` halaman, lalu set Permission di data Menu.
 
 ### Transaksi
@@ -81,8 +85,19 @@ Belum ada test di kedua sisi.
 - Callback bisa **dijalankan ulang otomatis** saat bentrok dengan transaksi lain: isinya hanya operasi database (tanpa kirim response / API luar). Validasi input murni boleh di luar.
 - **Write skew**: transaksi hanya bentrok jika menulis dokumen yang sama, jadi aturan lintas dokumen butuh `lock(key)` (dokumen di koleksi `txlocks`) di semua transaksi yang menyangkut aturan tsb:
   - `ref('<entity>', id)`: hapus Kategori/UoM/Variant/Vendor/Role/Menu/Produk <-> create/update yang mereferensikannya (produk, SKU, harga vendor, user, sub-menu).
+  - `ref('gudang', id)`: hapus Gudang <-> dokumen stok baru / posting di gudang tsb. Draft stok juga mengunci `ref('produk', ...)` tiap SKU-nya (hapus SKU/produk mengecek pemakaian di dokumen stok).
   - `preferred:<skuId>`: maks. 1 vendor utama per SKU. `superadmin`: min. 1 Super Admin aktif.
-  - Modul stok nanti: pengurangan stok pakai update atomik bersyarat (`{ stok: { $gte: qty } }` + `$inc`) di dalam transaksi.
+  - **Stok**: saldo dibaca lalu ditulis di transaksi yang sama (`applyMovements`), jadi dua posting untuk SKU+gudang yang sama pasti bentrok dan salah satu diulang dengan saldo terbaru; tidak perlu `lock`.
+
+### Stok
+
+- **Stok hanya berubah lewat dokumen** (sekarang: Stock Adjustment; nanti pembelian/penjualan/transfer) melalui `applyMovements(req, entries, { refType, refId, refNo, isReversal })` di [helpers/stockHelper.js](backend/helpers/stockHelper.js), di dalam `runInTransaction`. **Jangan** menulis `ProdukSku.stok` / `StockBalance` langsung; `PUT /api/produk/:id/sku` mengabaikan field `stok`.
+- Tiga lapis: `StockMovement` (kartu stok, **append-only**, sumber kebenaran, `balanceAfter` per SKU+gudang) -> `StockBalance` (saldo per SKU + **gudang**, cache) -> `ProdukSku.stok` (total semua gudang, cache). `npm run stock:reconcile` memeriksanya.
+- Stok **tidak boleh minus**: satu baris minus -> `HttpError` -> seluruh dokumen batal. Kesalahan dikoreksi dengan **Cancel** (movement pembalik `isReversal`), tidak ada yang dihapus. Movement tidak dicatat di AuditLog (dokumennya yang diaudit).
+- **Angka maks. 2 desimal** (stok, qty, harga, konversi, min. order): validasi `checkAmount()` dan pembulatan `round2()` dari [helpers/number.js](backend/helpers/number.js) (frontend: `round2`, `formatNumber`, `formatSigned` di `utils/formatHelper.js`; input `step="0.01"`).
+- Dokumen `StockAdjustment` (1 dokumen = 1 gudang): `DRAFT -> POSTED -> CANCELLED`. Jenis `ADJUSTMENT` (user mengisi `qtyChange` +/-, alasan wajib) dan `OPNAME` (user mengisi `qtyActual`; `qtySystem` & selisih diambil **saat Post**). Nomor `ADJ-/OPN-YYYYMM-NNNN` dari koleksi `counters` (`nextDocNo`, di dalam transaksi). Alasan & konstanta: [config/stock.js](backend/config/stock.js) (salinan frontend: `utils/stockMeta.js`); alasan `OTHER` wajib catatan, `OPENING` -> movement `OPENING`.
+- SKU/produk yang sudah punya movement **atau** dipakai dokumen stok tidak bisa dihapus (400, arahkan ke nonaktifkan). Gudang dengan saldo/movement/dokumen tidak bisa dihapus; gudang nonaktif tidak bisa dipakai untuk dokumen baru.
+- Rencana: multi-gudang sudah didukung di data; menu penugasan user -> gudang menyusul (belum ada pembatasan akses per gudang). `StockMovement.unitCost` dicadangkan untuk HPP rata-rata (modul pembelian).
 
 ### Audit Log
 
@@ -95,7 +110,7 @@ Belum ada test di kedua sisi.
   await audit.logDelete(req, 'vendorPrice', before, { batchId });
   ```
   Log ditulis **di dalam transaksi yang sama** dengan datanya: gagal menulis log -> seluruh perubahan batal (kecuali log login, yang berdiri sendiri). Simpan ulang tanpa perubahan tidak dicatat.
-- Yang dicatat: Produk, ProdukSku, VendorPrice (termasuk vendor yang kehilangan status preferred), Role (izin per resource), User, login (berhasil/gagal), serta Kategori, Vendor, UoM, Variant (nilai: tambah/hapus; urutan saja bukan perubahan), dan Menu (parent & permission sebagai teks). **Semua controller yang mengubah data sudah memakai audit.** Entity baru: tambah definisi field di `ENTITIES` (auditLogger), `ENTITY_RESOURCE` ([auditLogController](backend/controllers/auditLogController.js)), dan `ENTITY_META` ([utils/auditFormat.js](frontend/src/utils/auditFormat.js)), lalu panggil helper di controller-nya. **Endpoint baru yang mengubah data entity tsb wajib memanggil audit.**
+- Yang dicatat: Produk, ProdukSku (tanpa stok; stok ada di kartu stok), VendorPrice (termasuk vendor yang kehilangan status preferred), Role (izin per resource), User, login (berhasil/gagal), serta Kategori, Vendor, UoM, Variant (nilai: tambah/hapus; urutan saja bukan perubahan), Menu (parent & permission sebagai teks), Gudang, dan StockAdjustment (status, baris sebagai daftar teks `SKU: +5`; Post/Cancel = update status). Definisi field bisa memakai `labels` (kode -> teks) dan format `date` / `stockLines`. **Semua controller yang mengubah data sudah memakai audit.** Entity baru: tambah definisi field di `ENTITIES` (auditLogger), `ENTITY_RESOURCE` ([auditLogController](backend/controllers/auditLogController.js)), dan `ENTITY_META` ([utils/auditFormat.js](frontend/src/utils/auditFormat.js)), lalu panggil helper di controller-nya. **Endpoint baru yang mengubah data entity tsb wajib memanggil audit.**
 - Log hanya ada sejak fitur aktif (tidak ada histori sebelumnya); disimpan selamanya.
 
 ### Konvensi response
@@ -117,7 +132,7 @@ Bentuk `data`: `{ data<Resource>, totalData, currentPage, totalPages }` (contoh:
 
 Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDate`, `updatedBy`. Controller mengisi `createdBy`/`updatedBy` dari `req.user._id` dan biasanya `populate('createdBy updatedBy', 'name')`.
 
-**Integritas relasi** (MongoDB tidak menjaganya, jadi dicek di controller): hapus Vendor yang masih punya VendorPrice, Kategori/UoM/Variant yang masih dipakai produk (UoM juga sebagai `uomBeli`), dan menghapus nilai Variant yang dipakai SKU -> **ditolak (400)**. Hapus Produk -> ikut hapus SKU & VendorPrice-nya; hapus SKU -> ikut hapus VendorPrice-nya. Produk tanpa varian selalu punya 1 SKU default; jenis varian produk tidak bisa diubah selama masih ada SKU.
+**Integritas relasi** (MongoDB tidak menjaganya, jadi dicek di controller): hapus Vendor yang masih punya VendorPrice, Kategori/UoM/Variant yang masih dipakai produk (UoM juga sebagai `uomBeli`), menghapus nilai Variant yang dipakai SKU, dan hapus SKU/Produk/Gudang yang punya histori stok -> **ditolak (400)**. Hapus Produk -> ikut hapus SKU & VendorPrice-nya; hapus SKU -> ikut hapus VendorPrice-nya. Produk tanpa varian selalu punya 1 SKU default; jenis varian produk tidak bisa diubah selama masih ada SKU.
 
 | Model | Field utama |
 |---|---|
@@ -125,9 +140,14 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
 | Role | `name` (unique), `deskripsi`, `isSystem` (Super Admin), `permissions` (`[{ resource, actions }]`) |
 | Kategori | `name`, `deskripsi` |
 | Produk | Induk produk: `name`, `deskripsi`, `kategori` (ref), `uom` (ref Uom, satuan dasar stok & jual), `variants` (ref Variant[], jenis varian; kosong = tanpa varian). **Tidak** menyimpan harga/stok. |
-| ProdukSku | Unit yang distok & dijual: `produk`, `sku` (unique, uppercase), `variantValues` (`[{ variant, value }]`, kosong = SKU default), `comboKey` (unique per produk), `hargaJual`, `stok`, `isActive` |
+| ProdukSku | Unit yang distok & dijual: `produk`, `sku` (unique, uppercase), `variantValues` (`[{ variant, value }]`, kosong = SKU default), `comboKey` (unique per produk), `hargaJual`, `stok` (cache total semua gudang, baca saja), `isActive` |
 | VendorPrice | Harga beli terkini: `vendor`, `produk` (disalin dari SKU), `sku`, `uomBeli` (ref Uom), `konversi` (1 uomBeli = N satuan dasar), `hargaBeli` (per uomBeli), `isPreferred` (maks. 1 per SKU), `minOrder`, `catatan`. Unique `(vendor, sku, uomBeli)`. Harga pokok = `hargaBeli / konversi`. |
 | Vendor | `companyName`, `picName`, `picContact`, `companyAddress` |
+| Gudang | `code` (unique, uppercase, mis. `MAIN`), `name`, `alamat`, `provinsi`, `kota` (kota/kabupaten), `kecamatan`, `kodePos` (5 digit), `latitude`/`longitude` (derajat desimal, keduanya diisi atau null, 7 desimal), `deskripsi`, `isActive`. Wilayah masih teks bebas (belum master wilayah). |
+| StockBalance | Saldo per `(sku, gudang)` unique: `produk`, `qty` (min. 0). Cache, hanya lewat `applyMovements`. |
+| StockMovement | Kartu stok (append-only): `sku`, `produk`, `gudang`, `type` (`OPENING|ADJUSTMENT|OPNAME`, nanti PURCHASE/SALE/...), `qty` (bertanda), `balanceAfter`, `refType`/`refId`/`refNo`, `reason`, `note`, `isReversal`, `unitCost` (cadangan), `createdBy`, `date` |
+| StockAdjustment | `no` (unique), `type` (`ADJUSTMENT|OPNAME`), `gudang`, `date` (tanggal dokumen, tidak boleh masa depan), `reason`, `note`, `status`, `lines: [{ sku, produk, qtySystem, qtyActual, qtyChange, note }]` (SKU unik, maks. 2000), `postedBy/Date`, `cancelledBy/Date`, `cancelReason` |
+| Counter | `_id` = prefix periode (`ADJ-202611`), `seq` |
 | Uom | `code` (unique, uppercase, mis. `PCS`), `name`, `deskripsi` |
 | Variant | `code` (unique, uppercase, mis. `COLOR`), `name`, `values` (array string, min. 1, dinormalisasi: trim + tanpa duplikat), `deskripsi` |
 | Menu | `menu`, `parent_id` (ref Menu, hierarki), `component` (path route frontend), `img`, `icon` (class FontAwesome), `deskripsi` (subjudul halaman), `resource` (izin yang dibutuhkan; null = semua user / grup) |
@@ -137,11 +157,12 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
 - [src/main.jsx](frontend/src/main.jsx): `BrowserRouter` + `AuthProvider`.
 - [src/App.jsx](frontend/src/App.jsx) memakai layout route:
   - `PublicLayout` (`/login`; tidak ada halaman register): user yang sudah login diarahkan ke `/`.
-  - `ProtectedLayout` (`/`, `/kategori`, `/produk`, `/produk/:id`, `/menu`, `/vendor`, `/uom`, `/variant`, `/users`, `/roles`, `/audit-log`, `/appearance`, `*` → `NotFound`): belum login diarahkan ke `/login` (dengan `state.from`, setelah login kembali ke halaman tujuan), lalu dibungkus `MainLayout`. Halaman data dibungkus `guard(resource, ...)` ([RequirePermission](frontend/src/components/RequirePermission.jsx)): tanpa izin view -> halaman Access denied (403).
-  - **Produk**: halaman daftar (`/produk`) hanya info induk + ringkasan SKU; tombol Detail membuka [ProdukDetail](frontend/src/pages/ProdukDetail.jsx) (`/produk/:id?tab=info|sku|prices|history`): tab Info, **Variants & SKU** (generator kombinasi + tabel SKU editable dengan harga pokok & margin), **Vendor Prices** (hanya jika izin `vendorPrice:view`), **History** (audit log produk + SKU + harga vendor). Komponen di `src/components/produk/`. Halaman turunan memakai `PageHeader parentPath="/produk" title=...` untuk breadcrumb; sidebar menandai menu induk aktif untuk path turunannya.
+  - `ProtectedLayout` (`/`, `/kategori`, `/produk`, `/produk/:id`, `/menu`, `/vendor`, `/uom`, `/variant`, `/gudang`, `/stock-adjustment`, `/stock-adjustment/:id`, `/stock-movement`, `/users`, `/roles`, `/audit-log`, `/appearance`, `*` → `NotFound`): belum login diarahkan ke `/login` (dengan `state.from`, setelah login kembali ke halaman tujuan), lalu dibungkus `MainLayout`. Halaman data dibungkus `guard(resource, ...)` ([RequirePermission](frontend/src/components/RequirePermission.jsx)): tanpa izin view -> halaman Access denied (403).
+  - **Produk**: halaman daftar (`/produk`) hanya info induk + ringkasan SKU; tombol Detail membuka [ProdukDetail](frontend/src/pages/ProdukDetail.jsx) (`/produk/:id?tab=info|sku|stock|prices|history`): tab Info, **Variants & SKU** (generator kombinasi + tabel SKU editable dengan harga pokok & margin; stok baca saja), **Stock** (saldo per SKU x gudang, kolom SKU & Total menempel saat digeser; klik angka -> kartu stok di drawer [StockCardDrawer](frontend/src/components/produk/StockCardDrawer.jsx), state di URL `?tab=stock&sku=&gudang=`; izin `stockMovement:view`), **Vendor Prices** (hanya jika izin `vendorPrice:view`), **History** (audit log produk + SKU + harga vendor). Komponen di `src/components/produk/`. Halaman turunan memakai `PageHeader parentPath="/produk" title=...` untuk breadcrumb; sidebar menandai menu induk aktif untuk path turunannya.
   - **Audit Log**: komponen di `src/components/audit/`: `AuditTimeline` (histori 1 record, dikelompokkan per `batchId`, Load more), `AuditHistorySection` (bagian History yang bisa dibuka di drawer; pasang lewat prop `aside` FormDrawer supaya tetap bisa diklik di mode Detail), `AuditChanges`. Dipakai di tab History ProdukDetail, drawer semua halaman master data lewat `aside={historyAside(crud, '<entity>')}` ([utils/historyAside.jsx](frontend/src/utils/historyAside.jsx)), dan halaman [AuditLog](frontend/src/pages/AuditLog.jsx) (`/audit-log`).
+  - **Stok** (komponen di `src/components/stock/`, service [stockService.js](frontend/src/services/stockService.js)): [StockAdjustment](frontend/src/pages/StockAdjustment.jsx) (daftar dokumen + filter; tombol New Adjustment / New Stock Opname), [StockAdjustmentDetail](frontend/src/pages/StockAdjustmentDetail.jsx) (`/stock-adjustment/new?type=ADJUSTMENT|OPNAME` atau `/:id`: header, baris SKU dengan `SkuPicker` lintas produk, opname bisa muat semua SKU per produk/kategori, Enter pindah baris, Save draft / Save & Post / Delete / Cancel dengan alasan, History), [StockMovement](frontend/src/pages/StockMovement.jsx) (kartu stok global; query URL awal `search|gudang|sku|label`). Halaman [Gudang](frontend/src/pages/Gudang.jsx) mengikuti pola master data.
   - Halaman baru cukup ditambahkan sebagai child `ProtectedLayout` **dan** dibuat datanya di Menu (`component` = path) agar muncul di sidebar. Halaman tidak perlu cek `user` sendiri.
-- Auth state: [src/context/AuthContext.jsx](frontend/src/context/AuthContext.jsx) (`useAuth()` → `{ user, login, logout, updateUser, refreshUser, sessionExpired }`; `user.role`, `user.permissions` = `{ produk: ['view', ...] }`, dimuat ulang dari `/api/auth/me` saat aplikasi dibuka & saat menerima 403). Cek izin di UI: `usePermission(resource)` → `{ loaded, canView, canCreate, canUpdate, canDelete }` (hanya tampilan; penegakan di backend), disimpan di `localStorage` key `user`. `user.token` dipakai untuk request API. Token yang `exp`-nya sudah lewat dibuang saat aplikasi dimuat.
+- Auth state: [src/context/AuthContext.jsx](frontend/src/context/AuthContext.jsx) (`useAuth()` → `{ user, login, logout, updateUser, refreshUser, sessionExpired }`; `user.role`, `user.permissions` = `{ produk: ['view', ...] }`, dimuat ulang dari `/api/auth/me` saat aplikasi dibuka & saat menerima 403). Cek izin di UI: `usePermission(resource)` → `{ loaded, canView, canCreate, canUpdate, canDelete, canPost }` (hanya tampilan; penegakan di backend), disimpan di `localStorage` key `user`. `user.token` dipakai untuk request API. Token yang `exp`-nya sudah lewat dibuang saat aplikasi dimuat.
 - [src/utils/axiosSetup.js](frontend/src/utils/axiosSetup.js) (di-import di `main.jsx`): interceptor axios global: 401 (selain login) → logout otomatis + pesan "sesi berakhir"; 403 → izin dimuat ulang (tanpa logout).
 - `src/services/*Service.js`: wrapper axios per resource, menerima `token` dan menambahkan header Bearer. Path API relatif (`/api/...`) lewat proxy Vite.
 - `src/pages/`: satu halaman per resource. Semua halaman master data (Menu, Kategori, Produk, Vendor, UoM, Variant) memakai pola yang sama, ikuti [pages/Kategori.jsx](frontend/src/pages/Kategori.jsx) sebagai contoh paling sederhana:
@@ -152,9 +173,10 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
   - [components/DataPage.jsx](frontend/src/components/DataPage.jsx): header + toolbar (search & tombol Add sejajar) + `DataTable` + `Pagination`; form ditaruh sebagai children dalam `FormDrawer`.
   - `DataTable`: lebar kolom tetap (`width` per kolom), tinggi header tetap, teks panjang dipotong "…" dan bisa diklik (`TruncateText`). Kolom standar dari [utils/tableColumns.jsx](frontend/src/utils/tableColumns.jsx): `auditColumn(sortField)` (Last Modified, menu sort created/updated) dan `actionColumn({ onEdit, onDelete })`.
   - Form: `FormField` + `inputClass` dari `utils/formStyles.js`; saat edit tampilkan `<AuditDetail data={editingRow} />`. Pilihan dari resource lain (select) pakai endpoint `/dropdown`, bukan `/all`.
+- Drawer: `FormDrawer` untuk form; [SideDrawer](frontend/src/components/SideDrawer.jsx) untuk panel baca saja (gaya sama, prop `header` untuk pemilih yang tetap terlihat).
 - **Notifikasi: jangan pakai `alert()` / `confirm()` bawaan browser.** Pakai `useToast()` (`toast.success/error/warning/info(msg)`, pojok kanan atas, hilang otomatis) dan `useConfirm()` (`await confirm({ title, message, confirmLabel, tone: 'danger' })` → boolean). Provider dipasang di `main.jsx`. `useCrudDrawer` sudah memakainya untuk simpan/hapus.
 - Layout: [MainLayout](frontend/src/layouts/MainLayout.jsx) = `Navbar` + `Sidebar` + konten. Tombol ☰ di Navbar: layar ≥ 1024px menyembunyikan/menampilkan sidebar (diingat di `localStorage` key `sidebarHidden`), layar kecil membuka sidebar sebagai drawer. `Sidebar` membaca pohon menu dari `useMenus()` dan merender lewat `SidebarMenu` (highlight via `useLocation`, parent dari menu aktif otomatis terbuka). Halaman Menu memanggil `reloadMenus()` setelah simpan/hapus, jadi sidebar dan judul langsung ter-update.
-- Utilitas: [src/utils/dateHelper.js](frontend/src/utils/dateHelper.js) (`formatDate` locale id-ID, `formatDate2` via dayjs `DD MMM YYYY HH:mm`).
+- Utilitas: [src/utils/dateHelper.js](frontend/src/utils/dateHelper.js) (`formatDate` locale id-ID, `formatDate2` via dayjs `DD MMM YYYY HH:mm`, `formatDay` `DD MMM YYYY`, `toDateInput` untuk `<input type="date">`).
 - Styling: Tailwind CSS 4 (plugin `@tailwindcss/vite`), ikon FontAwesome dan `@tabler/icons-react`, animasi `framer-motion`.
 - **Tema / palet** (halaman `/appearance`, ikon 🎨 di Navbar):
   - **Jangan pakai warna Tailwind langsung** (`bg-blue-600`, `text-gray-700`, ...). Pakai token semantik dari [src/index.css](frontend/src/index.css): `bg-page`, `bg-surface`, `bg-subtle`, `text-fg`, `text-muted`, `border-line`, `border-line-soft`, `bg-primary`/`hover:bg-primary-hover`/`text-primary-fg`, `bg-primary-soft`, `bg-nav*`, `bg-side*`, `bg-head`, `bg-highlight`, `text-danger`/`bg-danger-soft`, `bg-warning-soft`, `bg-success-soft`. Teks di atas `bg-primary` selalu `text-primary-fg` (bukan `text-white`, karena tema gelap memakai primary terang).

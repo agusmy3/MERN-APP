@@ -29,6 +29,9 @@ app.use('/api/vendor-price', require('./routes/vendorPriceRoutes'));
 app.use('/api/role', require('./routes/roleRoutes'));
 app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/audit-log', require('./routes/auditLogRoutes'));
+app.use('/api/gudang', require('./routes/gudangRoutes'));
+app.use('/api/stock-adjustment', require('./routes/stockRoutes').adjustment);
+app.use('/api/stock-movement', require('./routes/stockRoutes').movement);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

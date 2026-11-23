@@ -17,7 +17,18 @@ export const formatRupiahRange = (min, max) => {
   return min === max ? formatRupiah(min) : `${formatRupiah(min)} – ${formatRupiah(max)}`;
 };
 
-export const formatNumber = (value) => Number(value || 0).toLocaleString('id-ID');
+/** 1234.5 -> "1.234,5" (maks. 2 desimal, sesuai presisi stok & harga) */
+export const formatNumber = (value) => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+
+/** Perubahan bertanda: 5 -> "+5", -2.25 -> "−2,25", 0 -> "0" */
+export const formatSigned = (value) => {
+  const n = Number(value || 0);
+  if (!n) return '0';
+  return `${n > 0 ? '+' : '−'}${formatNumber(Math.abs(n))}`;
+};
+
+/** Pembulatan 2 desimal (sama dengan backend helpers/number.js round2) */
+export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 /** Margin kotor terhadap harga jual: (jual - pokok) / jual. null jika tidak bisa dihitung. */
 export const calcMargin = (hargaJual, hargaPokok) => {

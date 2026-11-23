@@ -8,6 +8,7 @@ const {
   errorResponse
 } = require("../helpers/responseHelper");
 const audit = require('../helpers/auditLogger');
+const { checkAmount, round2 } = require('../helpers/number');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 
 const handleError = (res, error) => {
@@ -29,20 +30,14 @@ const validatePriceInput = async ({ vendor, uomBeli, konversi, hargaBeli, minOrd
   if (uomBeli !== undefined && (!mongoose.isValidObjectId(uomBeli) || !(await Uom.exists({ _id: uomBeli })))) {
     return 'Please select a valid purchase UoM';
   }
-  if (konversi !== undefined && (!Number.isFinite(Number(konversi)) || Number(konversi) < 1)) {
-    return 'Conversion must be a number >= 1';
-  }
-  if (hargaBeli !== undefined && (!Number.isFinite(Number(hargaBeli)) || Number(hargaBeli) < 0)) {
-    return 'Purchase price must be a number >= 0';
-  }
-  if (minOrder !== undefined && minOrder !== null && minOrder !== ''
-    && (!Number.isFinite(Number(minOrder)) || Number(minOrder) < 0)) {
-    return 'Minimum order must be a number >= 0';
-  }
-  return null;
+  // angka maks. 2 desimal (helpers/number.js)
+  return (konversi !== undefined && checkAmount(konversi, 'Conversion', { min: 0, exclusive: true }))
+    || (hargaBeli !== undefined && checkAmount(hargaBeli, 'Purchase price'))
+    || (minOrder !== undefined && minOrder !== null && minOrder !== '' && checkAmount(minOrder, 'Minimum order'))
+    || null;
 };
 
-const toMinOrder = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+const toMinOrder = (v) => (v === undefined || v === null || v === '' ? null : round2(v));
 
 // Hanya 1 vendor utama (isPreferred) per SKU. Harga lain yang kehilangan status ikut dicatat di audit.
 const clearOtherPreferred = async (req, skuIds, keepIds, batchId) => {
@@ -133,8 +128,8 @@ exports.createVendorPrice = async (req, res) => {
           update: {
             $set: {
               produk: s.produk,
-              konversi: Number(konversi),
-              hargaBeli: Number(hargaBeli),
+              konversi: round2(konversi),
+              hargaBeli: round2(hargaBeli),
               isPreferred: !!isPreferred,
               minOrder: toMinOrder(minOrder),
               catatan,
@@ -194,8 +189,8 @@ exports.updateVendorPrice = async (req, res) => {
       const batchId = audit.newBatchId();
 
       if (uomBeli !== undefined) price.uomBeli = uomBeli;
-      if (konversi !== undefined) price.konversi = Number(konversi);
-      if (hargaBeli !== undefined) price.hargaBeli = Number(hargaBeli);
+      if (konversi !== undefined) price.konversi = round2(konversi);
+      if (hargaBeli !== undefined) price.hargaBeli = round2(hargaBeli);
       if (isPreferred !== undefined) price.isPreferred = !!isPreferred;
       if (minOrder !== undefined) price.minOrder = toMinOrder(minOrder);
       price.catatan = catatan ?? price.catatan;

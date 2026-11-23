@@ -7,6 +7,8 @@
  * 3. Mengisi isActive = true untuk user lama yang belum punya field ini
  * 4. Menautkan menu yang sudah ada ke resource-nya berdasarkan route (mis. /produk -> produk)
  * 5. Membuat menu "User" (/users), "Role" (/roles) & "Audit Log" (/audit-log) jika belum ada
+ * 6. Membuat menu "Warehouse" (/gudang, di grup yang sama dengan /uom) dan grup "Inventory"
+ *    berisi "Stock Adjustment" (/stock-adjustment) & "Stock Movement" (/stock-movement)
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -28,7 +30,15 @@ const ROUTE_RESOURCE = {
   '/users': 'user',
   '/roles': 'role',
   '/audit-log': 'auditLog',
+  '/gudang': 'gudang',
+  '/stock-adjustment': 'stockAdjustment',
+  '/stock-movement': 'stockMovement',
 };
+
+const INVENTORY_MENUS = [
+  { menu: 'Stock Adjustment', component: '/stock-adjustment', icon: 'fa-solid fa-boxes-stacked', resource: 'stockAdjustment', deskripsi: 'Penyesuaian stok & stock opname (draft, posting, pembatalan)' },
+  { menu: 'Stock Movement', component: '/stock-movement', icon: 'fa-solid fa-right-left', resource: 'stockMovement', deskripsi: 'Kartu stok: semua pergerakan stok per SKU dan gudang' },
+];
 
 const NEW_MENUS = [
   { menu: 'User', component: '/users', icon: 'fa-solid fa-users', resource: 'user', deskripsi: 'Kelola akun pengguna dan role-nya' },
@@ -88,6 +98,37 @@ async function main() {
       parent_id: menuMenu?.parent_id ?? null,
       createdBy: admin?._id,
     });
+    console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
+  }
+
+  // 6. Warehouse (di grup yang sama dengan UoM) + grup Inventory
+  if (await Menu.exists({ component: '/gudang' })) {
+    console.log('[=] Menu /gudang sudah ada');
+  } else {
+    const uomMenu = await Menu.findOne({ component: '/uom' });
+    await Menu.create({
+      menu: 'Warehouse',
+      component: '/gudang',
+      icon: 'fa-solid fa-warehouse',
+      resource: 'gudang',
+      deskripsi: 'Kelola gudang / lokasi penyimpanan stok',
+      parent_id: uomMenu?.parent_id ?? null,
+      createdBy: admin?._id,
+    });
+    console.log('[+] Menu "Warehouse" (/gudang) dibuat');
+  }
+
+  let inventory = await Menu.findOne({ menu: 'Inventory', component: null });
+  for (const item of INVENTORY_MENUS) {
+    if (await Menu.exists({ component: item.component })) {
+      console.log(`[=] Menu ${item.component} sudah ada`);
+      continue;
+    }
+    if (!inventory) {
+      inventory = await Menu.create({ menu: 'Inventory', icon: 'fa-solid fa-boxes-stacked', createdBy: admin?._id });
+      console.log('[+] Menu grup "Inventory" dibuat');
+    }
+    await Menu.create({ ...item, parent_id: inventory._id, createdBy: admin?._id });
     console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
   }
 

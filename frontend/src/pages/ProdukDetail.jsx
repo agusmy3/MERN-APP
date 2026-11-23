@@ -17,6 +17,7 @@ import FormDrawer from '../components/FormDrawer';
 import ProdukFormFields from '../components/produk/ProdukFormFields';
 import ProdukSkuTab from '../components/produk/ProdukSkuTab';
 import VendorPriceTab from '../components/produk/VendorPriceTab';
+import ProdukStockTab from '../components/produk/ProdukStockTab';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
 import { EMPTY_PRODUK_FORM, produkToForm } from '../utils/produkForm';
@@ -73,8 +74,9 @@ function InfoTab({ produk }) {
 }
 
 /**
- * Detail produk: /produk/:id?tab=info|sku|prices
- * Info (ringkasan) · Variants & SKU (harga jual, stok) · Vendor Prices (harga beli, butuh izin vendorPrice)
+ * Detail produk: /produk/:id?tab=info|sku|stock|prices|history
+ * Info (ringkasan) · Variants & SKU (harga jual) · Stock (saldo per gudang & kartu stok, izin stockMovement)
+ * · Vendor Prices (harga beli, butuh izin vendorPrice) · History
  */
 export default function ProdukDetail() {
   const { id } = useParams();
@@ -83,6 +85,8 @@ export default function ProdukDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const perm = usePermission('produk');
   const pricePerm = usePermission('vendorPrice');
+  const stockPerm = usePermission('stockMovement');
+  const adjustPerm = usePermission('stockAdjustment');
   const confirm = useConfirm();
   const toast = useToast();
   const options = useProdukOptions(user.token);
@@ -135,7 +139,8 @@ export default function ProdukDetail() {
   const handleDelete = async () => {
     const ok = await confirm({
       title: 'Delete product?',
-      message: `"${produk.name}" beserta ${produk.skuCount} SKU dan semua harga vendornya akan dihapus permanen.`,
+      message: `"${produk.name}" beserta ${produk.skuCount} SKU dan semua harga vendornya akan dihapus permanen. `
+        + 'Produk yang SKU-nya sudah punya histori stok tidak bisa dihapus (nonaktifkan SKU-nya).',
       confirmLabel: 'Delete',
       tone: 'danger',
     });
@@ -152,6 +157,7 @@ export default function ProdukDetail() {
   const tabs = [
     { key: 'info', label: 'Info', icon: 'fa-circle-info' },
     { key: 'sku', label: `Variants & SKU (${skuData.skus.length})`, icon: 'fa-layer-group' },
+    ...(stockPerm.canView ? [{ key: 'stock', label: 'Stock', icon: 'fa-boxes-stacked' }] : []),
     ...(pricePerm.canView ? [{ key: 'prices', label: 'Vendor Prices', icon: 'fa-truck' }] : []),
     { key: 'history', label: 'History', icon: 'fa-clock-rotate-left' },
   ];
@@ -236,8 +242,18 @@ export default function ProdukDetail() {
                 produk={produk}
                 skuData={skuData}
                 canUpdate={perm.canUpdate}
+                canViewStock={stockPerm.canView}
                 token={user.token}
                 onChanged={reloadAll}
+              />
+            )}
+            {activeTab === 'stock' && (
+              <ProdukStockTab
+                produk={produk}
+                skus={skuData.skus}
+                token={user.token}
+                canAdjust={adjustPerm.canCreate}
+                refreshKey={version}
               />
             )}
             {activeTab === 'prices' && (

@@ -16,13 +16,15 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const AuditLog = require('../models/AuditLog');
 const { getResourceLabel } = require('../config/permissions');
+const { ADJUSTMENT_TYPES, REASONS } = require('../config/stock');
 
 // model diambil lewat nama (lazy) supaya tidak terjadi circular require
 const model = (name) => mongoose.model(name);
 
 /**
  * Definisi per entity:
- * - fields : field yang dicatat -> { label, format?, ref?: [modelName, textField], secret? }
+ * - fields : field yang dicatat -> { label, format?, ref?: [modelName, textField], secret?, labels? }
+ *            labels = peta kode -> teks (mis. alasan penyesuaian); format 'stockLines' = baris dokumen stok
  * - label  : teks pengenal record (disimpan, tetap terbaca walau record dihapus)
  * - parent : induk record untuk histori gabungan
  */
@@ -42,7 +44,6 @@ const ENTITIES = {
       sku: { label: 'SKU Code' },
       variantValues: { label: 'Variant', format: 'variantValues' },
       hargaJual: { label: 'Selling Price', format: 'money' },
-      stok: { label: 'Stock', format: 'number' },
       isActive: { label: 'Active', format: 'bool' },
     },
     label: (doc) => doc.sku,
@@ -115,6 +116,35 @@ const ENTITIES = {
     },
     label: (doc) => `${doc.code} — ${doc.name}`,
   },
+  gudang: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      alamat: { label: 'Address' },
+      provinsi: { label: 'Province' },
+      kota: { label: 'City / Regency' },
+      kecamatan: { label: 'District' },
+      kodePos: { label: 'Postal Code' },
+      latitude: { label: 'Latitude', format: 'coord' },
+      longitude: { label: 'Longitude', format: 'coord' },
+      deskripsi: { label: 'Description' },
+      isActive: { label: 'Active', format: 'bool' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  stockAdjustment: {
+    fields: {
+      type: { label: 'Type', labels: Object.fromEntries(Object.entries(ADJUSTMENT_TYPES).map(([k, v]) => [k, v.label])) },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      date: { label: 'Date', format: 'date' },
+      reason: { label: 'Reason', labels: REASONS },
+      note: { label: 'Note' },
+      status: { label: 'Status' },
+      lines: { label: 'Lines', format: 'stockLines' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
   menu: {
     fields: {
       menu: { label: 'Menu' },
@@ -154,6 +184,9 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
+      if (def.format === 'stockLines') {
+        (doc[field] || []).forEach((l) => add('ProdukSku', 'sku', idOf(l.sku)));
+      }
     }
   }
 
@@ -180,6 +213,21 @@ const normalizeValue = (def, value, texts) => {
     return (value || [])
       .map((vv) => `${texts.get(`Variant:${idOf(vv.variant)}`) || '?'}: ${vv.value}`)
       .join(', ') || 'Default';
+  }
+  if (def.labels) return value ? (def.labels[value] ?? value) : null;
+  if (def.format === 'stockLines') {
+    // 1 baris = 1 teks, mis. "KAOS-M: +5" atau "KAOS-M: count 12 (+2)"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const signed = (n) => `${n > 0 ? '+' : ''}${num(n)}`;
+    return (value || []).map((l) => {
+      const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
+      const parts = [];
+      if (l.qtyActual !== null && l.qtyActual !== undefined) parts.push(`count ${num(l.qtyActual)}`);
+      if (l.qtyChange !== null && l.qtyChange !== undefined) {
+        parts.push(parts.length ? `(${signed(l.qtyChange)})` : signed(l.qtyChange));
+      }
+      return `${sku}: ${parts.join(' ') || '-'}${l.note ? ` · ${l.note}` : ''}`;
+    });
   }
   if (def.format === 'resource') return value ? getResourceLabel(value) : null;
   if (def.format === 'list') return Array.isArray(value) ? [...value] : [];
@@ -238,10 +286,12 @@ const diff = (entity, before, after, { rawBefore, rawAfter } = {}) => {
 
     const sorted = (v) => (Array.isArray(v) ? [...v].sort() : v);
     const changed = def.ref ? !sameRef(a, b)
-      : def.format === 'list' ? !same(sorted(a), sorted(b)) // urutan saja bukan perubahan
+      : ['list', 'stockLines'].includes(def.format) ? !same(sorted(a), sorted(b)) // urutan saja bukan perubahan
         : !same(a, b);
     if (changed && !(isEmpty(a) && isEmpty(b))) {
-      changes.push({ field, label: def.label, format: def.format || (def.ref ? 'ref' : 'text'), from: a, to: b });
+      // stockLines ditampilkan sebagai daftar (+ ditambah / - dihapus) di frontend
+      const format = def.format === 'stockLines' ? 'list' : def.format || (def.ref ? 'ref' : 'text');
+      changes.push({ field, label: def.label, format, from: a, to: b });
     }
   }
   return changes;

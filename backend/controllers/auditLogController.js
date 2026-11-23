@@ -22,10 +22,12 @@ const ENTITY_RESOURCE = {
   uom: 'uom',
   variant: 'variant',
   menu: 'menu',
+  gudang: 'gudang',
+  stockAdjustment: 'stockAdjustment',
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };

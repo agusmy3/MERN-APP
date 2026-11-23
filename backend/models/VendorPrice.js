@@ -13,7 +13,7 @@ const vendorPriceSchema = new mongoose.Schema({
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true, index: true },
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true, index: true },
   uomBeli: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', required: true },
-  konversi: { type: Number, required: true, min: 1 },   // 1 uomBeli = konversi x satuan dasar produk
+  konversi: { type: Number, required: true, min: 0.01 }, // 1 uomBeli = konversi x satuan dasar (maks. 2 desimal)
   hargaBeli: { type: Number, required: true, min: 0 },  // per uomBeli
   isPreferred: { type: Boolean, default: false },       // vendor utama untuk SKU ini (maks. 1 per SKU)
   minOrder: { type: Number, default: null, min: 0 },    // dalam uomBeli

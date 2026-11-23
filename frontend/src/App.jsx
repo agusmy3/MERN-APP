@@ -12,6 +12,10 @@ import Users from './pages/Users';
 import Roles from './pages/Roles';
 import Appearance from './pages/Appearance';
 import AuditLog from './pages/AuditLog';
+import Gudang from './pages/Gudang';
+import StockAdjustment from './pages/StockAdjustment';
+import StockAdjustmentDetail from './pages/StockAdjustmentDetail';
+import StockMovement from './pages/StockMovement';
 import NotFound from './pages/NotFound';
 import PublicLayout from './layouts/PublicLayout';
 import ProtectedLayout from './layouts/ProtectedLayout';
@@ -39,6 +43,11 @@ function App() {
         <Route path="/vendor" element={guard('vendor', <Vendor />)} />
         <Route path="/uom" element={guard('uom', <Uom />)} />
         <Route path="/variant" element={guard('variant', <Variant />)} />
+        <Route path="/gudang" element={guard('gudang', <Gudang />)} />
+        <Route path="/stock-adjustment" element={guard('stockAdjustment', <StockAdjustment />)} />
+        {/* :id = 'new' (?type=ADJUSTMENT|OPNAME) atau id dokumen */}
+        <Route path="/stock-adjustment/:id" element={guard('stockAdjustment', <StockAdjustmentDetail />)} />
+        <Route path="/stock-movement" element={guard('stockMovement', <StockMovement />)} />
         <Route path="/menu" element={guard('menu', <Menu />)} />
         <Route path="/users" element={guard('user', <Users />)} />
         <Route path="/roles" element={guard('role', <Roles />)} />

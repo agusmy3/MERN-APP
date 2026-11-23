@@ -180,6 +180,12 @@ export default function AuditLog() {
               <AuditChanges log={selected} />
             </div>
 
+            {selected.entity === 'stockAdjustment' && selected.action !== 'delete' && (
+              <Link to={`/stock-adjustment/${selected.entityId}`} className="inline-block text-sm text-primary hover:underline">
+                <i className="fa fa-arrow-up-right-from-square mr-1"></i> Open document {selected.entityLabel}
+              </Link>
+            )}
+
             {produkId && selected.action !== 'delete' && (
               <Link to={`/produk/${produkId}?tab=history`} className="inline-block text-sm text-primary hover:underline">
                 <i className="fa fa-arrow-up-right-from-square mr-1"></i> Open product history

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   generateProdukSkus,
   updateProdukSkus,
@@ -6,7 +7,7 @@ import {
 } from '../../services/produkService';
 import useToast from '../../hooks/useToast';
 import useConfirm from '../../hooks/useConfirm';
-import { calcMargin, formatRupiah, variantLabel } from '../../utils/formatHelper';
+import { calcMargin, formatNumber, formatRupiah, variantLabel } from '../../utils/formatHelper';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -17,15 +18,17 @@ const comboKey = (pairs) => pairs
   .sort()
   .join('|');
 
-const EMPTY_BULK = { hargaJual: '', stok: '', isActive: '' };
+const EMPTY_BULK = { hargaJual: '', isActive: '' };
 
-const toRow = (s) => ({ _id: s._id, sku: s.sku, hargaJual: s.hargaJual, stok: s.stok, isActive: s.isActive !== false });
+// stok TIDAK diedit di sini (baca saja): hanya lewat dokumen Stock Adjustment
+const toRow = (s) => ({ _id: s._id, sku: s.sku, hargaJual: s.hargaJual, isActive: s.isActive !== false });
 
 /**
  * Tab "Variants & SKU": generator kombinasi varian + tabel SKU yang bisa diedit langsung
- * (kode, harga jual, stok, aktif), dengan harga pokok & margin jika boleh melihat harga vendor.
+ * (kode, harga jual, aktif), dengan harga pokok & margin jika boleh melihat harga vendor.
+ * Stok tampil baca saja (link ke tab Stock); perubahan stok lewat menu Stock Adjustment.
  */
-export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChanged }) {
+export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock, token, onChanged }) {
   const toast = useToast();
   const confirm = useConfirm();
   const { skus, canSeeCost } = skuData;
@@ -76,7 +79,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
 
   // ---------- tabel SKU yang bisa diedit ----------
   const [rows, setRows] = useState([]);
-  // ---------- bulk edit: terapkan harga/stok/aktif yang sama ke SKU terpilih ----------
+  // ---------- bulk edit: terapkan harga/aktif yang sama ke SKU terpilih ----------
   const [selected, setSelected] = useState(() => new Set());
   const [bulk, setBulk] = useState(EMPTY_BULK);
 
@@ -120,10 +123,9 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
     if (!selected.size) return toast.warning('Pilih minimal 1 SKU (centang di kolom kiri).');
     const changes = {};
     if (bulk.hargaJual !== '') changes.hargaJual = bulk.hargaJual;
-    if (bulk.stok !== '') changes.stok = bulk.stok;
     if (bulk.isActive !== '') changes.isActive = bulk.isActive === 'true';
-    if (!Object.keys(changes).length) return toast.warning('Isi harga jual, stok, atau status aktif yang ingin diterapkan.');
-    if (Number(changes.hargaJual) < 0 || Number(changes.stok) < 0) return toast.warning('Harga dan stok tidak boleh negatif.');
+    if (!Object.keys(changes).length) return toast.warning('Isi harga jual atau status aktif yang ingin diterapkan.');
+    if (Number(changes.hargaJual) < 0) return toast.warning('Harga tidak boleh negatif.');
 
     setRows((prev) => prev.map((r) => (selected.has(r._id) ? { ...r, ...changes } : r)));
     setBulk(EMPTY_BULK);
@@ -139,8 +141,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
   const original = useMemo(() => new Map(skus.map((s) => [s._id, toRow(s)])), [skus]);
   const dirtyRows = rows.filter((r) => {
     const o = original.get(r._id);
-    return o && (o.sku !== r.sku || Number(o.hargaJual) !== Number(r.hargaJual)
-      || Number(o.stok) !== Number(r.stok) || o.isActive !== r.isActive);
+    return o && (o.sku !== r.sku || Number(o.hargaJual) !== Number(r.hargaJual) || o.isActive !== r.isActive);
   });
 
   const setField = (id, field, value) => {
@@ -164,7 +165,8 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
   const remove = async (sku) => {
     const ok = await confirm({
       title: 'Delete SKU?',
-      message: `"${sku.sku}" and all of its vendor prices will be permanently deleted.`,
+      message: `"${sku.sku}" and all of its vendor prices will be permanently deleted. `
+        + 'SKU yang sudah punya histori stok tidak bisa dihapus (nonaktifkan saja).',
       confirmLabel: 'Delete',
       tone: 'danger',
     });
@@ -253,7 +255,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
           <div>
             <h3 className="font-semibold text-fg">SKU ({skus.length})</h3>
             <p className="text-xs text-muted">
-              Harga jual & stok per {baseUom || 'satuan dasar'}.
+              Harga jual & stok per {baseUom || 'satuan dasar'}. Stok hanya berubah lewat menu Stock Adjustment.
               {canSeeCost && ' Harga pokok = harga vendor utama (atau termurah) dibagi isi per satuan beli.'}
             </p>
           </div>
@@ -347,6 +349,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
                       aria-label="Bulk selling price"
                       type="number"
                       min="0"
+                      step="0.01"
                       placeholder="Harga jual"
                       value={bulk.hargaJual}
                       onChange={(e) => setBulk((b) => ({ ...b, hargaJual: e.target.value }))}
@@ -354,18 +357,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
                       className={`${cellInput} text-right tabular-nums`}
                     />
                   </td>
-                  <td className="px-3 py-2 border-b-2 border-line">
-                    <input
-                      aria-label="Bulk stock"
-                      type="number"
-                      min="0"
-                      placeholder="Stok"
-                      value={bulk.stok}
-                      onChange={(e) => setBulk((b) => ({ ...b, stok: e.target.value }))}
-                      onKeyDown={onBulkKeyDown}
-                      className={`${cellInput} text-right tabular-nums`}
-                    />
-                  </td>
+                  <td className="px-3 py-2 border-b-2 border-line"></td>
                   {canSeeCost && <td className="px-3 py-2 border-b-2 border-line"></td>}
                   {canSeeCost && (
                     <td className="px-3 py-2 border-b-2 border-line text-right tabular-nums text-xs text-muted">
@@ -458,22 +450,23 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, token, onChan
                         aria-label="Selling price"
                         type="number"
                         min="0"
+                        step="0.01"
                         value={r.hargaJual}
                         disabled={!canUpdate}
                         onChange={(e) => setField(r._id, 'hargaJual', e.target.value)}
                         className={`${cellInput} text-right tabular-nums`}
                       />
                     </td>
-                    <td className="px-3 py-1.5 border-t border-line-soft">
-                      <input
-                        aria-label="Stock"
-                        type="number"
-                        min="0"
-                        value={r.stok}
-                        disabled={!canUpdate}
-                        onChange={(e) => setField(r._id, 'stok', e.target.value)}
-                        className={`${cellInput} text-right tabular-nums`}
-                      />
+                    <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums">
+                      {canViewStock ? (
+                        <Link
+                          to={`/produk/${produk._id}?tab=stock&sku=${r._id}`}
+                          title="Buka kartu stok SKU ini"
+                          className="px-2 hover:text-primary hover:underline"
+                        >
+                          {formatNumber(s?.stok)}
+                        </Link>
+                      ) : <span className="px-2">{formatNumber(s?.stok)}</span>}
                     </td>
                     {canSeeCost && (
                       <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums" title={costTitle}>

@@ -8,7 +8,11 @@
  *   Role lama otomatis TIDAK punya akses ke resource baru (aman secara default).
  */
 
-const ACTIONS = ['view', 'create', 'update', 'delete'];
+// Semua action yang dikenal. 'post' (posting/pembatalan dokumen yang mengubah stok) hanya berlaku
+// untuk resource yang mendeklarasikannya di `actions`.
+const ACTIONS = ['view', 'create', 'update', 'delete', 'post'];
+// action default untuk resource yang tidak menulis `actions`
+const DEFAULT_ACTIONS = ['view', 'create', 'update', 'delete'];
 
 // `group` hanya untuk pengelompokan di matriks halaman Role.
 // `actions` (opsional) membatasi action yang berlaku, mis. log yang hanya bisa dilihat.
@@ -20,6 +24,11 @@ const RESOURCES = [
   { key: 'vendor', label: 'Vendor', group: 'Master Data' },
   // harga beli = data sensitif (margin), dipisah dari izin produk
   { key: 'vendorPrice', label: 'Vendor Price', group: 'Master Data' },
+  { key: 'gudang', label: 'Warehouse', group: 'Master Data' },
+  // dokumen stok: create/update/delete = draft; post = posting & pembatalan (mengubah stok)
+  { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // kartu stok & laporan pergerakan (baca saja; stok hanya berubah lewat dokumen)
+  { key: 'stockMovement', label: 'Stock Movement', group: 'Inventory', actions: ['view'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },
   { key: 'role', label: 'Role', group: 'Settings' },
   { key: 'user', label: 'User', group: 'Settings' },
@@ -27,7 +36,10 @@ const RESOURCES = [
   { key: 'auditLog', label: 'Audit Log', group: 'Settings', actions: ['view'] },
 ];
 
-const allowedActions = (key) => RESOURCES.find((r) => r.key === key)?.actions || ACTIONS;
+const allowedActions = (key) => RESOURCES.find((r) => r.key === key)?.actions || DEFAULT_ACTIONS;
+
+/** Registri untuk frontend (matriks Role): setiap resource dengan daftar action yang berlaku. */
+const getResourceRegistry = () => RESOURCES.map((r) => ({ ...r, actions: allowedActions(r.key) }));
 
 const RESOURCE_KEYS = RESOURCES.map((r) => r.key);
 
@@ -73,7 +85,7 @@ const getEffectivePermissions = (role) => {
   return Object.fromEntries(
     (role.permissions || [])
       .filter((p) => isValidResource(p.resource) && p.actions?.includes('view'))
-      .map((p) => [p.resource, ACTIONS.filter((a) => p.actions.includes(a))])
+      .map((p) => [p.resource, allowedActions(p.resource).filter((a) => p.actions.includes(a))])
   );
 };
 
@@ -83,7 +95,7 @@ const hasPermission = (user, resource, action) => {
   if (!role) return false;
   if (role.isSystem) return true;
   const entry = (role.permissions || []).find((p) => p.resource === resource);
-  if (!entry) return false;
+  if (!entry || !allowedActions(resource).includes(action)) return false;
   // action selain view hanya sah jika view juga diberikan
   return entry.actions.includes(action) && entry.actions.includes('view');
 };
@@ -92,6 +104,8 @@ module.exports = {
   ACTIONS,
   RESOURCES,
   RESOURCE_KEYS,
+  allowedActions,
+  getResourceRegistry,
   isValidResource,
   getResourceLabel,
   normalizePermissions,

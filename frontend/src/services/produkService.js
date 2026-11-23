@@ -45,6 +45,12 @@ export const getProdukById = async (id, token) => {
 // ---- SKU (varian produk) ----
 
 /** -> { skus: [...], canSeeCost } (harga pokok hanya jika boleh lihat harga vendor) */
+/** Pilihan produk untuk form lain (cukup login): [{ _id, name }] */
+export const getProdukDropdown = async (token) => {
+  const res = await axios.get(`${API}/dropdown`, getHeaders(token));
+  return res.data.data;
+};
+
 export const getProdukSkus = async (produkId, token) => {
   const res = await axios.get(`${API}/${produkId}/sku`, getHeaders(token));
   return res.data.data;

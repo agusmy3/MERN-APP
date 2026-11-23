@@ -16,6 +16,8 @@ const produkSkuSchema = new mongoose.Schema({
   // kunci kombinasi varian (lihat helpers/skuHelper.js) supaya kombinasi tidak dobel dalam 1 produk
   comboKey: { type: String, default: '' },
   hargaJual: { type: Number, default: 0, min: 0 },
+  // total saldo semua gudang (cache dari StockBalance/StockMovement). JANGAN diubah langsung:
+  // stok hanya berubah lewat dokumen stok (helpers/stockHelper.js applyMovements).
   stok: { type: Number, default: 0, min: 0 },
   isActive: { type: Boolean, default: true },
   createdDate: { type: Date, default: Date.now },

@@ -10,6 +10,8 @@ const { buildComboKey, generateSkuCode, cartesian } = require('../helpers/skuHel
 const { hasPermission } = require('../config/permissions');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+const { checkAmount, round2 } = require('../helpers/number');
+const { skusWithStockHistory } = require('../helpers/stockHelper');
 
 const handleError = (res, error) => {
   if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
@@ -137,7 +139,8 @@ exports.generateSku = async (req, res) => {
 
 /**
  * PUT /api/produk/:id/sku — simpan banyak SKU sekaligus (tabel yang bisa diedit)
- * body: { skus: [{ _id, sku, hargaJual, stok, isActive }] }
+ * body: { skus: [{ _id, sku, hargaJual, isActive }] }
+ * Stok TIDAK bisa diubah di sini (field stok diabaikan): hanya lewat dokumen Stock Adjustment.
  */
 exports.bulkUpdateSku = async (req, res) => {
   try {
@@ -154,12 +157,8 @@ exports.bulkUpdateSku = async (req, res) => {
       if (!code) return errorResponse(res, 'SKU code is required', 400);
       if (codes.has(code)) return errorResponse(res, `SKU code ${code} is duplicated`, 400);
       codes.add(code);
-      for (const field of ['hargaJual', 'stok']) {
-        const n = Number(item[field]);
-        if (!Number.isFinite(n) || n < 0) {
-          return errorResponse(res, `${field} of ${code} must be a number >= 0`, 400);
-        }
-      }
+      const priceError = checkAmount(item.hargaJual, `Selling price of ${code}`);
+      if (priceError) return errorResponse(res, priceError, 400);
     }
 
     await runInTransaction(async () => {
@@ -175,8 +174,7 @@ exports.bulkUpdateSku = async (req, res) => {
           update: {
             $set: {
               sku: String(item.sku).trim().toUpperCase(),
-              hargaJual: Number(item.hargaJual),
-              stok: Number(item.stok),
+              hargaJual: round2(item.hargaJual),
               isActive: item.isActive !== false,
               updatedDate: new Date(),
               updatedBy: req.user._id,
@@ -202,7 +200,10 @@ exports.deleteSku = async (req, res) => {
       const sku = await ProdukSku.findOne({ _id: req.params.skuId, produk: req.params.id });
       if (!sku) throw new HttpError('SKU not found', 404);
 
-      await lock(ref('produk', sku.produk)); // bentrok dengan tambah harga vendor untuk SKU ini
+      await lock(ref('produk', sku.produk)); // bentrok dengan tambah harga vendor / dokumen stok untuk SKU ini
+      if ((await skusWithStockHistory([sku._id])).size) {
+        throw new HttpError(`${sku.sku} already has stock history and cannot be deleted. Deactivate it instead.`, 400);
+      }
       // snapshot sebelum dihapus: SKU + semua harga vendornya, 1 batch
       const prices = await audit.snap('vendorPrice', await VendorPrice.find({ sku: sku._id }).lean());
       const skuSnap = await audit.snap('produkSku', [sku]);

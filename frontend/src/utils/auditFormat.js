@@ -1,4 +1,5 @@
 import { formatNumber, formatRupiah } from './formatHelper';
+import { formatDay } from './dateHelper';
 
 /** Label & ikon per entity log (key sama dengan backend helpers/auditLogger.js) */
 export const ENTITY_META = {
@@ -13,6 +14,8 @@ export const ENTITY_META = {
   uom: { label: 'UoM', icon: 'fa-ruler' },
   variant: { label: 'Variant', icon: 'fa-swatchbook' },
   menu: { label: 'Menu', icon: 'fa-bars' },
+  gudang: { label: 'Warehouse', icon: 'fa-warehouse' },
+  stockAdjustment: { label: 'Stock Adjustment', icon: 'fa-boxes-stacked' },
 };
 
 export const ACTION_META = {
@@ -41,6 +44,7 @@ export const formatAuditValue = (change, value) => {
     case 'money': return formatRupiah(value);
     case 'number': return formatNumber(value);
     case 'bool': return value ? 'Yes' : 'No';
+    case 'date': return formatDay(value);
     default: return String(value);
   }
 };
