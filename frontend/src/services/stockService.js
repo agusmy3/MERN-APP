@@ -56,3 +56,11 @@ export const getStockBalances = async (token, produk) => {
   const res = await axios.get(`${MOV}/balance`, { ...getHeaders(token), params: { produk } });
   return res.data.data;
 };
+
+// ---------- Stock Valuation (izin vendorPrice:view) ----------
+
+/** params { groupBy: sku|produk|kategori|gudang, gudang, kategori, search } -> { groupBy, rows, totals } */
+export const getStockValuation = async (token, params) => {
+  const res = await axios.get('/api/stock-valuation', { ...getHeaders(token), params });
+  return res.data.data;
+};

@@ -24,7 +24,7 @@ import StatusBadge from '../components/stock/StatusBadge';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
-import { formatNumber, formatSigned, round2, variantLabel } from '../utils/formatHelper';
+import { formatNumber, formatRupiah, formatSigned, round2, variantLabel } from '../utils/formatHelper';
 import { formatDate2, toDateInput } from '../utils/dateHelper';
 import { ADJUSTMENT_TYPES, ADJUSTMENT_REASONS, REASONS } from '../utils/stockMeta';
 
@@ -52,6 +52,8 @@ const lineFromDoc = (l) => ({
   note: l.note || '',
   currentQty: l.currentQty ?? null,
   qtySystem: l.qtySystem ?? null,
+  unitCost: l.unitCost ?? null,   // hanya jika boleh melihat biaya
+  value: l.value ?? null,         // posted: nilai saat post
 });
 
 // baris dari hasil pencarian SKU
@@ -62,6 +64,8 @@ const lineFromSearch = (s) => ({
   note: '',
   currentQty: s.qty,
   qtySystem: null,
+  unitCost: s.avgCost ?? null,
+  value: null,
 });
 
 const toPayload = (form, lines) => ({
@@ -133,6 +137,8 @@ export default function StockAdjustmentDetail() {
   const { user } = useAuth();
   const perm = usePermission('stockAdjustment');
   const movementPerm = usePermission('stockMovement');
+  // nilai rupiah (HPP) = data biaya
+  const canSeeCost = usePermission('vendorPrice').canView;
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -242,7 +248,10 @@ export default function StockAdjustmentDetail() {
     else if (isOpname) change = isBlank(l.qtyActual) || system === null ? null : round2(Number(l.qtyActual) - system);
     else change = isBlank(l.qtyChange) ? null : Number(l.qtyChange);
     const after = system === null || change === null ? null : round2(system + change);
-    return { system, change, after };
+    let value = null;
+    if (!isDraft) value = l.value;
+    else if (change !== null && l.unitCost !== null && l.unitCost !== undefined) value = round2(change * l.unitCost);
+    return { system, change, after, value };
   };
 
   const summary = useMemo(() => {
@@ -250,14 +259,16 @@ export default function StockAdjustmentDetail() {
     let minus = 0;
     let negative = 0;
     let empty = 0;
+    let value = 0;
     for (const l of lines) {
-      const { change, after } = view(l);
+      const { change, after, value: v } = view(l);
+      value = round2(value + (v || 0));
       if (change === null) empty++;
       else if (change > 0) plus = round2(plus + change);
       else minus = round2(minus + change);
       if (after !== null && after < 0) negative++;
     }
-    return { plus, minus, negative, empty };
+    return { plus, minus, negative, empty, value };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, isDraft, isOpname]);
 
@@ -544,7 +555,7 @@ export default function StockAdjustmentDetail() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 860 }}>
+              <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: canSeeCost ? 1000 : 860 }}>
                 <thead className="bg-head text-head-fg text-left">
                   <tr>
                     <th className="px-3 py-2 border-b border-line font-semibold w-10 text-right">#</th>
@@ -555,13 +566,18 @@ export default function StockAdjustmentDetail() {
                     {isOpname && <th className="px-3 py-2 border-b border-line font-semibold w-32 text-right">Counted</th>}
                     <th className="px-3 py-2 border-b border-line font-semibold w-32 text-right">{isOpname ? 'Difference' : 'Change'}</th>
                     <th className="px-3 py-2 border-b border-line font-semibold w-28 text-right">After</th>
+                    {canSeeCost && (
+                      <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right" title={isDraft ? 'Perkiraan: perubahan x HPP saat ini' : 'Nilai saat diposting'}>
+                        Value{isDraft ? ' (est.)' : ''}
+                      </th>
+                    )}
                     <th className="px-3 py-2 border-b border-line font-semibold w-56">Line note</th>
                     {editable && <th className="px-3 py-2 border-b border-line w-12"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {shownLines.map((l, index) => {
-                    const { system, change, after } = view(l);
+                    const { system, change, after, value } = view(l);
                     return (
                       <tr key={l.sku._id || index} className={after !== null && after < 0 ? 'bg-danger-soft' : 'hover:bg-subtle'}>
                         <td className="px-3 py-1.5 border-t border-line-soft text-right text-muted tabular-nums">{index + 1}</td>
@@ -614,6 +630,14 @@ export default function StockAdjustmentDetail() {
                         <td className={`px-3 py-1.5 border-t border-line-soft text-right tabular-nums ${after !== null && after < 0 ? 'text-danger font-semibold' : ''}`}>
                           {after === null ? '-' : formatNumber(after)}
                         </td>
+                        {canSeeCost && (
+                          <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums"
+                            title={l.unitCost !== null && l.unitCost !== undefined ? `HPP ${formatRupiah(l.unitCost)}` : 'HPP belum ada'}>
+                            {value === null || value === undefined ? <span className="text-muted">-</span> : (
+                              <span className={value < 0 ? 'text-danger' : value > 0 ? 'text-success-fg' : 'text-muted'}>{formatRupiah(value)}</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-3 py-1.5 border-t border-line-soft">
                           <input
                             aria-label={`Note ${l.sku.sku}`}
@@ -655,6 +679,11 @@ export default function StockAdjustmentDetail() {
               <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 py-3 border-t border-line text-sm">
                 <span>Total in: <b className="text-success-fg tabular-nums">{formatSigned(summary.plus)}</b></span>
                 <span>Total out: <b className="text-danger tabular-nums">{formatSigned(summary.minus)}</b></span>
+                {canSeeCost && (
+                  <span title={isDraft ? 'Perkiraan dengan HPP saat ini; nilai final dihitung saat Post' : 'Nilai saat diposting'}>
+                    Net value{isDraft ? ' (est.)' : ''}: <b className={`tabular-nums ${summary.value < 0 ? 'text-danger' : 'text-success-fg'}`}>{formatRupiah(summary.value)}</b>
+                  </span>
+                )}
                 {summary.empty > 0 && isDraft && <span className="text-warning-fg">{summary.empty} baris belum diisi</span>}
                 {summary.negative > 0 && (
                   <span className="text-danger">

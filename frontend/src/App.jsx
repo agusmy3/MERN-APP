@@ -21,6 +21,7 @@ import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import GoodsReceipt from './pages/GoodsReceipt';
 import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
 import Settings from './pages/Settings';
+import StockValuation from './pages/StockValuation';
 import NotFound from './pages/NotFound';
 import PublicLayout from './layouts/PublicLayout';
 import ProtectedLayout from './layouts/ProtectedLayout';
@@ -53,6 +54,8 @@ function App() {
         {/* :id = 'new' (?type=ADJUSTMENT|OPNAME) atau id dokumen */}
         <Route path="/stock-adjustment/:id" element={guard('stockAdjustment', <StockAdjustmentDetail />)} />
         <Route path="/stock-movement" element={guard('stockMovement', <StockMovement />)} />
+        {/* nilai persediaan = data biaya -> izin yang sama dengan harga beli */}
+        <Route path="/stock-valuation" element={guard('vendorPrice', <StockValuation />)} />
         <Route path="/purchase-order" element={guard('purchaseOrder', <PurchaseOrder />)} />
         {/* :id = 'new' atau id dokumen */}
         <Route path="/purchase-order/:id" element={guard('purchaseOrder', <PurchaseOrderDetail />)} />

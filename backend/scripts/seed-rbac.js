@@ -8,7 +8,7 @@
  * 4. Menautkan menu yang sudah ada ke resource-nya berdasarkan route (mis. /produk -> produk)
  * 5. Membuat menu "User" (/users), "Role" (/roles) & "Audit Log" (/audit-log) jika belum ada
  * 6. Membuat menu "Warehouse" (/gudang, di grup yang sama dengan /uom) dan grup "Inventory"
- *    berisi "Stock Adjustment" (/stock-adjustment) & "Stock Movement" (/stock-movement)
+ *    berisi "Stock Adjustment", "Stock Movement" & "Stock Valuation" (/stock-valuation)
  * 7. Grup "Purchasing" (Purchase Order, Goods Receipt) & menu "System Settings" (/settings)
  */
 const path = require('path');
@@ -34,6 +34,7 @@ const ROUTE_RESOURCE = {
   '/gudang': 'gudang',
   '/stock-adjustment': 'stockAdjustment',
   '/stock-movement': 'stockMovement',
+  '/stock-valuation': 'vendorPrice',
   '/purchase-order': 'purchaseOrder',
   '/goods-receipt': 'goodsReceipt',
   '/settings': 'setting',
@@ -46,6 +47,7 @@ const PURCHASING_MENUS = [
 
 const INVENTORY_MENUS = [
   { menu: 'Stock Adjustment', component: '/stock-adjustment', icon: 'fa-solid fa-boxes-stacked', resource: 'stockAdjustment', deskripsi: 'Penyesuaian stok & stock opname (draft, posting, pembatalan)' },
+  { menu: 'Stock Valuation', component: '/stock-valuation', icon: 'fa-solid fa-sack-dollar', resource: 'vendorPrice', deskripsi: 'Nilai persediaan saat ini: stok x HPP rata-rata' },
   { menu: 'Stock Movement', component: '/stock-movement', icon: 'fa-solid fa-right-left', resource: 'stockMovement', deskripsi: 'Kartu stok: semua pergerakan stok per SKU dan gudang' },
 ];
 

@@ -3,6 +3,8 @@ const StockAdjustment = require('../models/StockAdjustment');
 const ProdukSku = require('../models/ProdukSku');
 const Produk = require('../models/Produk');
 const Gudang = require('../models/Gudang');
+const StockMovement = require('../models/StockMovement');
+const { hasPermission } = require('../config/permissions');
 const {
   successResponse,
   errorResponse
@@ -169,8 +171,20 @@ exports.getStockAdjustments = async (req, res) => {
     const countMap = new Map(counts.map((c) => [String(c._id), c.lineCount]));
     docs.forEach((d) => { d.lineCount = countMap.get(String(d._id)) || 0; });
 
+    // nilai rupiah dokumen yang sudah diposting = jumlah value movement-nya (data biaya: vendorPrice:view)
+    const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
+    if (canSeeCost) {
+      const values = await StockMovement.aggregate([
+        { $match: { refType: 'StockAdjustment', refId: { $in: docs.map((d) => d._id) }, isReversal: false } },
+        { $group: { _id: '$refId', value: { $sum: '$value' } } },
+      ]);
+      const valueMap = new Map(values.map((v) => [String(v._id), round2(v.value || 0)]));
+      docs.forEach((d) => { d.totalValue = d.status === 'DRAFT' ? null : (valueMap.get(String(d._id)) ?? 0); });
+    }
+
     return successResponse(res, {
       dataStockAdjustment: docs,
+      canSeeCost,
       totalData,
       currentPage: page,
       totalPages: Math.ceil(totalData / pageSize),
@@ -189,6 +203,35 @@ exports.getStockAdjustment = async (req, res) => {
     if (doc.status === 'DRAFT' && doc.gudang) {
       const balances = await getBalances(doc.gudang._id, doc.lines.map((l) => l.sku?._id).filter(Boolean));
       doc.lines.forEach((l) => { l.currentQty = l.sku ? (balances.get(String(l.sku._id)) || 0) : null; });
+    }
+
+    // nilai rupiah per baris (data biaya: vendorPrice:view)
+    //   draft  : perkiraan = perubahan x HPP saat ini
+    //   posted : dari movement saat post (HPP saat itu)
+    doc.canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
+    if (doc.canSeeCost) {
+      if (doc.status === 'DRAFT') {
+        const skus = await ProdukSku.find({ _id: { $in: doc.lines.map((l) => l.sku?._id).filter(Boolean) } }).select('avgCost').lean();
+        const avg = new Map(skus.map((s) => [String(s._id), s.avgCost ?? null]));
+        doc.lines.forEach((l) => {
+          const cost = l.sku ? avg.get(String(l.sku._id)) ?? null : null;
+          const change = doc.type === 'OPNAME'
+            ? (l.qtyActual === null || l.currentQty === null ? null : round2(l.qtyActual - l.currentQty))
+            : l.qtyChange;
+          l.unitCost = cost;
+          l.value = cost === null || change === null ? null : round2(change * cost);
+        });
+      } else {
+        const movements = await StockMovement.find({ refType: 'StockAdjustment', refId: doc._id, isReversal: false })
+          .select('sku unitCost value').lean();
+        const bySku = new Map(movements.map((m) => [String(m.sku), m]));
+        doc.lines.forEach((l) => {
+          const m = l.sku ? bySku.get(String(l.sku._id)) : null;
+          l.unitCost = m?.unitCost ?? null;
+          l.value = m ? m.value ?? null : (l.qtyChange === 0 ? 0 : null);
+        });
+      }
+      doc.totalValue = round2(doc.lines.reduce((sum, l) => sum + (l.value || 0), 0));
     }
     return successResponse(res, doc);
   } catch (error) {
@@ -225,12 +268,13 @@ exports.searchSkus = async (req, res) => {
     if (req.query.activeOnly === 'true') filter.isActive = true;
 
     const skus = await ProdukSku.find(filter)
-      .select('sku produk variantValues isActive')
+      .select('sku produk variantValues isActive avgCost')
       .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
       .sort({ sku: 1 })
       .limit(limit)
       .lean();
 
+    const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
     const balances = gudang && mongoose.isValidObjectId(gudang)
       ? await getBalances(gudang, skus.map((s) => s._id))
       : new Map();
@@ -243,6 +287,8 @@ exports.searchSkus = async (req, res) => {
       produk: s.produk ? { _id: s.produk._id, name: s.produk.name } : null,
       uom: s.produk?.uom?.code || '',
       qty: balances.get(String(s._id)) || 0,
+      // HPP hanya untuk yang boleh melihat data biaya (perkiraan nilai penyesuaian di form)
+      ...(canSeeCost ? { avgCost: s.avgCost ?? null } : {}),
     })));
   } catch (error) {
     return handleError(res, error);

@@ -3,6 +3,7 @@ const protect = require('../middlewares/authMiddleware');
 const authorize = require('../middlewares/authorize');
 const adj = require('../controllers/stockAdjustmentController');
 const mov = require('../controllers/stockMovementController');
+const val = require('../controllers/stockValuationController');
 
 /**
  * Stock Adjustment (/api/stock-adjustment)
@@ -25,4 +26,11 @@ const movement = express.Router();
 movement.get('/balance', protect, authorize('stockMovement', 'view'), mov.getBalances);
 movement.get('/', protect, authorize('stockMovement', 'view'), mov.getMovements);
 
-module.exports = { adjustment, movement };
+/**
+ * Stock Valuation (/api/stock-valuation): stok x HPP. HPP & nilai persediaan = data biaya, jadi
+ * memakai izin yang sama dengan harga beli (vendorPrice:view), bukan resource terpisah.
+ */
+const valuation = express.Router();
+valuation.get('/', protect, authorize('vendorPrice', 'view'), val.getValuation);
+
+module.exports = { adjustment, movement, valuation };

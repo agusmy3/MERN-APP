@@ -1,4 +1,4 @@
-import { formatNumber, variantLabel } from './formatHelper';
+import { formatNumber, formatRupiah, variantLabel } from './formatHelper';
 import { formatDate2 } from './dateHelper';
 import { REASONS } from './stockMeta';
 
@@ -26,6 +26,33 @@ export const qtyColumns = [
     width: 110,
     className: 'text-right tabular-nums font-semibold',
     render: (m) => `${formatNumber(m.balanceAfter)} ${m.produk?.uom?.code || ''}`,
+  },
+];
+
+/** Kolom biaya (hanya jika API mengirim canSeeCost) */
+export const costColumns = [
+  {
+    key: 'unitCost',
+    header: 'Unit cost',
+    width: 120,
+    className: 'text-right tabular-nums',
+    render: (m) => (m.unitCost === null || m.unitCost === undefined ? '-' : formatRupiah(m.unitCost)),
+  },
+  {
+    key: 'value',
+    header: 'Value',
+    width: 140,
+    className: 'text-right tabular-nums',
+    render: (m) => (m.value === null || m.value === undefined ? '-' : (
+      <span className={m.value < 0 ? 'text-danger' : 'text-success-fg'}>{formatRupiah(m.value)}</span>
+    )),
+  },
+  {
+    key: 'avgCostAfter',
+    header: 'HPP after',
+    width: 120,
+    className: 'text-right tabular-nums text-muted',
+    render: (m) => (m.avgCostAfter === null || m.avgCostAfter === undefined ? '-' : formatRupiah(m.avgCostAfter)),
   },
 ];
 

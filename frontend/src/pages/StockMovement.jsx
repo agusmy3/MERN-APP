@@ -8,7 +8,7 @@ import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Pagination from '../components/Pagination';
 import { MovementRef, MovementType } from '../components/stock/MovementCells';
-import { dateColumn, qtyColumns, reasonText, skuColumn } from '../utils/movementColumns';
+import { costColumns, dateColumn, qtyColumns, reasonText, skuColumn } from '../utils/movementColumns';
 import { inputClass } from '../utils/formStyles';
 import { MOVEMENT_TYPES } from '../utils/stockMeta';
 
@@ -32,6 +32,8 @@ export default function StockMovement() {
     produk: searchParams.get('produk') || '',
   }));
   const scopeLabel = searchParams.get('label');
+  // kolom biaya hanya bila backend mengizinkan (vendorPrice:view)
+  const [canSeeCost, setCanSeeCost] = useState(false);
 
   useEffect(() => {
     getGudangDropdown(user.token).then(setGudangList).catch(console.error);
@@ -41,6 +43,7 @@ export default function StockMovement() {
     const params = { search, page, pageSize, sortOrder };
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
     const data = await getStockMovements(user.token, params);
+    setCanSeeCost(!!data.canSeeCost);
     return { items: data.dataMovement, total: data.totalData };
   }, [user.token, filters]);
 
@@ -72,6 +75,7 @@ export default function StockMovement() {
     skuColumn,
     { key: 'gudang', header: 'Warehouse', width: 110, render: (m) => m.gudang?.code || '-' },
     ...qtyColumns,
+    ...(canSeeCost ? costColumns : []),
     { key: 'reason', header: 'Reason / Note', width: 240, render: reasonText },
     { key: 'user', header: 'User', width: 140, render: (m) => m.createdBy?.name || '' },
   ];

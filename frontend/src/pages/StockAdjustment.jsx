@@ -12,6 +12,7 @@ import StatusBadge from '../components/stock/StatusBadge';
 import { AuditCell } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
 import { formatDay } from '../utils/dateHelper';
+import { formatRupiah } from '../utils/formatHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { ADJUSTMENT_TYPES, REASONS, STATUS_META } from '../utils/stockMeta';
 
@@ -28,6 +29,7 @@ export default function StockAdjustment() {
   const perm = usePermission('stockAdjustment');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [gudangList, setGudangList] = useState([]);
+  const [canSeeCost, setCanSeeCost] = useState(false);
 
   useEffect(() => {
     getGudangDropdown(user.token).then(setGudangList).catch(console.error);
@@ -37,6 +39,7 @@ export default function StockAdjustment() {
     const params = { search, page, pageSize, sortField, sortOrder };
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
     const data = await getStockAdjustments(user.token, params);
+    setCanSeeCost(!!data.canSeeCost);
     return { items: data.dataStockAdjustment, total: data.totalData };
   }, [user.token, filters]);
 
@@ -76,6 +79,15 @@ export default function StockAdjustment() {
     { key: 'reason', header: 'Reason', width: 160, render: (d) => REASONS[d.reason] || d.reason },
     { key: 'lineCount', header: 'SKU', width: 70, className: 'text-right tabular-nums' },
     { key: 'status', header: 'Status', width: 120, render: (d) => <StatusBadge status={d.status} /> },
+    ...(canSeeCost ? [{
+      key: 'totalValue',
+      header: 'Value',
+      width: 150,
+      className: 'text-right tabular-nums',
+      render: (d) => (d.totalValue === null || d.totalValue === undefined ? '' : (
+        <span className={d.totalValue < 0 ? 'text-danger' : d.totalValue > 0 ? 'text-success-fg' : 'text-muted'}>{formatRupiah(d.totalValue)}</span>
+      )),
+    }] : []),
     { key: 'note', header: 'Note', width: 220 },
     {
       key: 'audit',

@@ -18,6 +18,13 @@ const comboKey = (pairs) => pairs
   .sort()
   .join('|');
 
+// biaya per satuan dasar untuk margin: HPP rata-rata; jika belum ada, perkiraan dari harga vendor
+const costOf = (s) => {
+  if (s?.avgCost !== null && s?.avgCost !== undefined) return { cost: s.avgCost, estimated: false };
+  const est = s?.preferredUnitCost ?? s?.minUnitCost ?? null;
+  return { cost: est, estimated: est !== null };
+};
+
 const EMPTY_BULK = { hargaJual: '', isActive: '' };
 
 // stok TIDAK diedit di sini (baca saja): hanya lewat dokumen Stock Adjustment
@@ -256,7 +263,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
             <h3 className="font-semibold text-fg">SKU ({skus.length})</h3>
             <p className="text-xs text-muted">
               Harga jual & stok per {baseUom || 'satuan dasar'}. Stok hanya berubah lewat menu Stock Adjustment.
-              {canSeeCost && ' Harga pokok = harga vendor utama (atau termurah) dibagi isi per satuan beli.'}
+              {canSeeCost && ' HPP = harga pokok rata-rata dari penerimaan barang; jika belum ada, perkiraan dari harga vendor (est.). Margin dihitung dari HPP.'}
             </p>
           </div>
           {canUpdate && (
@@ -304,7 +311,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                 <th className="px-3 py-2 border-b border-line font-semibold">Variant</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">Selling Price</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-28 text-right">Stock</th>
-                {canSeeCost && <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">Cost / {baseUom}</th>}
+                {canSeeCost && <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">HPP / {baseUom}</th>}
                 {canSeeCost && <th className="px-3 py-2 border-b border-line font-semibold w-24 text-right">Margin</th>}
                 <th className="px-3 py-2 border-b border-line font-semibold w-20 text-center">Active</th>
                 {canUpdate && <th className="px-3 py-2 border-b border-line w-14"></th>}
@@ -365,7 +372,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                         // pratinjau margin untuk SKU terpilih dengan harga pokok
                         const margins = [...selected]
                           .map((id) => skuById.get(id))
-                          .map((s) => calcMargin(bulk.hargaJual, s?.preferredUnitCost ?? s?.minUnitCost ?? null))
+                          .map((s) => calcMargin(bulk.hargaJual, costOf(s).cost))
                           .filter((m) => m !== null);
                         if (!margins.length) return null;
                         const lo = Math.min(...margins);
@@ -406,12 +413,15 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
               )}
               {rows.map((r) => {
                 const s = skuById.get(r._id);
-                const cost = s?.preferredUnitCost ?? s?.minUnitCost ?? null;
+                const { cost, estimated } = costOf(s);
                 const margin = calcMargin(r.hargaJual, cost);
                 const isDirty = dirtyRows.some((d) => d._id === r._id);
-                const costTitle = s?.priceCount
-                  ? `Termurah: ${formatRupiah(s.minUnitCost)}${s.preferredUnitCost != null ? ` · Vendor utama: ${formatRupiah(s.preferredUnitCost)}` : ''} · ${s.priceCount} harga vendor`
+                const vendorInfo = s?.priceCount
+                  ? `Harga vendor termurah: ${formatRupiah(s.minUnitCost)}${s.preferredUnitCost != null ? ` · vendor utama: ${formatRupiah(s.preferredUnitCost)}` : ''} (${s.priceCount} harga)`
                   : 'Belum ada harga vendor';
+                const costTitle = estimated
+                  ? `Belum ada HPP (belum ada penerimaan barang). Perkiraan dari harga vendor. ${vendorInfo}`
+                  : `HPP rata-rata. ${vendorInfo}`;
                 return (
                   <tr key={r._id} className={isDirty ? 'bg-highlight' : 'hover:bg-subtle'}>
                     {canUpdate && (
@@ -470,7 +480,9 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                     </td>
                     {canSeeCost && (
                       <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums" title={costTitle}>
-                        {cost === null ? <span className="text-muted">-</span> : formatRupiah(cost)}
+                        {cost === null ? <span className="text-muted">-</span> : (
+                          <>{formatRupiah(cost)}{estimated && <span className="ml-1 text-[10px] text-muted">est.</span>}</>
+                        )}
                       </td>
                     )}
                     {canSeeCost && (

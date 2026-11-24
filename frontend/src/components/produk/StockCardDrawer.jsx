@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { getStockMovements } from '../../services/stockService';
 import SideDrawer from '../SideDrawer';
 import { MovementRef, MovementType } from '../stock/MovementCells';
-import { formatNumber, formatSigned, round2, variantLabel } from '../../utils/formatHelper';
+import { formatNumber, formatRupiah, formatSigned, round2, variantLabel } from '../../utils/formatHelper';
 import { formatDate2 } from '../../utils/dateHelper';
 import { reasonText } from '../../utils/movementColumns';
 import { inputClass } from '../../utils/formStyles';
@@ -20,6 +20,7 @@ export default function StockCardDrawer({ open, token, skus, gudangs, skuId, gud
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [canSeeCost, setCanSeeCost] = useState(false);
 
   const sku = skus.find((s) => s._id === skuId);
   const gudang = gudangs.find((g) => g._id === gudangId) || null;
@@ -33,6 +34,7 @@ export default function StockCardDrawer({ open, token, skus, gudangs, skuId, gud
       const data = await getStockMovements(token, params);
       setRows((prev) => (p === 1 ? data.dataMovement : [...prev, ...data.dataMovement]));
       setTotal(data.totalData);
+      setCanSeeCost(!!data.canSeeCost);
       setPage(p);
     } catch (err) {
       console.error(err);
@@ -121,9 +123,15 @@ export default function StockCardDrawer({ open, token, skus, gudangs, skuId, gud
               {!gudang && <td className="px-2 py-1.5 border-t border-line-soft">{m.gudang?.code}</td>}
               <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums font-medium ${m.qty > 0 ? 'text-success-fg' : 'text-danger'}`}>
                 {formatSigned(m.qty)}
+                {canSeeCost && m.value !== null && m.value !== undefined && (
+                  <div className="text-[11px] font-normal text-muted" title={`@ ${formatRupiah(m.unitCost)}`}>{formatRupiah(m.value)}</div>
+                )}
               </td>
               <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums font-semibold">
                 {formatNumber(m.balanceAfter)}
+                {canSeeCost && m.avgCostAfter !== null && m.avgCostAfter !== undefined && (
+                  <div className="text-[11px] font-normal text-muted" title="HPP setelah pergerakan ini">HPP {formatRupiah(m.avgCostAfter)}</div>
+                )}
               </td>
             </tr>
           ))}
