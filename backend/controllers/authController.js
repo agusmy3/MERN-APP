@@ -23,6 +23,11 @@ const buildAuthPayload = (user) => ({
     ? { _id: user.role._id, name: user.role.name, isSystem: !!user.role.isSystem }
     : null,
   permissions: getEffectivePermissions(user.role), // { produk: ['view', 'create'], ... }
+  // akses gudang: all = semua gudang; selain itu hanya `gudangs` (lihat helpers/gudangAccess.js)
+  gudangAccess: {
+    all: !!user.role?.isSystem || user.allGudang !== false,
+    gudangs: (user.gudangs || []).filter((g) => g && g._id).map((g) => ({ _id: g._id, code: g.code, name: g.name })),
+  },
 });
 
 // Registrasi publik dimatikan: user hanya dibuat oleh admin lewat /api/user.
@@ -31,7 +36,7 @@ const buildAuthPayload = (user) => ({
 exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email }).populate('role');
+    const user = await User.findOne({ email }).populate('role').populate('gudangs', 'code name');
     if (!user || !(await user.matchPassword(password))) {
       await audit.logLogin(req, {
         success: false, user, email, reason: user ? 'wrong_password' : 'unknown_email',
@@ -57,6 +62,7 @@ exports.login = async (req, res) => {
 
 // GET /api/auth/me  (protected) — profil & izin terbaru, dipanggil saat aplikasi dibuka
 exports.me = async (req, res) => {
+  await req.user.populate('gudangs', 'code name');
   return successResponse(res, buildAuthPayload(req.user));
 };
 

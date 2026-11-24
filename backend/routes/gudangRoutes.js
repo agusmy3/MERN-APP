@@ -11,10 +11,22 @@ const {
 const Gudang = require('../models/Gudang');
 const protect = require('../middlewares/authMiddleware');
 const authorize = require('../middlewares/authorize');
-const { dropdownHandler } = require('../helpers/dropdownHelper');
+const { canAccessGudang } = require('../helpers/gudangAccess');
+const { successResponse, errorResponse } = require('../helpers/responseHelper');
 
-// /dropdown cukup login: pilihan gudang di dokumen stok & filter (isActive untuk menyaring di form)
-router.get('/dropdown', protect, dropdownHandler(Gudang, '_id code name isActive', { code: 1 }));
+/**
+ * /dropdown cukup login: pilihan gudang di dokumen stok & filter. isActive untuk menyaring di form,
+ * accessible = user boleh memakai gudang tsb (dokumen & laporan hanya untuk gudang yang accessible).
+ */
+router.get('/dropdown', protect, async (req, res) => {
+  try {
+    const list = await Gudang.find().select('_id code name isActive').sort({ code: 1 }).lean();
+    list.forEach((g) => { g.accessible = canAccessGudang(req, g._id); });
+    return successResponse(res, list);
+  } catch (error) {
+    return errorResponse(res, error.message, 500);
+  }
+});
 router.get('/all', protect, authorize('gudang', 'view'), getAllGudang);
 router.get('/', protect, authorize('gudang', 'view'), getGudang);
 router.get('/:id', protect, authorize('gudang', 'view'), getSingleGudang);

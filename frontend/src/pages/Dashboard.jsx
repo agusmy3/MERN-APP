@@ -66,6 +66,8 @@ export default function Dashboard() {
 
   const pendingItems = d?.pending || d?.poDrafts !== undefined ? [
     ['stockAdjustment', 'Stock adjustment drafts', '/stock-adjustment', 'fa-boxes-stacked'],
+    ['stockTransfer', 'Stock transfer drafts', '/stock-transfer?status=DRAFT', 'fa-truck-arrow-right'],
+    ['transferIncoming', 'Transfers to receive', '/stock-transfer?status=IN_TRANSIT', 'fa-truck-fast'],
     ['goodsReceipt', 'Goods receipt drafts', '/goods-receipt', 'fa-truck-ramp-box'],
     ['costRevaluation', 'Cost revaluation drafts', '/cost-revaluation', 'fa-scale-balanced'],
   ].filter(([k]) => d?.pending?.[k] !== undefined).map(([k, label, to, icon]) => ({ key: k, label, to, icon, count: d.pending[k] })) : [];
@@ -86,7 +88,8 @@ export default function Dashboard() {
           {/* ---------- KPI ---------- */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
             {d.inventoryValue !== undefined && (
-              <Kpi label="Inventory value" icon="fa-sack-dollar" value={formatRupiahCompact(d.inventoryValue)} sub={formatRupiah(d.inventoryValue)} to="/stock-valuation" />
+              <Kpi label="Inventory value" icon="fa-sack-dollar" value={formatRupiahCompact(d.inventoryValue)} to="/stock-valuation"
+                sub={`${formatRupiah(d.inventoryValue)}${d.inTransit?.value ? ` · + ${formatRupiahCompact(d.inTransit.value)} in transit` : ''}`} />
             )}
             {d.activeSkus !== undefined && <Kpi label="Active SKU" icon="fa-layer-group" value={formatNumber(d.activeSkus)} to="/produk" />}
             {d.reorder && (

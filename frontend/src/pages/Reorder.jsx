@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getReorderAlerts, createPoFromReorder } from '../services/stockService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { getKategoriDropdown } from '../services/kategoriService';
 import { getVendorDropdown } from '../services/vendorService';
 import { getUomDropdown } from '../services/uomService';
@@ -52,7 +52,7 @@ export default function Reorder() {
   const [created, setCreated] = useState([]);
 
   useEffect(() => {
-    Promise.all([getGudangDropdown(user.token), getKategoriDropdown(user.token), getVendorDropdown(user.token), getUomDropdown(user.token)])
+    Promise.all([getMyGudangDropdown(user.token), getKategoriDropdown(user.token), getVendorDropdown(user.token), getUomDropdown(user.token)])
       .then(([gudangs, kategoris, vendors, uoms]) => setOptions({ gudangs, kategoris, vendors, uoms }))
       .catch(console.error);
   }, [user.token]);

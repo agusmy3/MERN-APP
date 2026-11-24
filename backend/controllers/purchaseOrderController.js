@@ -15,6 +15,7 @@ const { getSettings } = require('../helpers/settings');
 const { checkAmount, round2 } = require('../helpers/number');
 const { lineSubtotal, poTotals, outstandingOf, unitCostOf } = require('../helpers/purchaseHelper');
 const { MAX_LINES } = require('../config/stock');
+const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 
 const STATUSES = ['DRAFT', 'OPEN', 'PARTIAL', 'RECEIVED', 'CLOSED', 'CANCELLED'];
 const SORTABLE_FIELDS = ['no', 'date', 'expectedDate', 'total', 'createdDate', 'updatedDate'];
@@ -165,11 +166,11 @@ exports.getPurchaseOrders = async (req, res) => {
     }
     if (req.query.status === 'ACTIVE') filter.status = { $in: ['OPEN', 'PARTIAL'] };
     else if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
-    for (const key of ['vendor', 'gudang']) {
-      if (!req.query[key]) continue;
-      if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
-      filter[key] = req.query[key];
+    if (req.query.vendor) {
+      if (!mongoose.isValidObjectId(req.query.vendor)) return errorResponse(res, 'Invalid vendor', 400);
+      filter.vendor = req.query.vendor;
     }
+    applyGudangFilter(req, filter, req.query.gudang); // hanya gudang tujuan yang boleh diakses
     if (req.query.from || req.query.to) {
       filter.date = {};
       if (req.query.from) filter.date.$gte = new Date(`${req.query.from}T00:00:00`);
@@ -222,6 +223,7 @@ exports.getPurchaseOrder = async (req, res) => {
   try {
     const po = await populatePo(PurchaseOrder.findById(req.params.id)).lean();
     if (!po) return errorResponse(res, 'Purchase order not found', 404);
+    assertGudang(req, po.gudang?._id);
     po.lines.forEach((l) => {
       l.outstanding = outstandingOf(l);
       l.unitCost = unitCostOf(po, l);
@@ -298,6 +300,7 @@ exports.searchItems = async (req, res) => {
 exports.createPurchaseOrder = async (req, res) => {
   try {
     const parsed = parsePo(req.body);
+    assertGudang(req, parsed.gudang);
     const po = await runInTransaction(async () => {
       await resolveRefs(parsed);
       const settings = await getSettings();
@@ -314,9 +317,10 @@ exports.createPurchaseOrder = async (req, res) => {
   }
 };
 
-const loadDraft = async (id) => {
+const loadDraft = async (req, id) => {
   const doc = await PurchaseOrder.findById(id);
   if (!doc) throw new HttpError('Purchase order not found', 404);
+  assertGudang(req, doc.gudang);
   if (doc.status !== 'DRAFT') {
     throw new HttpError('Only draft POs can be changed. Cancel this PO and create a new one instead.', 400);
   }
@@ -327,8 +331,9 @@ const loadDraft = async (id) => {
 exports.updatePurchaseOrder = async (req, res) => {
   try {
     const po = await runInTransaction(async () => {
-      const doc = await loadDraft(req.params.id);
+      const doc = await loadDraft(req, req.params.id);
       const parsed = parsePo(req.body);
+      assertGudang(req, parsed.gudang);
       await resolveRefs(parsed);
       const before = await audit.snap('purchaseOrder', [doc]);
       fillPo(doc, parsed, await getSettings());
@@ -349,7 +354,7 @@ exports.updatePurchaseOrder = async (req, res) => {
 exports.issuePurchaseOrder = async (req, res) => {
   try {
     const po = await runInTransaction(async () => {
-      const doc = await loadDraft(req.params.id);
+      const doc = await loadDraft(req, req.params.id);
       // validasi ulang referensi (vendor/gudang/SKU bisa berubah sejak draft disimpan)
       const parsed = parsePo({ ...doc.toObject({ depopulate: true }), lines: doc.lines.map((l) => l.toObject()) });
       await resolveRefs(parsed);
@@ -371,7 +376,7 @@ exports.issuePurchaseOrder = async (req, res) => {
 exports.deletePurchaseOrder = async (req, res) => {
   try {
     const po = await runInTransaction(async () => {
-      const doc = await loadDraft(req.params.id);
+      const doc = await loadDraft(req, req.params.id);
       const before = await audit.snap('purchaseOrder', [doc]);
       await doc.deleteOne();
       await audit.logDelete(req, 'purchaseOrder', before);
@@ -402,6 +407,7 @@ exports.cancelPurchaseOrder = async (req, res) => {
     const po = await runInTransaction(async () => {
       const doc = await PurchaseOrder.findById(req.params.id);
       if (!doc) throw new HttpError('Purchase order not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'OPEN') {
         throw new HttpError(doc.status === 'PARTIAL'
           ? 'Some goods have already been received. Close the PO instead.'
@@ -431,6 +437,7 @@ exports.closePurchaseOrder = async (req, res) => {
     const po = await runInTransaction(async () => {
       const doc = await PurchaseOrder.findById(req.params.id);
       if (!doc) throw new HttpError('Purchase order not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'PARTIAL') {
         throw new HttpError(doc.status === 'OPEN'
           ? 'Nothing has been received yet. Cancel the PO instead.'
@@ -458,6 +465,7 @@ exports.closePurchaseOrder = async (req, res) => {
  */
 exports.createDraftPoInTransaction = async (req, body) => {
   const parsed = parsePo(body);
+  assertGudang(req, parsed.gudang);
   await resolveRefs(parsed);
   const doc = new PurchaseOrder({ no: await nextDocNo('PO'), createdBy: req.user._id });
   fillPo(doc, parsed, await getSettings());

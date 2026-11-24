@@ -10,7 +10,7 @@ import {
   searchStockSkus,
   getSkuBalances,
 } from '../services/stockService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { getProdukDropdown } from '../services/produkService';
 import { getKategoriDropdown } from '../services/kategoriService';
 import { useAuth } from '../context/AuthContext';
@@ -161,7 +161,7 @@ export default function StockAdjustmentDetail() {
   const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
-    getGudangDropdown(user.token).then(setGudangList).catch(console.error);
+    getMyGudangDropdown(user.token).then(setGudangList).catch(console.error);
   }, [user.token]);
 
   // dipakai applyDoc (callback stabil) untuk membandingkan payload dengan format yang sama
@@ -500,7 +500,7 @@ export default function StockAdjustmentDetail() {
         </p>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className={`grid gap-4 items-start ${doc ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
         <div className="space-y-4 min-w-0">
           {/* Header dokumen */}
           <section className="rounded-lg border border-line bg-surface p-4">
@@ -748,6 +748,7 @@ export default function StockAdjustmentDetail() {
         </div>
 
         {/* Samping: info dokumen & histori */}
+        {doc && (
         <aside className="space-y-4 min-w-0">
           {doc && (
             <section className="rounded-lg border border-line bg-surface p-4 text-sm space-y-2">
@@ -773,6 +774,7 @@ export default function StockAdjustmentDetail() {
             </section>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

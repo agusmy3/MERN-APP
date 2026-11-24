@@ -27,6 +27,9 @@ const RESOURCES = [
   { key: 'gudang', label: 'Warehouse', group: 'Master Data' },
   // dokumen stok: create/update/delete = draft; post = posting & pembatalan (mengubah stok)
   { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // transfer antar gudang: create/update/delete = draft; post = kirim, terima & batalkan.
+  // Kirim/batal butuh akses gudang asal, terima butuh akses gudang tujuan (User.gudangs)
+  { key: 'stockTransfer', label: 'Stock Transfer', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // kartu stok & laporan pergerakan (baca saja; stok hanya berubah lewat dokumen)
   { key: 'stockMovement', label: 'Stock Movement', group: 'Inventory', actions: ['view'] },
   // reorder alert: view = daftar & badge; update = atur min/max per SKU + gudang

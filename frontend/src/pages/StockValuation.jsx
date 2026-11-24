@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getStockValuation } from '../services/stockService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { getKategoriDropdown } from '../services/kategoriService';
 import { useAuth } from '../context/AuthContext';
 import useToast from '../hooks/useToast';
@@ -115,7 +115,7 @@ export default function StockValuation() {
   const [options, setOptions] = useState({ gudangs: [], kategoris: [] });
 
   useEffect(() => {
-    Promise.all([getGudangDropdown(user.token), getKategoriDropdown(user.token)])
+    Promise.all([getMyGudangDropdown(user.token), getKategoriDropdown(user.token)])
       .then(([gudangs, kategoris]) => setOptions({ gudangs, kategoris }))
       .catch(console.error);
   }, [user.token]);
@@ -176,6 +176,12 @@ export default function StockValuation() {
         <div className="rounded-lg border border-line bg-surface p-4">
           <div className="text-xs uppercase tracking-wider text-muted">Inventory value</div>
           <div className="text-2xl font-bold tabular-nums mt-1">{totals ? formatRupiah(totals.value) : '-'}</div>
+          {totals?.inTransit?.docCount > 0 && (
+            <Link to="/stock-transfer?status=IN_TRANSIT" className="text-xs mt-1 inline-block text-muted hover:text-primary"
+              title="Barang yang sudah dikirim tetapi belum diterima: tidak ada di saldo gudang mana pun">
+              <i className="fa fa-truck-fast mr-1"></i>+ {formatRupiah(totals.inTransit.value)} in transit ({totals.inTransit.docCount} transfer)
+            </Link>
+          )}
         </div>
         <div className="rounded-lg border border-line bg-surface p-4">
           <div className="text-xs uppercase tracking-wider text-muted">SKU in stock</div>

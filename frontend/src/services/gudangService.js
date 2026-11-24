@@ -31,8 +31,14 @@ export const deleteGudang = async (id, token) => {
   return res;
 };
 
-/** Pilihan gudang (cukup login): [{ _id, code, name, isActive }] */
+/**
+ * Semua gudang (cukup login): [{ _id, code, name, isActive, accessible }]
+ * accessible = user boleh memakai gudang tsb (penugasan user -> gudang).
+ */
 export const getGudangDropdown = async (token) => {
   const res = await axios.get(`${API}/dropdown`, getHeaders(token));
   return res.data.data;
 };
+
+/** Hanya gudang yang boleh diakses user (pilihan di dokumen & filter laporan) */
+export const getMyGudangDropdown = async (token) => (await getGudangDropdown(token)).filter((g) => g.accessible !== false);

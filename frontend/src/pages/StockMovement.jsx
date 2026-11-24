@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getStockMovements } from '../services/stockService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import PageHeader from '../components/PageHeader';
@@ -36,7 +36,7 @@ export default function StockMovement() {
   const [canSeeCost, setCanSeeCost] = useState(false);
 
   useEffect(() => {
-    getGudangDropdown(user.token).then(setGudangList).catch(console.error);
+    getMyGudangDropdown(user.token).then(setGudangList).catch(console.error);
   }, [user.token]);
 
   const fetchMovements = useCallback(async ({ search, page, pageSize, sortOrder }) => {

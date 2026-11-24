@@ -29,6 +29,8 @@ const MOVEMENT_TYPES = {
   OPNAME: 'Stock Opname',
   PURCHASE: 'Purchase (Goods Receipt)',
   REVALUATION: 'Cost Revaluation',   // qty 0, hanya nilai (HPP) yang berubah
+  TRANSFER_OUT: 'Transfer Out',       // kirim ke gudang lain (pembalik = transfer dibatalkan)
+  TRANSFER_IN: 'Transfer In',         // terima dari gudang lain (HPP saat dikirim)
 };
 
 // batas baris per dokumen (opname 1 gudang bisa ratusan SKU)

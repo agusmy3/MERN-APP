@@ -277,7 +277,7 @@ export default function CostRevaluationDetail() {
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className={`grid gap-4 items-start ${doc ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
         <div className="space-y-4 min-w-0">
           <section className="rounded-lg border border-line bg-surface p-4">
             <fieldset disabled={!editable || busy} className="grid gap-4 sm:grid-cols-[200px_1fr]">
@@ -378,6 +378,7 @@ export default function CostRevaluationDetail() {
           </section>
         </div>
 
+        {doc && (
         <aside className="space-y-4 min-w-0">
           {doc && (
             <section className="rounded-lg border border-line bg-surface p-4 text-sm">
@@ -397,6 +398,7 @@ export default function CostRevaluationDetail() {
             </section>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,12 @@ const {
 } = require('../helpers/responseHelper');
 const { MOVEMENT_TYPES } = require('../config/stock');
 const { hasPermission } = require('../config/permissions');
+const { HttpError } = require('../helpers/transaction');
+const { applyGudangFilter, canAccessGudang } = require('../helpers/gudangAccess');
+
+const handleError = (res, error) => (error instanceof HttpError
+  ? errorResponse(res, error.message, error.status)
+  : errorResponse(res, error.message, 500));
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -24,7 +30,8 @@ exports.getMovements = async (req, res) => {
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
     const filter = {};
 
-    for (const key of ['produk', 'sku', 'gudang']) {
+    applyGudangFilter(req, filter, req.query.gudang); // kartu stok hanya gudang yang boleh diakses
+    for (const key of ['produk', 'sku']) {
       if (!req.query[key]) continue;
       if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
       filter[key] = req.query[key];
@@ -66,13 +73,15 @@ exports.getMovements = async (req, res) => {
       totalPages: Math.ceil(totalData / pageSize),
     });
   } catch (error) {
-    return errorResponse(res, error.message, 500);
+    return handleError(res, error);
   }
 };
 
 /**
  * GET /api/stock-movement/balance?produk=<id> — saldo per SKU per gudang untuk 1 produk.
- * -> [{ sku, gudang: { _id, code, name, isActive }, qty }]
+ * -> [{ sku, gudang: { _id, code, name, isActive }, qty, accessible }]
+ * Jumlah stok SEMUA gudang boleh dilihat (supaya tahu bisa minta transfer dari mana);
+ * `accessible` = false -> kartu stok gudang tsb tidak bisa dibuka user ini.
  */
 exports.getBalances = async (req, res) => {
   try {
@@ -81,6 +90,7 @@ exports.getBalances = async (req, res) => {
       .select('sku gudang qty updatedDate')
       .populate('gudang', 'code name isActive')
       .lean();
+    balances.forEach((b) => { b.accessible = !!b.gudang && canAccessGudang(req, b.gudang._id); });
     return successResponse(res, balances);
   } catch (error) {
     return errorResponse(res, error.message, 500);

@@ -9,6 +9,7 @@ const { applyMovements, nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
 const { unitCostOf, outstandingOf, receiptStatus } = require('../helpers/purchaseHelper');
 const { hasPermission } = require('../config/permissions');
+const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 
 const STATUSES = ['DRAFT', 'POSTED', 'CANCELLED'];
 const SORTABLE_FIELDS = ['no', 'date', 'createdDate', 'updatedDate', 'postedDate'];
@@ -119,7 +120,8 @@ exports.getGoodsReceipts = async (req, res) => {
       filter.$or = [{ no: rx }, { deliveryNoteNo: rx }, { note: rx }, { purchaseOrder: { $in: poIds } }];
     }
     if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
-    for (const key of ['vendor', 'gudang', 'purchaseOrder']) {
+    applyGudangFilter(req, filter, req.query.gudang); // hanya gudang yang boleh diakses
+    for (const key of ['vendor', 'purchaseOrder']) {
       if (!req.query[key]) continue;
       if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
       filter[key] = req.query[key];
@@ -169,7 +171,7 @@ exports.getGoodsReceipts = async (req, res) => {
  */
 exports.getPoOptions = async (req, res) => {
   try {
-    const filter = { status: { $in: ['OPEN', 'PARTIAL'] } };
+    const filter = applyGudangFilter(req, { status: { $in: ['OPEN', 'PARTIAL'] } });
     if (req.query.search) filter.no = { $regex: escapeRegex(req.query.search), $options: 'i' };
     const pos = await PurchaseOrder.find(filter)
       .select('no date status vendor gudang expectedDate')
@@ -199,6 +201,7 @@ exports.getPoForReceipt = async (req, res) => {
       .populate('lines.uomBeli', 'code name')
       .lean();
     if (!po) return errorResponse(res, 'Purchase order not found', 404);
+    assertGudang(req, po.gudang?._id);
     po.lines.forEach((l) => {
       l.outstanding = outstandingOf(l);
       l.unitCost = unitCostOf(po, l);
@@ -216,6 +219,7 @@ exports.getGoodsReceipt = async (req, res) => {
   try {
     const gr = await populateGr(GoodsReceipt.findById(req.params.id)).lean();
     if (!gr) return errorResponse(res, 'Goods receipt not found', 404);
+    assertGudang(req, gr.gudang?._id);
     const po = await PurchaseOrder.findById(gr.purchaseOrder?._id).select('lines').lean();
     const poLines = new Map((po?.lines || []).map((l) => [String(l._id), l]));
     gr.lines.forEach((l) => {
@@ -238,6 +242,7 @@ exports.createGoodsReceipt = async (req, res) => {
     const parsed = parseGr(req.body);
     const gr = await runInTransaction(async () => {
       const po = await loadReceivablePo(req.body.purchaseOrder);
+      assertGudang(req, po.gudang);
       const lines = buildLines(po, parsed.lines, await skuCodes(po));
       const doc = await GoodsReceipt.create({
         ...parsed,
@@ -258,9 +263,10 @@ exports.createGoodsReceipt = async (req, res) => {
   }
 };
 
-const loadDraft = async (id) => {
+const loadDraft = async (req, id) => {
   const doc = await GoodsReceipt.findById(id);
   if (!doc) throw new HttpError('Goods receipt not found', 404);
+  assertGudang(req, doc.gudang);
   if (doc.status !== 'DRAFT') throw new HttpError(`Goods receipt is already ${doc.status.toLowerCase()} and can no longer be changed`, 400);
   return doc;
 };
@@ -269,7 +275,7 @@ const loadDraft = async (id) => {
 exports.updateGoodsReceipt = async (req, res) => {
   try {
     const gr = await runInTransaction(async () => {
-      const doc = await loadDraft(req.params.id);
+      const doc = await loadDraft(req, req.params.id);
       const parsed = parseGr(req.body);
       const po = await loadReceivablePo(doc.purchaseOrder);
       const before = await audit.snap('goodsReceipt', [doc]);
@@ -295,6 +301,7 @@ exports.deleteGoodsReceipt = async (req, res) => {
     const gr = await runInTransaction(async () => {
       const doc = await GoodsReceipt.findById(req.params.id);
       if (!doc) throw new HttpError('Goods receipt not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'DRAFT') throw new HttpError('Only draft goods receipts can be deleted. Cancel a posted one instead.', 400);
       await lock(ref('purchaseOrder', doc.purchaseOrder));
       const before = await audit.snap('goodsReceipt', [doc]);
@@ -371,7 +378,7 @@ exports.postGoodsReceipt = async (req, res) => {
 
     let priceUpdates = 0;
     const gr = await runInTransaction(async () => {
-      const doc = await loadDraft(req.params.id);
+      const doc = await loadDraft(req, req.params.id);
       const po = await loadReceivablePo(doc.purchaseOrder);
       if (wantPriceUpdate) await lock(ref('vendor', po.vendor));
 
@@ -429,6 +436,7 @@ exports.cancelGoodsReceipt = async (req, res) => {
     const gr = await runInTransaction(async () => {
       const doc = await GoodsReceipt.findById(req.params.id);
       if (!doc) throw new HttpError('Goods receipt not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'POSTED') throw new HttpError('Only posted goods receipts can be cancelled', 400);
 
       await lock(ref('purchaseOrder', doc.purchaseOrder));

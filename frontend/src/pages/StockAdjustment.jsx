@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getStockAdjustments } from '../services/stockService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import useDataTable from '../hooks/useDataTable';
@@ -32,7 +32,7 @@ export default function StockAdjustment() {
   const [canSeeCost, setCanSeeCost] = useState(false);
 
   useEffect(() => {
-    getGudangDropdown(user.token).then(setGudangList).catch(console.error);
+    getMyGudangDropdown(user.token).then(setGudangList).catch(console.error);
   }, [user.token]);
 
   const fetchDocs = useCallback(async ({ search, page, pageSize, sortField, sortOrder }) => {

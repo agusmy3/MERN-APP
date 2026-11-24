@@ -21,7 +21,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 const MODELS = [
   'User', 'Role', 'Menu', 'Kategori', 'Uom', 'Variant', 'Vendor', 'Produk', 'ProdukSku', 'VendorPrice',
   'AuditLog', 'TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment',
-  'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule',
+  'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule', 'StockTransfer',
 ];
 
 const model = (name) => mongoose.model(name);
@@ -71,8 +71,11 @@ function useTestApp() {
   });
 
   let seq = 0;
-  /** Buat user dengan role tertentu & kembalikan client ber-token. permissions = { produk: ['view', ...] } | 'admin' */
-  ctx.loginAs = async (permissions = 'admin', name) => {
+  /**
+   * Buat user dengan role tertentu & kembalikan client ber-token. permissions = { produk: ['view', ...] } | 'admin'
+   * opts.gudangs = [gudangId] -> akses hanya gudang tsb (allGudang false)
+   */
+  ctx.loginAs = async (permissions = 'admin', name, opts = {}) => {
     const Role = require('../../models/Role');
     const User = require('../../models/User');
     const generateToken = require('../../utils/generateToken');
@@ -83,7 +86,8 @@ function useTestApp() {
         name: `Role ${seq}`,
         permissions: Object.entries(permissions).map(([resource, actions]) => ({ resource, actions: ['view', ...actions] })),
       });
-    const user = await User.create({ name: name || `User ${seq}`, email: `user${seq}@test.com`, password: 'secret123', role: role._id });
+    const access = opts.gudangs ? { allGudang: false, gudangs: opts.gudangs } : {};
+    const user = await User.create({ name: name || `User ${seq}`, email: `user${seq}@test.com`, password: 'secret123', role: role._id, ...access });
     return { ...client(generateToken(user._id)), user };
   };
   ctx.anonymous = () => client(null);

@@ -12,6 +12,8 @@ const { runInTransaction, HttpError, lock, ref } = require('../helpers/transacti
 const { checkAmount, round2 } = require('../helpers/number');
 const { hasPermission } = require('../config/permissions');
 const { createDraftPoInTransaction } = require('./purchaseOrderController');
+const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
+const { inTransitSummary } = require('./stockTransferController');
 
 const ALERT_STATUSES = ['OUT', 'CRITICAL', 'ORDERED'];
 
@@ -54,6 +56,7 @@ const onOrderMap = async (filter = {}) => {
 
 /**
  * Hitung semua rule (opsional difilter) -> baris alert lengkap.
+ * "Sedang dipesan" = sisa PO terbuka + transfer yang sedang dikirim KE gudang tsb.
  * Rule untuk SKU / gudang nonaktif diabaikan.
  */
 const evaluateRules = async (ruleFilter = {}) => {
@@ -68,6 +71,8 @@ const evaluateRules = async (ruleFilter = {}) => {
     StockBalance.find({ sku: { $in: skuIds } }).select('sku gudang qty').lean(),
     onOrderMap({ 'lines.sku': { $in: skuIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
   ]);
+  const { qtyBySkuTo } = await inTransitSummary();
+  for (const [key, qty] of qtyBySkuTo) onOrder.set(key, round2((onOrder.get(key) || 0) + qty));
   const skuMap = new Map(skus.map((s) => [String(s._id), s]));
   const gudangMap = new Map(gudangs.map((g) => [String(g._id), g]));
   const balMap = new Map(balances.map((b) => [`${b.sku}:${b.gudang}`, b.qty]));
@@ -111,12 +116,7 @@ const STATUS_ORDER = { OUT: 0, CRITICAL: 1, ORDERED: 2, OK: 3 };
  */
 exports.getAlerts = async (req, res) => {
   try {
-    const ruleFilter = {};
-    for (const key of ['gudang']) {
-      if (!req.query[key]) continue;
-      if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
-      ruleFilter[key] = req.query[key];
-    }
+    const ruleFilter = applyGudangFilter(req, {}, req.query.gudang); // hanya gudang yang boleh diakses
     if (req.query.kategori || req.query.search) {
       const produkFilter = {};
       if (req.query.kategori) {
@@ -177,7 +177,7 @@ exports.getAlerts = async (req, res) => {
 /** GET /api/reorder/summary -> { OUT, CRITICAL, ORDERED, total } (badge navbar & dashboard) */
 exports.getSummary = async (req, res) => {
   try {
-    const rows = await evaluateRules();
+    const rows = await evaluateRules(applyGudangFilter(req, {}));
     const counts = { OUT: 0, CRITICAL: 0, ORDERED: 0 };
     rows.forEach((r) => { if (counts[r.status] !== undefined) counts[r.status] += 1; });
     return successResponse(res, { ...counts, needAction: counts.OUT + counts.CRITICAL, monitored: rows.length });
@@ -214,6 +214,7 @@ exports.saveRules = async (req, res) => {
       const key = `${r.sku}:${r.gudang}`;
       if (seen.has(key)) throw new HttpError(`${n}: duplicated SKU & warehouse`, 400);
       seen.add(key);
+      assertGudang(req, r.gudang);
       if (isBlank(r.minQty) && isBlank(r.maxQty)) return { sku: String(r.sku), gudang: String(r.gudang), remove: true };
       const err = checkAmount(r.minQty, 'Min') || checkAmount(r.maxQty, 'Max');
       if (err) throw new HttpError(`${n}: ${err}`, 400);

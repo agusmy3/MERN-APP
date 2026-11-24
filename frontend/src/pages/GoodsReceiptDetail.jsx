@@ -370,7 +370,7 @@ export default function GoodsReceiptDetail() {
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className={`grid gap-4 items-start ${doc ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
         <div className="space-y-4 min-w-0">
           <section className="rounded-lg border border-line bg-surface p-4">
             <fieldset disabled={!editable || busy} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -500,6 +500,7 @@ export default function GoodsReceiptDetail() {
           </section>
         </div>
 
+        {doc && (
         <aside className="space-y-4 min-w-0">
           {doc && (
             <section className="rounded-lg border border-line bg-surface p-4 text-sm space-y-2">
@@ -525,6 +526,7 @@ export default function GoodsReceiptDetail() {
             </section>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

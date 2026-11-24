@@ -6,6 +6,7 @@ import {
   deleteUser
 } from '../services/userService';
 import { getRoleDropdown } from '../services/roleService';
+import { getGudangDropdown } from '../services/gudangService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -25,7 +26,9 @@ const EMPTY_FORM = {
   email: '',
   password: '',
   role: '',
-  isActive: true
+  isActive: true,
+  allGudang: true,
+  gudangs: [],
 };
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -48,6 +51,12 @@ export default function Users() {
       .catch((err) => console.error(err));
   }, [user.token]);
 
+  // pilihan gudang untuk penugasan (semua gudang, termasuk nonaktif yang sudah ditugaskan)
+  const [gudangs, setGudangs] = useState([]);
+  useEffect(() => {
+    getGudangDropdown(user.token).then(setGudangs).catch((err) => console.error(err));
+  }, [user.token]);
+
   const isSelf = (row) => row && String(row._id) === String(user._id);
 
   const crud = useCrudDrawer({
@@ -59,13 +68,16 @@ export default function Users() {
       email: row.email,
       password: '',
       role: row.role?._id || '',
-      isActive: row.isActive !== false
+      isActive: row.isActive !== false,
+      allGudang: row.allGudang !== false,
+      gudangs: (row.gudangs || []).map((g) => g._id || g),
     }),
     getLabel: (row) => row.name,
     // password kosong saat edit = tidak diubah
     prepare: (form) => {
       const payload = { ...form };
       if (!payload.password) delete payload.password;
+      if (payload.allGudang) payload.gudangs = [];
       return payload;
     },
     create: (payload) => createUser(payload, user.token),
@@ -82,6 +94,10 @@ export default function Users() {
 
   const { editingRow, form, mode } = crud;
   const editingSelf = mode !== 'create' && isSelf(editingRow);
+  const toggleGudang = (id) => crud.setForm((prev) => ({
+    ...prev,
+    gudangs: prev.gudangs.includes(id) ? prev.gudangs.filter((x) => x !== id) : [...prev.gudangs, id],
+  }));
 
   const columns = [
     {
@@ -104,6 +120,16 @@ export default function Users() {
       header: 'Role',
       width: 180,
       render: (u) => u.role?.name || <span className="text-danger italic">No role</span>,
+    },
+    {
+      key: 'gudangs',
+      header: 'Warehouses',
+      width: 180,
+      render: (u) => (u.role?.isSystem || u.allGudang !== false
+        ? <span className="text-muted">All</span>
+        : u.gudangs?.length
+          ? <TruncateText text={u.gudangs.map((g) => g.code).join(', ')} />
+          : <span className="text-danger italic">None</span>),
     },
     {
       key: 'status',
@@ -200,6 +226,46 @@ export default function Users() {
               <option key={r._id} value={r._id}>{r.name}</option>
             ))}
           </select>
+        </FormField>
+
+        <FormField
+          label="Warehouse Access"
+          htmlFor="user-all-gudang"
+          hint={form.allGudang
+            ? 'Semua gudang, termasuk gudang yang ditambahkan nanti. Super Admin selalu bisa mengakses semua gudang.'
+            : 'Dokumen stok, PO/GR, transfer, kartu stok, nilai persediaan, reorder & dashboard hanya untuk gudang terpilih. Jumlah stok gudang lain tetap terlihat.'}
+        >
+          <label htmlFor="user-all-gudang" className="inline-flex items-center gap-2 text-sm text-fg cursor-pointer">
+            <input
+              id="user-all-gudang"
+              type="checkbox"
+              checked={form.allGudang}
+              onChange={(e) => crud.setForm((prev) => ({ ...prev, allGudang: e.target.checked }))}
+              className="w-4 h-4 accent-primary"
+            />
+            All warehouses
+          </label>
+          {!form.allGudang && (
+            <div className="mt-2 max-h-48 overflow-y-auto rounded border border-line divide-y divide-line-soft">
+              {gudangs.map((g) => (
+                <label key={g._id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-subtle">
+                  <input
+                    type="checkbox"
+                    checked={form.gudangs.includes(g._id)}
+                    onChange={() => toggleGudang(g._id)}
+                    className="w-4 h-4 accent-primary"
+                  />
+                  <span className="font-mono text-xs font-semibold">{g.code}</span>
+                  <span className="text-muted truncate">{g.name}</span>
+                  {g.isActive === false && <span className="ml-auto text-[10px] px-1 rounded bg-subtle text-muted">inactive</span>}
+                </label>
+              ))}
+              {gudangs.length === 0 && <p className="px-3 py-2 text-sm text-muted">Belum ada gudang.</p>}
+            </div>
+          )}
+          {!form.allGudang && form.gudangs.length === 0 && (
+            <p className="mt-1 text-xs text-danger">Tanpa gudang, user ini tidak bisa membuka dokumen stok apa pun.</p>
+          )}
         </FormField>
 
         <FormField

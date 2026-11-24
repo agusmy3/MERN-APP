@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema({
   theme: { type: String, default: null }, // palet tampilan pilihan user (null = default aplikasi)
   role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null }, // satu user = satu role
   isActive: { type: Boolean, default: true }, // false = tidak bisa login, sesi aktif langsung ditolak
+  // akses gudang: true (default, juga user lama tanpa field) = semua gudang, termasuk gudang baru;
+  // false = hanya `gudangs`. Super Admin selalu semua gudang. Lihat helpers/gudangAccess.js
+  allGudang: { type: Boolean, default: true },
+  gudangs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Gudang' }],
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   updatedDate: { type: Date, default: null },

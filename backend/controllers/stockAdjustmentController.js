@@ -13,6 +13,7 @@ const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { applyMovements, getBalances, nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
+const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 const { ADJUSTMENT_TYPES, REASONS, STATUSES, MAX_LINES } = require('../config/stock');
 
 const SORTABLE_FIELDS = ['no', 'date', 'createdDate', 'updatedDate', 'postedDate'];
@@ -145,10 +146,7 @@ exports.getStockAdjustments = async (req, res) => {
     if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
     if (ADJUSTMENT_TYPES[req.query.type]) filter.type = req.query.type;
     if (req.query.reason && REASONS[req.query.reason]) filter.reason = req.query.reason;
-    if (req.query.gudang) {
-      if (!mongoose.isValidObjectId(req.query.gudang)) return errorResponse(res, 'Invalid warehouse', 400);
-      filter.gudang = req.query.gudang;
-    }
+    applyGudangFilter(req, filter, req.query.gudang); // hanya gudang yang boleh diakses user
     if (req.query.from || req.query.to) {
       filter.date = {};
       if (req.query.from) filter.date.$gte = new Date(`${req.query.from}T00:00:00`);
@@ -206,6 +204,7 @@ exports.getStockAdjustment = async (req, res) => {
   try {
     const doc = await populateDoc(StockAdjustment.findById(req.params.id)).lean();
     if (!doc) return errorResponse(res, 'Stock adjustment not found', 404);
+    assertGudang(req, doc.gudang?._id);
 
     if (doc.status === 'DRAFT' && doc.gudang) {
       const balances = await getBalances(doc.gudang._id, doc.lines.map((l) => l.sku?._id).filter(Boolean));
@@ -260,6 +259,7 @@ exports.getStockAdjustment = async (req, res) => {
 exports.searchSkus = async (req, res) => {
   try {
     const { gudang, search, produk, kategori } = req.query;
+    if (gudang && mongoose.isValidObjectId(gudang)) assertGudang(req, gudang);
     const filter = {};
     let limit = 20;
 
@@ -317,6 +317,7 @@ exports.skuBalances = async (req, res) => {
     const { gudang } = req.body;
     const ids = (Array.isArray(req.body.skus) ? req.body.skus : []).filter((id) => mongoose.isValidObjectId(id));
     if (!mongoose.isValidObjectId(gudang)) return errorResponse(res, 'Invalid warehouse', 400);
+    assertGudang(req, gudang);
     if (ids.length > MAX_LINES) return errorResponse(res, `At most ${MAX_LINES} SKUs`, 400);
     const balances = await getBalances(gudang, ids);
     return successResponse(res, Object.fromEntries(ids.map((id) => [id, balances.get(String(id)) || 0])));
@@ -332,6 +333,7 @@ exports.createStockAdjustment = async (req, res) => {
   try {
     const type = String(req.body.type || '');
     const parsed = parseDocument(req.body, type);
+    assertGudang(req, parsed.gudang);
     if (!hasPermission(req.user, 'vendorPrice', 'view')) parsed.lines.forEach((l) => { l.unitCost = null; });
 
     const doc = await runInTransaction(async () => {
@@ -359,6 +361,7 @@ exports.updateStockAdjustment = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await loadDraft(req.params.id);
       const parsed = parseDocument(req.body, doc.type);
+      assertGudang(req, doc.gudang, parsed.gudang);
       if (!hasPermission(req.user, 'vendorPrice', 'view')) {
         const kept = new Map(doc.lines.map((l) => [String(l.sku), l.unitCost ?? null]));
         parsed.lines.forEach((l) => { l.unitCost = parsed.reason === 'OPENING' && l.qtyChange > 0 ? kept.get(l.sku) ?? null : null; });
@@ -392,6 +395,7 @@ exports.deleteStockAdjustment = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await StockAdjustment.findById(req.params.id);
       if (!doc) throw new HttpError('Stock adjustment not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'DRAFT') {
         throw new HttpError('Only draft documents can be deleted. Cancel a posted document instead.', 400);
       }
@@ -419,6 +423,7 @@ exports.postStockAdjustment = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await StockAdjustment.findById(req.params.id);
       if (!doc) throw new HttpError('Stock adjustment not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'DRAFT') throw new HttpError(`Document is already ${doc.status.toLowerCase()}`, 400);
       if (!doc.lines.length) throw new HttpError('Document has no lines', 400);
 
@@ -479,6 +484,7 @@ exports.cancelStockAdjustment = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await StockAdjustment.findById(req.params.id);
       if (!doc) throw new HttpError('Stock adjustment not found', 404);
+      assertGudang(req, doc.gudang);
       if (doc.status !== 'POSTED') throw new HttpError('Only posted documents can be cancelled', 400);
 
       const before = await audit.snap('stockAdjustment', [doc]);

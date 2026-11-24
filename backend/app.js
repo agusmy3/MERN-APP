@@ -30,6 +30,7 @@ app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/audit-log', require('./routes/auditLogRoutes'));
 app.use('/api/gudang', require('./routes/gudangRoutes'));
 app.use('/api/stock-adjustment', require('./routes/stockRoutes').adjustment);
+app.use('/api/stock-transfer', require('./routes/stockRoutes').transfer);
 app.use('/api/stock-movement', require('./routes/stockRoutes').movement);
 app.use('/api/stock-valuation', require('./routes/stockRoutes').valuation);
 app.use('/api/cost-revaluation', require('./routes/stockRoutes').revaluation);

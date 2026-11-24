@@ -40,4 +40,14 @@ export const MOVEMENT_TYPES = {
   OPNAME: 'Stock Opname',
   PURCHASE: 'Purchase (Goods Receipt)',
   REVALUATION: 'Cost Revaluation',
+  TRANSFER_OUT: 'Transfer Out',
+  TRANSFER_IN: 'Transfer In',
+};
+
+// Stock Transfer: DRAFT -> IN_TRANSIT (dikirim) -> RECEIVED; IN_TRANSIT -> CANCELLED
+export const TRANSFER_STATUS_META = {
+  DRAFT: { label: 'Draft', icon: 'fa-pen-ruler', tone: 'bg-warning-soft text-warning-fg' },
+  IN_TRANSIT: { label: 'In transit', icon: 'fa-truck-fast', tone: 'bg-primary-soft text-primary-soft-fg' },
+  RECEIVED: { label: 'Received', icon: 'fa-check', tone: 'bg-success-soft text-success-fg' },
+  CANCELLED: { label: 'Cancelled', icon: 'fa-ban', tone: 'bg-danger-soft text-danger' },
 };

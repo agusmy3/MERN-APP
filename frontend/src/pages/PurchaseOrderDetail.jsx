@@ -12,7 +12,7 @@ import {
   searchPoItems,
 } from '../services/purchaseService';
 import { getVendorDropdown } from '../services/vendorService';
-import { getGudangDropdown } from '../services/gudangService';
+import { getMyGudangDropdown } from '../services/gudangService';
 import { getUomDropdown } from '../services/uomService';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
@@ -118,7 +118,7 @@ export default function PurchaseOrderDetail() {
   const [panel, setPanel] = useState(null); // 'cancel' | 'close'
 
   useEffect(() => {
-    Promise.all([getVendorDropdown(user.token), getGudangDropdown(user.token), getUomDropdown(user.token)])
+    Promise.all([getVendorDropdown(user.token), getMyGudangDropdown(user.token), getUomDropdown(user.token)])
       .then(([vendors, gudangs, uoms]) => setOptions({ vendors, gudangs, uoms }))
       .catch(console.error);
   }, [user.token]);
@@ -398,7 +398,7 @@ export default function PurchaseOrderDetail() {
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      <div className={`grid gap-4 items-start ${doc ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
         <div className="space-y-4 min-w-0">
           <section className="rounded-lg border border-line bg-surface p-4">
             <fieldset disabled={!editable || busy} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -561,6 +561,7 @@ export default function PurchaseOrderDetail() {
           </section>
         </div>
 
+        {doc && (
         <aside className="space-y-4 min-w-0">
           {doc && (
             <section className="rounded-lg border border-line bg-surface p-4 text-sm">
@@ -599,6 +600,7 @@ export default function PurchaseOrderDetail() {
             </section>
           )}
         </aside>
+        )}
       </div>
     </div>
   );

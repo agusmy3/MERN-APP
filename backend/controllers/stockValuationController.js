@@ -3,6 +3,9 @@ const StockBalance = require('../models/StockBalance');
 const Produk = require('../models/Produk');
 const { successResponse, errorResponse } = require('../helpers/responseHelper');
 const { round2 } = require('../helpers/number');
+const { HttpError } = require('../helpers/transaction');
+const { applyGudangFilter, gudangScope } = require('../helpers/gudangAccess');
+const { inTransitSummary } = require('./stockTransferController');
 
 const GROUPS = ['sku', 'produk', 'kategori', 'gudang'];
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -20,10 +23,7 @@ exports.getValuation = async (req, res) => {
     const groupBy = GROUPS.includes(req.query.groupBy) ? req.query.groupBy : 'sku';
     const filter = {};
     if (req.query.includeZero !== 'true') filter.qty = { $ne: 0 };
-    if (req.query.gudang) {
-      if (!mongoose.isValidObjectId(req.query.gudang)) return errorResponse(res, 'Invalid warehouse', 400);
-      filter.gudang = req.query.gudang;
-    }
+    applyGudangFilter(req, filter, req.query.gudang); // nilai persediaan hanya gudang yang boleh diakses
     if (req.query.kategori || req.query.search) {
       const produkFilter = {};
       if (req.query.kategori) {
@@ -135,8 +135,13 @@ exports.getValuation = async (req, res) => {
     };
     rows.forEach((r) => { r.share = totals.value ? round2((r.value / totals.value) * 100) : 0; });
 
+    // barang dalam perjalanan (transfer terkirim, belum diterima): tidak ada di saldo gudang mana pun
+    const transit = await inTransitSummary(req.query.gudang ? [req.query.gudang] : gudangScope(req));
+    totals.inTransit = { value: transit.value, docCount: transit.docCount };
+
     return successResponse(res, { groupBy, rows, totals });
   } catch (error) {
+    if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
     return errorResponse(res, error.message, 500);
   }
 };

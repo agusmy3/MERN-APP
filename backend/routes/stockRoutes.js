@@ -6,6 +6,7 @@ const mov = require('../controllers/stockMovementController');
 const val = require('../controllers/stockValuationController');
 const rev = require('../controllers/costRevaluationController');
 const ro = require('../controllers/reorderController');
+const trf = require('../controllers/stockTransferController');
 
 /**
  * Stock Adjustment (/api/stock-adjustment)
@@ -22,6 +23,23 @@ adjustment.put('/:id', protect, authorize('stockAdjustment', 'update'), adj.upda
 adjustment.delete('/:id', protect, authorize('stockAdjustment', 'delete'), adj.deleteStockAdjustment);
 adjustment.post('/:id/post', protect, authorize('stockAdjustment', 'post'), adj.postStockAdjustment);
 adjustment.post('/:id/cancel', protect, authorize('stockAdjustment', 'post'), adj.cancelStockAdjustment);
+
+/**
+ * Stock Transfer (/api/stock-transfer): antar gudang, 2 langkah (kirim -> terima)
+ *   create/update/delete = draft; post = kirim, terima, batalkan (akses gudang dicek di controller)
+ * Pencarian SKU & saldo memakai handler Stock Adjustment (izin stockTransfer:view).
+ */
+const transfer = express.Router();
+transfer.get('/skus', protect, authorize('stockTransfer', 'view'), adj.searchSkus);
+transfer.post('/skus/balance', protect, authorize('stockTransfer', 'view'), adj.skuBalances);
+transfer.get('/', protect, authorize('stockTransfer', 'view'), trf.getTransfers);
+transfer.get('/:id', protect, authorize('stockTransfer', 'view'), trf.getTransfer);
+transfer.post('/', protect, authorize('stockTransfer', 'create'), trf.createTransfer);
+transfer.put('/:id', protect, authorize('stockTransfer', 'update'), trf.updateTransfer);
+transfer.delete('/:id', protect, authorize('stockTransfer', 'delete'), trf.deleteTransfer);
+transfer.post('/:id/send', protect, authorize('stockTransfer', 'post'), trf.sendTransfer);
+transfer.post('/:id/receive', protect, authorize('stockTransfer', 'post'), trf.receiveTransfer);
+transfer.post('/:id/cancel', protect, authorize('stockTransfer', 'post'), trf.cancelTransfer);
 
 /** Stock Movement (/api/stock-movement): kartu stok & saldo per gudang, baca saja */
 const movement = express.Router();
@@ -57,4 +75,4 @@ reorder.put('/rules', protect, authorize('reorder', 'update'), ro.saveRules);
 reorder.post('/create-po', protect, authorize('reorder', 'view'), ro.createPurchaseOrders);
 reorder.get('/', protect, authorize('reorder', 'view'), ro.getAlerts);
 
-module.exports = { adjustment, movement, valuation, revaluation, reorder };
+module.exports = { adjustment, transfer, movement, valuation, revaluation, reorder };

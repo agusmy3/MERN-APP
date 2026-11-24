@@ -30,6 +30,7 @@ const StockAdjustment = require('../models/StockAdjustment');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const GoodsReceipt = require('../models/GoodsReceipt');
 const CostRevaluation = require('../models/CostRevaluation');
+const StockTransfer = require('../models/StockTransfer');
 const { HttpError } = require('./transaction');
 const { round2 } = require('./number');
 
@@ -154,7 +155,7 @@ const nextDocNo = async (prefix, date = new Date()) => {
 
 /**
  * SKU yang sudah punya histori stok (movement) atau dipakai dokumen stok / pembelian
- * (Stock Adjustment, Purchase Order, Goods Receipt, Cost Revaluation) -> tidak boleh dihapus.
+ * (Stock Adjustment, Purchase Order, Goods Receipt, Cost Revaluation, Stock Transfer) -> tidak boleh dihapus.
  */
 const skusWithStockHistory = async (skuIds) => {
   const ids = skuIds.map((id) => new mongoose.Types.ObjectId(String(id)));
@@ -164,6 +165,7 @@ const skusWithStockHistory = async (skuIds) => {
     PurchaseOrder.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
     GoodsReceipt.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
     CostRevaluation.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
+    StockTransfer.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
   ]);
   const wanted = new Set(ids.map(String));
   return new Set(lists.flat().map(String).filter((id) => wanted.has(id)));

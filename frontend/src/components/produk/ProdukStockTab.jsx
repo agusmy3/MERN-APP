@@ -14,6 +14,7 @@ import { formatNumber, variantLabel } from '../../utils/formatHelper';
  * Stok hanya berubah lewat dokumen Stock Adjustment (tombol New Adjustment jika diizinkan).
  * Reorder (izin reorder): tiap sel menampilkan min/max; mode "Edit reorder levels" (reorder:update)
  * mengisi min & max per SKU x gudang (kosongkan keduanya = hapus).
+ * Gudang di luar penugasan user: jumlah stok tetap terlihat, tetapi kartu stok & reorder-nya terkunci.
  */
 export default function ProdukStockTab({ produk, skus, token, canAdjust, refreshKey, canViewReorder, canEditReorder }) {
   const toast = useToast();
@@ -52,9 +53,18 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
     balances.forEach((b) => b.gudang && map.set(b.gudang._id, b.gudang));
     const known = new Map(allGudangs.map((g) => [g._id, g]));
     rules.forEach((r) => { if (!map.has(String(r.gudang)) && known.has(String(r.gudang))) map.set(String(r.gudang), known.get(String(r.gudang))); });
-    if (editing) allGudangs.forEach((g) => { if (!map.has(g._id)) map.set(g._id, g); });
+    if (editing) allGudangs.forEach((g) => { if (!map.has(g._id) && g.accessible !== false) map.set(g._id, g); });
     return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
   }, [balances, rules, allGudangs, editing]);
+
+  // gudang yang boleh diakses user (dari saldo / dropdown); tidak diketahui = boleh (backend tetap memeriksa)
+  const lockedGudang = useMemo(() => {
+    const locked = new Set();
+    balances.forEach((b) => { if (b.gudang && b.accessible === false) locked.add(b.gudang._id); });
+    allGudangs.forEach((g) => { if (g.accessible === false) locked.add(g._id); });
+    return locked;
+  }, [balances, allGudangs]);
+  const cardGudangs = useMemo(() => gudangs.filter((g) => !lockedGudang.has(g._id)), [gudangs, lockedGudang]);
 
   // ---------- edit min / max ----------
   const startEdit = () => {
@@ -67,6 +77,7 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
     for (const s of skus) {
       for (const g of gudangs) {
         const key = `${s._id}:${g._id}`;
+        if (lockedGudang.has(g._id)) continue;
         const cur = ruleOf(s._id, g._id);
         const d = draft[key] || { minQty: '', maxQty: '' };
         const same = cur ? String(cur.minQty) === String(d.minQty) && String(cur.maxQty) === String(d.maxQty)
@@ -120,6 +131,13 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
     : 0;
 
   const cellButton = (sku, gudang, content) => {
+    if (gudang && lockedGudang.has(gudang._id)) {
+      return (
+        <div className="w-full text-right tabular-nums px-2 py-1 text-muted" title={`Anda tidak ditugaskan di gudang ${gudang.code}: hanya jumlah stok yang terlihat`}>
+          {content}
+        </div>
+      );
+    }
     const active = skuId === sku._id && (gudangId || null) === (gudang?._id || null);
     return (
       <button
@@ -200,6 +218,13 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
                     const key = `${s._id}:${g._id}`;
                     const qty = qtyOf(s._id, g._id);
                     const rule = ruleOf(s._id, g._id);
+                    if (editing && lockedGudang.has(g._id)) {
+                      return (
+                        <td key={g._id} className="px-1 py-1 border-t border-line-soft text-right text-xs text-muted" title="Tidak ditugaskan di gudang ini">
+                          <i className="fa fa-lock mr-1"></i>{formatNumber(qty)}
+                        </td>
+                      );
+                    }
                     if (editing) {
                       const d = draft[key] || { minQty: '', maxQty: '' };
                       return (
@@ -259,7 +284,7 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
         open={!!skuId}
         token={token}
         skus={skus}
-        gudangs={gudangs}
+        gudangs={cardGudangs}
         skuId={skuId}
         gudangId={gudangId}
         currentQty={currentQty}

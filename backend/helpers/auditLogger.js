@@ -78,6 +78,8 @@ const ENTITIES = {
       email: { label: 'Email' },
       role: { label: 'Role', ref: ['Role', 'name'] },
       isActive: { label: 'Active', format: 'bool' },
+      allGudang: { label: 'All Warehouses', format: 'bool' },
+      gudangs: { label: 'Warehouses', ref: ['Gudang', 'code'] },
       password: { label: 'Password', secret: true },
     },
     label: (doc) => `${doc.name} (${doc.email})`,
@@ -142,6 +144,19 @@ const ENTITIES = {
       note: { label: 'Note' },
       status: { label: 'Status' },
       lines: { label: 'Lines', format: 'stockLines' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
+  stockTransfer: {
+    fields: {
+      fromGudang: { label: 'From Warehouse', ref: ['Gudang', 'code'] },
+      toGudang: { label: 'To Warehouse', ref: ['Gudang', 'code'] },
+      date: { label: 'Date', format: 'date' },
+      note: { label: 'Note' },
+      status: { label: 'Status', labels: { DRAFT: 'DRAFT', IN_TRANSIT: 'IN TRANSIT', RECEIVED: 'RECEIVED', CANCELLED: 'CANCELLED' } },
+      lines: { label: 'Items', format: 'trfLines' },
+      receiveNote: { label: 'Receive Note' },
       cancelReason: { label: 'Cancel Reason' },
     },
     label: (doc) => doc.no,
@@ -244,7 +259,7 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
-      if (['stockLines', 'poLines', 'grLines', 'revalLines'].includes(def.format)) {
+      if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines'].includes(def.format)) {
         (doc[field] || []).forEach((l) => {
           add('ProdukSku', 'sku', idOf(l.sku));
           if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
@@ -290,6 +305,15 @@ const normalizeValue = (def, value, texts) => {
         parts.push(parts.length ? `(${signed(l.qtyChange)})` : signed(l.qtyChange));
       }
       return `${sku}: ${parts.join(' ') || '-'}${l.note ? ` · ${l.note}` : ''}`;
+    });
+  }
+  if (def.format === 'trfLines') {
+    // mis. "KAOS-M: 10" (dikirim) / "KAOS-M: 10 -> received 9"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((l) => {
+      const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
+      const recv = l.qtyReceived === null || l.qtyReceived === undefined ? '' : ` -> received ${num(l.qtyReceived)}`;
+      return `${sku}: ${num(l.qty)}${recv}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
   if (def.format === 'revalLines') {
@@ -340,7 +364,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines'];
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

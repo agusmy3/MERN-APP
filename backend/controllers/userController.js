@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Role = require('../models/Role');
+const Gudang = require('../models/Gudang');
 const {
   successResponse,
   errorResponse
@@ -22,12 +23,30 @@ const handleError = (res, error) => {
 const populateUser = (query) => query
   .select('-password')
   .populate('role', 'name isSystem')
+  .populate('gudangs', 'code name isActive')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name');
 
 const findRole = async (roleId) => {
   if (!roleId || !mongoose.isValidObjectId(roleId)) return null;
   return Role.findById(roleId);
+};
+
+/**
+ * Akses gudang dari body: { allGudang, gudangs }. Di DALAM transaksi (gudang dikunci: bentrok dengan
+ * hapus gudang). allGudang tidak dikirim -> undefined (tidak diubah).
+ */
+const parseGudangAccess = async (body) => {
+  if (body.allGudang === undefined && body.gudangs === undefined) return undefined;
+  const allGudang = body.allGudang !== false;
+  if (allGudang) return { allGudang: true, gudangs: [] };
+  const ids = [...new Set((Array.isArray(body.gudangs) ? body.gudangs : []).map(String))];
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw new HttpError('Invalid warehouse', 400);
+  await lock(ids.map((id) => ref('gudang', id)));
+  if ((await Gudang.countDocuments({ _id: { $in: ids } })) !== ids.length) {
+    throw new HttpError('One or more warehouses are not valid', 400);
+  }
+  return { allGudang: false, gudangs: ids };
 };
 
 /**
@@ -109,12 +128,14 @@ exports.createUser = async (req, res) => {
       const role = await findRole(roleId);
       if (!role) throw new HttpError('Please select a valid role', 400);
 
+      const access = (await parseGudangAccess(req.body)) || { allGudang: true, gudangs: [] };
       const user = await User.create({
         name,
         email,
         password, // di-hash oleh pre('save')
         role: role._id,
         isActive: isActive !== false,
+        ...access,
         createdBy: req.user._id
       });
       await audit.logCreate(req, 'user', [user]);
@@ -165,7 +186,9 @@ exports.updateUser = async (req, res) => {
         }
       }
 
+      const access = await parseGudangAccess(req.body);
       const before = await audit.snap('user', [user]);
+      if (access) Object.assign(user, access);
       if (password) user.password = password; // di-hash oleh pre('save')
       user.name = name || user.name;
       user.email = email || user.email;

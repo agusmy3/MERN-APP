@@ -188,14 +188,28 @@ exports.deleteGudang = async (req, res) => {
         StockAdjustment.countDocuments({ gudang: gudang._id }),
       ]);
       const poCount = await require('../models/PurchaseOrder').countDocuments({ gudang: gudang._id });
-      if (balance || movement || docs || poCount) {
+      const trfCount = await require('../models/StockTransfer').countDocuments({ $or: [{ fromGudang: gudang._id }, { toGudang: gudang._id }] });
+      if (balance || movement || docs || poCount || trfCount) {
         throw new HttpError('Warehouse already has stock history or documents. Deactivate it instead.', 400);
+      }
+
+      // lepaskan dari penugasan user (diaudit sebagai perubahan user, sebelum gudangnya terhapus)
+      const batchId = audit.newBatchId();
+      const User = require('../models/User');
+      const users = await User.find({ gudangs: gudang._id });
+      if (users.length) {
+        const usersBefore = await audit.snap('user', users);
+        for (const u of users) {
+          u.gudangs.pull(gudang._id);
+          await u.save();
+        }
+        await audit.logUpdate(req, 'user', usersBefore, users, { batchId });
       }
 
       const before = await audit.snap('gudang', [gudang]);
       await require('../models/ReorderRule').deleteMany({ gudang: gudang._id });
       await gudang.deleteOne();
-      await audit.logDelete(req, 'gudang', before);
+      await audit.logDelete(req, 'gudang', before, { batchId });
       return gudang;
     });
 

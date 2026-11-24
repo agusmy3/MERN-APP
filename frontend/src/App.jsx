@@ -15,6 +15,8 @@ import AuditLog from './pages/AuditLog';
 import Gudang from './pages/Gudang';
 import StockAdjustment from './pages/StockAdjustment';
 import StockAdjustmentDetail from './pages/StockAdjustmentDetail';
+import StockTransfer from './pages/StockTransfer';
+import StockTransferDetail from './pages/StockTransferDetail';
 import StockMovement from './pages/StockMovement';
 import PurchaseOrder from './pages/PurchaseOrder';
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
@@ -56,6 +58,9 @@ function App() {
         <Route path="/stock-adjustment" element={guard('stockAdjustment', <StockAdjustment />)} />
         {/* :id = 'new' (?type=ADJUSTMENT|OPNAME) atau id dokumen */}
         <Route path="/stock-adjustment/:id" element={guard('stockAdjustment', <StockAdjustmentDetail />)} />
+        <Route path="/stock-transfer" element={guard('stockTransfer', <StockTransfer />)} />
+        {/* :id = 'new' atau id dokumen */}
+        <Route path="/stock-transfer/:id" element={guard('stockTransfer', <StockTransferDetail />)} />
         <Route path="/stock-movement" element={guard('stockMovement', <StockMovement />)} />
         {/* nilai persediaan = data biaya -> izin yang sama dengan harga beli */}
         <Route path="/reorder" element={guard('reorder', <Reorder />)} />
