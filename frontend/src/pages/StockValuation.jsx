@@ -78,14 +78,14 @@ const groupColumns = (groupBy) => {
   }
   if (groupBy === 'kategori') {
     return [
-      { header: 'Category', cell: (r) => r.kategori.name, csv: (r) => r.kategori.name },
+      { header: 'Category', cell: (r) => r.kategori?.name, csv: (r) => r.kategori?.name },
       { header: 'Products', className: 'text-right tabular-nums', cell: (r) => r.produkCount, csv: (r) => r.produkCount },
       { header: 'SKU', className: 'text-right tabular-nums', cell: (r) => r.skuCount, csv: (r) => r.skuCount },
       money, share, missing,
     ];
   }
   return [
-    { header: 'Warehouse', cell: (r) => <><b>{r.gudang.code}</b> <span className="text-muted">— {r.gudang.name}</span></>, csv: (r) => `${r.gudang.code} - ${r.gudang.name}` },
+    { header: 'Warehouse', cell: (r) => <><b>{r.gudang?.code}</b> <span className="text-muted">— {r.gudang?.name}</span></>, csv: (r) => `${r.gudang?.code} - ${r.gudang?.name}` },
     { header: 'Products', className: 'text-right tabular-nums', cell: (r) => r.produkCount, csv: (r) => r.produkCount },
     { header: 'SKU', className: 'text-right tabular-nums', cell: (r) => r.skuCount, csv: (r) => r.skuCount },
     money, share, missing,
@@ -138,7 +138,10 @@ export default function StockValuation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.token, groupBy, filters, search, missingOnly]);
 
-  const columns = useMemo(() => groupColumns(groupBy), [groupBy]);
+  // kolom mengikuti pengelompokan DATA yang sedang tampil (bukan tab yang baru diklik): saat tab diganti,
+  // data lama masih tampil sampai data baru datang, dan bentuk barisnya berbeda per pengelompokan
+  const shownGroup = data?.groupBy || groupBy;
+  const columns = useMemo(() => groupColumns(shownGroup), [shownGroup]);
   const visibleColumns = columns.filter((c) => !c.hidden);
 
   const exportCsv = () => {
@@ -150,7 +153,7 @@ export default function StockValuation() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `stock-valuation-${groupBy}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `stock-valuation-${shownGroup}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
