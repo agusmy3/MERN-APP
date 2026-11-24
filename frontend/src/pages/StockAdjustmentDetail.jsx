@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   getStockAdjustment,
@@ -52,7 +52,9 @@ const lineFromDoc = (l) => ({
   note: l.note || '',
   currentQty: l.currentQty ?? null,
   qtySystem: l.qtySystem ?? null,
-  unitCost: l.unitCost ?? null,   // hanya jika boleh melihat biaya
+  unitCost: l.unitCost ?? null,   // hanya jika boleh melihat biaya (draft: input ?? HPP; posted: dari movement)
+  avgCost: l.avgCost ?? null,     // draft: HPP SKU saat ini
+  inputCost: l.inputCost ?? '',   // Saldo Awal: harga pokok yang diisi
   value: l.value ?? null,         // posted: nilai saat post
 });
 
@@ -65,10 +67,13 @@ const lineFromSearch = (s) => ({
   currentQty: s.qty,
   qtySystem: null,
   unitCost: s.avgCost ?? null,
+  avgCost: s.avgCost ?? null,
+  inputCost: '',
   value: null,
 });
 
-const toPayload = (form, lines) => ({
+// harga pokok hanya dikirim untuk Saldo Awal oleh user yang boleh melihat biaya
+const toPayload = (form, lines, sendCost = false) => ({
   type: form.type,
   gudang: form.gudang,
   date: form.date,
@@ -78,6 +83,7 @@ const toPayload = (form, lines) => ({
     sku: l.sku._id,
     note: l.note,
     ...(form.type === 'OPNAME' ? { qtyActual: l.qtyActual } : { qtyChange: l.qtyChange }),
+    ...(sendCost && form.reason === 'OPENING' ? { unitCost: l.inputCost === '' ? null : l.inputCost } : {}),
   })),
 });
 
@@ -158,6 +164,10 @@ export default function StockAdjustmentDetail() {
     getGudangDropdown(user.token).then(setGudangList).catch(console.error);
   }, [user.token]);
 
+  // dipakai applyDoc (callback stabil) untuk membandingkan payload dengan format yang sama
+  const canSeeCostRef = useRef(canSeeCost);
+  canSeeCostRef.current = canSeeCost;
+
   const applyDoc = useCallback((d) => {
     const f = {
       type: d.type,
@@ -170,7 +180,7 @@ export default function StockAdjustmentDetail() {
     setDoc(d);
     setForm(f);
     setLines(ls);
-    setSavedPayload(JSON.stringify(toPayload(f, ls)));
+    setSavedPayload(JSON.stringify(toPayload(f, ls, canSeeCostRef.current)));
   }, []);
 
   const load = useCallback(async () => {
@@ -206,8 +216,15 @@ export default function StockAdjustmentDetail() {
   const status = isNew ? 'DRAFT' : doc?.status;
   const isOpname = form?.type === 'OPNAME';
   const isDraft = status === 'DRAFT';
+  const isOpening = !isOpname && form?.reason === 'OPENING';
+  const showCostInput = isOpening && canSeeCost;
+  // harga per satuan untuk nilai baris: harga pokok yang diisi (Saldo Awal) atau HPP saat ini
+  const costFor = (l) => {
+    if (isOpening && !isBlank(l.inputCost)) return Number(l.inputCost);
+    return l.avgCost ?? l.unitCost ?? null;
+  };
   const editable = isNew ? perm.canCreate : isDraft && perm.canUpdate;
-  const payload = form ? toPayload(form, lines) : null;
+  const payload = form ? toPayload(form, lines, canSeeCost) : null;
   const dirty = editable && (isNew ? lines.length > 0 : JSON.stringify(payload) !== savedPayload);
 
   // ---------- baris ----------
@@ -249,8 +266,9 @@ export default function StockAdjustmentDetail() {
     else change = isBlank(l.qtyChange) ? null : Number(l.qtyChange);
     const after = system === null || change === null ? null : round2(system + change);
     let value = null;
+    const cost = costFor(l);
     if (!isDraft) value = l.value;
-    else if (change !== null && l.unitCost !== null && l.unitCost !== undefined) value = round2(change * l.unitCost);
+    else if (change !== null && cost !== null && cost !== undefined) value = round2(change * cost);
     return { system, change, after, value };
   };
 
@@ -292,6 +310,10 @@ export default function StockAdjustmentDetail() {
     if (form.reason === 'OTHER' && !form.note.trim()) return 'Catatan wajib diisi untuk alasan "Other".';
     if (!lines.length) return 'Tambahkan minimal 1 SKU.';
     if (summary.empty) return `${summary.empty} baris belum diisi jumlahnya.`;
+    if (isOpening && canSeeCost) {
+      const need = lines.filter((l) => Number(l.qtyChange) > 0 && (l.avgCost === null || l.avgCost === undefined) && isBlank(l.inputCost));
+      if (need.length) return `Isi harga pokok untuk SKU yang belum punya HPP: ${need.map((l) => l.sku.sku).join(', ')}`;
+    }
     return null;
   };
 
@@ -571,6 +593,11 @@ export default function StockAdjustmentDetail() {
                         Value{isDraft ? ' (est.)' : ''}
                       </th>
                     )}
+                    {showCostInput && (
+                      <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right" title="Harga pokok per satuan dasar untuk stok Saldo Awal; ikut menghitung HPP. Wajib bila SKU belum punya HPP.">
+                        Unit cost
+                      </th>
+                    )}
                     <th className="px-3 py-2 border-b border-line font-semibold w-56">Line note</th>
                     {editable && <th className="px-3 py-2 border-b border-line w-12"></th>}
                   </tr>
@@ -635,6 +662,30 @@ export default function StockAdjustmentDetail() {
                             title={l.unitCost !== null && l.unitCost !== undefined ? `HPP ${formatRupiah(l.unitCost)}` : 'HPP belum ada'}>
                             {value === null || value === undefined ? <span className="text-muted">-</span> : (
                               <span className={value < 0 ? 'text-danger' : value > 0 ? 'text-success-fg' : 'text-muted'}>{formatRupiah(value)}</span>
+                            )}
+                          </td>
+                        )}
+                        {showCostInput && (
+                          <td className="px-3 py-1.5 border-t border-line-soft text-right">
+                            {isDraft && editable && Number(l.qtyChange) > 0 ? (
+                              <>
+                                <input
+                                  aria-label={`Unit cost ${l.sku.sku}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={l.inputCost}
+                                  disabled={busy}
+                                  placeholder={l.avgCost !== null && l.avgCost !== undefined ? String(l.avgCost) : 'wajib'}
+                                  onChange={(e) => setLine(l.sku._id, 'inputCost', e.target.value)}
+                                  className={`${cellInput} text-right tabular-nums ${l.avgCost === null && isBlank(l.inputCost) ? 'border-danger' : ''}`}
+                                />
+                                <div className="text-[10px] text-muted mt-0.5">
+                                  {l.avgCost !== null && l.avgCost !== undefined ? `kosong = HPP ${formatRupiah(l.avgCost)}` : 'belum ada HPP'}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="tabular-nums">{isDraft ? (isBlank(l.inputCost) ? '-' : formatRupiah(l.inputCost)) : (l.unitCost === null ? '-' : formatRupiah(l.unitCost))}</span>
                             )}
                           </td>
                         )}

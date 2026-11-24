@@ -39,4 +39,5 @@ export const MOVEMENT_TYPES = {
   ADJUSTMENT: 'Adjustment',
   OPNAME: 'Stock Opname',
   PURCHASE: 'Purchase (Goods Receipt)',
+  REVALUATION: 'Cost Revaluation',
 };

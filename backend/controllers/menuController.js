@@ -18,6 +18,17 @@ const handleError = (res, error) => {
 // resource tidak dikenal / kosong -> null (menu tanpa batasan izin)
 const toResource = (value) => (isValidResource(value) ? value : null);
 
+// urutan: null/kosong -> tidak diatur
+const toOrder = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > 9999) throw new HttpError('Order must be a whole number between 0 and 9999', 400);
+  return n;
+};
+
+// urutan saudara di sidebar: order (yang kosong paling akhir), lalu nama
+const byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || String(a.menu).localeCompare(String(b.menu));
+
 exports.getAllMenu = async (req, res) => {
   try {
     const menus = await Menu.find()
@@ -88,7 +99,7 @@ exports.getMenu = async (req, res) => {
 };
 
 async function getMenuWithChildren(parentId = null) {
-  const menus = await Menu.find({ parent_id: parentId }).lean();
+  const menus = (await Menu.find({ parent_id: parentId }).lean()).sort(byOrder);
 
   const withChildren = await Promise.all(
     menus.map(async (menu) => {
@@ -104,7 +115,7 @@ async function getMenuWithChildren(parentId = null) {
 }
 
 async function getMenuHierarchy(parentId = null) {
-  const menus = await Menu.find({ parent_id: parentId }).lean().sort({ menu: 1 });
+  const menus = (await Menu.find({ parent_id: parentId }).lean()).sort(byOrder);
 
   const withChildren = await Promise.all(
     menus.map(async (menu) => {
@@ -187,6 +198,7 @@ exports.createMenu = async (req, res) => {
         icon: req.body.icon,
         deskripsi: req.body.deskripsi,
         resource: toResource(req.body.resource),
+        order: toOrder(req.body.order),
         createdDate: new Date(),
         createdBy: req.user._id,
         updatedDate: null,
@@ -218,6 +230,7 @@ exports.updateMenu = async (req, res) => {
       menu.icon = req.body.icon;
       menu.deskripsi = req.body.deskripsi;
       menu.resource = toResource(req.body.resource);
+      if (req.body.order !== undefined) menu.order = toOrder(req.body.order);
       menu.updatedDate = new Date();
       menu.updatedBy = req.user._id;
       await menu.save();

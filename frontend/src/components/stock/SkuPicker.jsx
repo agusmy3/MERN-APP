@@ -7,8 +7,9 @@ import { formatNumber } from '../../utils/formatHelper';
 /**
  * Cari SKU lintas produk (kode SKU / nama produk) lalu tambahkan ke baris dokumen.
  * `existing` = Set id SKU yang sudah ada di dokumen (ditandai, tidak bisa ditambah lagi).
+ * `searchFn(token, params)` = endpoint pencarian (default: Stock Adjustment), hasil berbentuk sama.
  */
-export default function SkuPicker({ token, gudang, existing, onAdd }) {
+export default function SkuPicker({ token, gudang, existing, onAdd, searchFn = searchStockSkus }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -29,7 +30,7 @@ export default function SkuPicker({ token, gudang, existing, onAdd }) {
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await searchStockSkus(token, { search: q, gudang });
+        const data = await searchFn(token, { search: q, gudang });
         if (!cancelled) {
           setResults(data);
           setActive(0);
@@ -45,7 +46,7 @@ export default function SkuPicker({ token, gudang, existing, onAdd }) {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, gudang, token]);
+  }, [query, gudang, token, searchFn]);
 
   const pick = (s) => {
     if (existing.has(s._id)) return;

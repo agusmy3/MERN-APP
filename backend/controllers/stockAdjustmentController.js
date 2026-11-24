@@ -74,6 +74,13 @@ const parseDocument = (body, type) => {
       line.qtyActual = null;
     }
     line.qtySystem = null;
+    line.unitCost = null;
+    const costGiven = l.unitCost !== undefined && l.unitCost !== null && l.unitCost !== '';
+    if (reason === 'OPENING' && line.qtyChange > 0 && costGiven) {
+      const err = checkAmount(l.unitCost, 'Unit cost');
+      if (err) throw new HttpError(`Line ${n}: ${err}`, 400);
+      line.unitCost = round2(l.unitCost);
+    }
     return line;
   });
 
@@ -214,10 +221,13 @@ exports.getStockAdjustment = async (req, res) => {
         const skus = await ProdukSku.find({ _id: { $in: doc.lines.map((l) => l.sku?._id).filter(Boolean) } }).select('avgCost').lean();
         const avg = new Map(skus.map((s) => [String(s._id), s.avgCost ?? null]));
         doc.lines.forEach((l) => {
-          const cost = l.sku ? avg.get(String(l.sku._id)) ?? null : null;
+          const avgCost = l.sku ? avg.get(String(l.sku._id)) ?? null : null;
           const change = doc.type === 'OPNAME'
             ? (l.qtyActual === null || l.currentQty === null ? null : round2(l.qtyActual - l.currentQty))
             : l.qtyChange;
+          l.inputCost = l.unitCost ?? null;      // harga pokok yang diisi (Saldo Awal)
+          l.avgCost = avgCost;                   // HPP SKU saat ini
+          const cost = l.inputCost ?? avgCost;
           l.unitCost = cost;
           l.value = cost === null || change === null ? null : round2(change * cost);
         });
@@ -232,6 +242,8 @@ exports.getStockAdjustment = async (req, res) => {
         });
       }
       doc.totalValue = round2(doc.lines.reduce((sum, l) => sum + (l.value || 0), 0));
+    } else {
+      doc.lines.forEach((l) => { delete l.unitCost; }); // harga pokok = data biaya
     }
     return successResponse(res, doc);
   } catch (error) {
@@ -320,6 +332,7 @@ exports.createStockAdjustment = async (req, res) => {
   try {
     const type = String(req.body.type || '');
     const parsed = parseDocument(req.body, type);
+    if (!hasPermission(req.user, 'vendorPrice', 'view')) parsed.lines.forEach((l) => { l.unitCost = null; });
 
     const doc = await runInTransaction(async () => {
       await resolveRefs(parsed);
@@ -346,6 +359,10 @@ exports.updateStockAdjustment = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await loadDraft(req.params.id);
       const parsed = parseDocument(req.body, doc.type);
+      if (!hasPermission(req.user, 'vendorPrice', 'view')) {
+        const kept = new Map(doc.lines.map((l) => [String(l.sku), l.unitCost ?? null]));
+        parsed.lines.forEach((l) => { l.unitCost = parsed.reason === 'OPENING' && l.qtyChange > 0 ? kept.get(l.sku) ?? null : null; });
+      }
       await resolveRefs(parsed);
 
       const before = await audit.snap('stockAdjustment', [doc]);
@@ -361,7 +378,9 @@ exports.updateStockAdjustment = async (req, res) => {
       return doc;
     });
 
-    return successResponse(res, doc, `${doc.no} successfully updated`);
+    const out = doc.toObject();
+    if (!hasPermission(req.user, 'vendorPrice', 'view')) out.lines.forEach((l) => { delete l.unitCost; });
+    return successResponse(res, out, `${doc.no} successfully updated`);
   } catch (error) {
     return handleError(res, error);
   }
@@ -413,10 +432,21 @@ exports.postStockAdjustment = async (req, res) => {
         if (doc.type === 'OPNAME') l.qtyChange = round2(l.qtyActual - l.qtySystem);
       });
 
+      if (doc.reason === 'OPENING') {
+        const skus = await ProdukSku.find({ _id: { $in: doc.lines.map((l) => l.sku) } }).select('sku avgCost').lean();
+        const missing = skus.filter((s) => (s.avgCost === null || s.avgCost === undefined)
+          && doc.lines.some((l) => String(l.sku) === String(s._id) && l.qtyChange > 0 && (l.unitCost === null || l.unitCost === undefined)));
+        if (missing.length) {
+          throw new HttpError(`Fill in the unit cost for SKU without HPP: ${missing.map((s) => s.sku).join(', ')}`, 400);
+        }
+      }
+
       await applyMovements(req, doc.lines.map((l) => ({
         sku: l.sku,
         gudang: doc.gudang,
         qty: l.qtyChange,
+        // harga pokok Saldo Awal -> HPP rata-rata dihitung ulang (seperti pembelian)
+        unitCost: doc.reason === 'OPENING' && l.qtyChange > 0 ? l.unitCost : null,
         type: movementType(doc),
         reason: doc.reason,
         note: l.note || doc.note,
@@ -456,6 +486,7 @@ exports.cancelStockAdjustment = async (req, res) => {
         sku: l.sku,
         gudang: doc.gudang,
         qty: -(l.qtyChange || 0),
+        unitCost: doc.reason === 'OPENING' && l.qtyChange > 0 ? l.unitCost : null,
         type: movementType(doc),
         reason: doc.reason,
         note: `Cancelled: ${cancelReason}`,

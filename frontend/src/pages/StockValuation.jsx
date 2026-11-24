@@ -5,6 +5,7 @@ import { getGudangDropdown } from '../services/gudangService';
 import { getKategoriDropdown } from '../services/kategoriService';
 import { useAuth } from '../context/AuthContext';
 import useToast from '../hooks/useToast';
+import usePermission from '../hooks/usePermission';
 import PageHeader from '../components/PageHeader';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper';
@@ -31,11 +32,20 @@ const groupColumns = (groupBy) => {
     ),
     csv: (r) => r.share,
   };
+  // SKU berstok tanpa HPP dihitung 0 -> nilai grup belum lengkap; tampilkan jelas
   const missing = {
-    header: '',
-    className: 'w-8 text-center',
-    cell: (r) => (r.missingCost ? <i className="fa fa-triangle-exclamation text-warning-fg" title={`${r.missingCost} SKU berstok tanpa HPP (dihitung 0)`}></i> : ''),
-    csv: (r) => (r.missingCost ? 'missing cost' : ''),
+    header: 'HPP status',
+    className: 'w-44',
+    cell: (r) => {
+      if (!r.missingCost) return <span className="text-xs text-success-fg"><i className="fa fa-check mr-1"></i>Complete</span>;
+      if (groupBy === 'sku') return <span className="text-xs text-warning-fg"><i className="fa fa-triangle-exclamation mr-1"></i>No HPP (valued 0)</span>;
+      return (
+        <span className="text-xs text-warning-fg" title="Nilai grup ini belum lengkap: SKU tanpa HPP dihitung 0">
+          <i className="fa fa-triangle-exclamation mr-1"></i>{r.missingCost} of {r.skuCount} SKU without HPP
+        </span>
+      );
+    },
+    csv: (r) => (r.missingCost ? `${r.missingCost} of ${r.skuCount} SKU without HPP` : 'complete'),
   };
   if (groupBy === 'sku') {
     return [
@@ -96,6 +106,8 @@ export default function StockValuation() {
   const toast = useToast();
   const [groupBy, setGroupBy] = useState('sku');
   const [filters, setFilters] = useState({ gudang: '', kategori: '' });
+  const [missingOnly, setMissingOnly] = useState(false);
+  const revPerm = usePermission('costRevaluation');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [data, setData] = useState(null);
@@ -116,7 +128,7 @@ export default function StockValuation() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const params = { groupBy, search };
+    const params = { groupBy, search, ...(missingOnly ? { missingOnly: true } : {}) };
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
     getStockValuation(user.token, params)
       .then((d) => { if (!cancelled) setData(d); })
@@ -124,7 +136,7 @@ export default function StockValuation() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.token, groupBy, filters, search]);
+  }, [user.token, groupBy, filters, search, missingOnly]);
 
   const columns = useMemo(() => groupColumns(groupBy), [groupBy]);
   const visibleColumns = columns.filter((c) => !c.hidden);
@@ -166,10 +178,18 @@ export default function StockValuation() {
           <div className="text-xs uppercase tracking-wider text-muted">SKU in stock</div>
           <div className="text-2xl font-bold tabular-nums mt-1">{totals ? formatNumber(totals.skuCount) : '-'}</div>
         </div>
-        <div className={`rounded-lg border p-4 ${totals?.missingCost ? 'border-warning-fg/40 bg-warning-soft' : 'border-line bg-surface'}`}>
-          <div className="text-xs uppercase tracking-wider text-muted">SKU without HPP</div>
+        <div className={`rounded-lg border p-4 ${totals?.missingCost || missingOnly ? 'border-warning-fg/40 bg-warning-soft' : 'border-line bg-surface'}`}>
+          <div className="text-xs uppercase tracking-wider text-muted">SKU without HPP{missingOnly ? ' (filtered)' : ''}</div>
           <div className="text-2xl font-bold tabular-nums mt-1">{totals ? formatNumber(totals.missingCost) : '-'}</div>
-          {totals?.missingCost > 0 && <div className="text-xs mt-1">Dihitung 0. Isi lewat Goods Receipt atau <code>npm run migrate:avg-cost</code>.</div>}
+          {(totals?.missingCost > 0 || missingOnly) && (
+            <div className="text-xs mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span>Dihitung 0, nilai persediaan belum lengkap.</span>
+              <button type="button" onClick={() => { setMissingOnly((v) => !v); setGroupBy('sku'); }} className="underline cursor-pointer">
+                {missingOnly ? 'Show all' : 'Show these SKU'}
+              </button>
+              {revPerm.canCreate && <Link to="/cost-revaluation/new?missing=1" className="underline">Fill HPP (revaluation)</Link>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -228,6 +248,9 @@ export default function StockValuation() {
             )}
           </table>
         </div>
+        {missingOnly && (
+          <p className="text-xs text-warning-fg mt-2"><i className="fa fa-filter mr-1"></i>Hanya SKU berstok tanpa HPP.</p>
+        )}
         <p className="text-xs text-muted mt-3">
           Nilai = stok saat ini x HPP rata-rata per SKU (sama untuk semua gudang). Qty dijumlah hanya per SKU / produk (satuannya sama).
         </p>

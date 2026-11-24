@@ -28,6 +28,7 @@ const DOC_ROUTES = {
   stockAdjustment: '/stock-adjustment',
   purchaseOrder: '/purchase-order',
   goodsReceipt: '/goods-receipt',
+  costRevaluation: '/cost-revaluation',
 };
 
 // produk / SKU / harga vendor -> halaman detail produk (tab History)

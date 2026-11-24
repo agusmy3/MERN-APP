@@ -16,6 +16,9 @@ const lineSchema = new mongoose.Schema({
   qtySystem: { type: Number, default: null },  // saldo sistem saat post
   qtyActual: { type: Number, default: null },  // OPNAME: jumlah fisik
   qtyChange: { type: Number, default: null },  // selisih yang diterapkan ke stok
+  // Saldo Awal (OPENING): harga pokok per satuan dasar untuk stok yang masuk -> ikut menghitung HPP.
+  // Wajib saat post bila SKU belum punya HPP. Hanya diisi/dilihat user dengan vendorPrice:view.
+  unitCost: { type: Number, default: null },
   note: { type: String },
 }, { _id: false });
 

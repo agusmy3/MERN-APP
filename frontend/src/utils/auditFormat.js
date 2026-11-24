@@ -18,6 +18,7 @@ export const ENTITY_META = {
   stockAdjustment: { label: 'Stock Adjustment', icon: 'fa-boxes-stacked' },
   purchaseOrder: { label: 'Purchase Order', icon: 'fa-file-invoice' },
   goodsReceipt: { label: 'Goods Receipt', icon: 'fa-truck-ramp-box' },
+  costRevaluation: { label: 'Cost Revaluation', icon: 'fa-scale-balanced' },
   setting: { label: 'System Settings', icon: 'fa-sliders' },
 };
 

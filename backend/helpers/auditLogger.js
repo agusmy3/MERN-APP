@@ -177,6 +177,16 @@ const ENTITIES = {
     // histori PO ikut memuat penerimaannya
     parent: (doc) => ({ entity: 'purchaseOrder', id: doc.purchaseOrder?._id ?? doc.purchaseOrder }),
   },
+  costRevaluation: {
+    fields: {
+      date: { label: 'Date', format: 'date' },
+      note: { label: 'Reason' },
+      status: { label: 'Status' },
+      lines: { label: 'Items', format: 'revalLines' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
   setting: {
     fields: {
       value: { label: 'Value' },
@@ -192,6 +202,7 @@ const ENTITIES = {
       img: { label: 'Image' },
       deskripsi: { label: 'Description' },
       resource: { label: 'Permission', format: 'resource' },
+      order: { label: 'Order', format: 'number' },
     },
     label: (doc) => doc.menu,
   },
@@ -222,7 +233,7 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
-      if (['stockLines', 'poLines', 'grLines'].includes(def.format)) {
+      if (['stockLines', 'poLines', 'grLines', 'revalLines'].includes(def.format)) {
         (doc[field] || []).forEach((l) => {
           add('ProdukSku', 'sku', idOf(l.sku));
           if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
@@ -270,6 +281,15 @@ const normalizeValue = (def, value, texts) => {
       return `${sku}: ${parts.join(' ') || '-'}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
+  if (def.format === 'revalLines') {
+    // mis. "KAOS-M: HPP 9,000 -> 9,500" (HPP lama diisi saat post)
+    const num = (n) => (n === null || n === undefined ? '-' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+    return (value || []).map((l) => {
+      const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
+      const from = l.qty === null || l.qty === undefined ? '' : `${num(l.oldCost)} -> `;
+      return `${sku}: HPP ${from}${num(l.newCost)}${l.note ? ` · ${l.note}` : ''}`;
+    });
+  }
   if (def.format === 'poLines' || def.format === 'grLines') {
     // mis. "KAOS-M: 10 BOX x 120,000 -5%" (PO) / "KAOS-M: 4 BOX" (GR)
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -309,7 +329,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines'];
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

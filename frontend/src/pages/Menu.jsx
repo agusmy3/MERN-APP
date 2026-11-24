@@ -27,7 +27,8 @@ const EMPTY_FORM = {
   img: '',
   icon: '',
   deskripsi: '',
-  resource: ''
+  resource: '',
+  order: ''
 };
 
 // id menu beserta seluruh turunannya, supaya menu tidak bisa dipindah ke bawah anak/cucunya sendiri
@@ -95,7 +96,8 @@ export default function Menu() {
       img: row.img || '',
       icon: row.icon || '',
       deskripsi: row.deskripsi || '',
-      resource: row.resource || ''
+      resource: row.resource || '',
+      order: row.order ?? ''
     }),
     getLabel: (row) => row.menu,
     create: (payload) => createMenu(payload, user.token),
@@ -140,6 +142,14 @@ export default function Menu() {
       sortField: 'parent_id',
       width: 180,
       render: (m) => m.parent_id?.menu || <span className="text-muted italic">Root</span>,
+    },
+    {
+      key: 'order',
+      header: 'Order',
+      sortField: 'order',
+      width: 80,
+      className: 'text-right tabular-nums',
+      render: (m) => (m.order ?? <span className="text-muted">-</span>),
     },
     {
       key: 'component',
@@ -254,6 +264,25 @@ export default function Menu() {
               <option key={r.key} value={r.key}>{r.group} › {r.label}</option>
             ))}
           </select>
+        </FormField>
+
+        <FormField
+          label="Order"
+          htmlFor="menu-order"
+          hint="Urutan di sidebar di antara menu dengan parent yang sama (kecil dulu). Kosong = paling akhir, lalu urut nama."
+        >
+          <input
+            id="menu-order"
+            type="number"
+            name="order"
+            min="0"
+            max="9999"
+            step="1"
+            placeholder="e.g. 10"
+            value={form.order}
+            onChange={crud.handleChange}
+            className={`${inputClass} max-w-40`}
+          />
         </FormField>
 
         <FormField label="Icon" htmlFor="menu-icon" hint="Class Font Awesome, pratinjau tampil di kiri.">

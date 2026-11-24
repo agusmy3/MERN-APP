@@ -7,6 +7,7 @@
     "start": "node app.js",
     "dev": "node --watch app.js",
     "seed:rbac": "node scripts/seed-rbac.js",
+    "menu:organize": "node scripts/organize-menu.js",
     "migrate:produk-sku": "node scripts/migrate-produk-sku.js",
     "migrate:stock-opening": "node scripts/migrate-stock-opening.js",
     "migrate:avg-cost": "node scripts/migrate-avg-cost.js",

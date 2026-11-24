@@ -4,6 +4,7 @@ const authorize = require('../middlewares/authorize');
 const adj = require('../controllers/stockAdjustmentController');
 const mov = require('../controllers/stockMovementController');
 const val = require('../controllers/stockValuationController');
+const rev = require('../controllers/costRevaluationController');
 
 /**
  * Stock Adjustment (/api/stock-adjustment)
@@ -33,4 +34,15 @@ movement.get('/', protect, authorize('stockMovement', 'view'), mov.getMovements)
 const valuation = express.Router();
 valuation.get('/', protect, authorize('vendorPrice', 'view'), val.getValuation);
 
-module.exports = { adjustment, movement, valuation };
+/** Cost Revaluation (/api/cost-revaluation): isi / koreksi HPP tanpa mengubah stok */
+const revaluation = express.Router();
+revaluation.get('/skus', protect, authorize('costRevaluation', 'view'), rev.searchSkus);
+revaluation.get('/', protect, authorize('costRevaluation', 'view'), rev.getRevaluations);
+revaluation.get('/:id', protect, authorize('costRevaluation', 'view'), rev.getRevaluation);
+revaluation.post('/', protect, authorize('costRevaluation', 'create'), rev.createRevaluation);
+revaluation.put('/:id', protect, authorize('costRevaluation', 'update'), rev.updateRevaluation);
+revaluation.delete('/:id', protect, authorize('costRevaluation', 'delete'), rev.deleteRevaluation);
+revaluation.post('/:id/post', protect, authorize('costRevaluation', 'post'), rev.postRevaluation);
+revaluation.post('/:id/cancel', protect, authorize('costRevaluation', 'post'), rev.cancelRevaluation);
+
+module.exports = { adjustment, movement, valuation, revaluation };

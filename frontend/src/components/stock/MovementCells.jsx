@@ -11,6 +11,13 @@ export function MovementRef({ m }) {
       </Link>
     );
   }
+  if (m.refType === 'CostRevaluation' && m.refId) {
+    return (
+      <Link to={`/cost-revaluation/${m.refId}`} className="font-mono text-xs font-semibold text-primary hover:underline">
+        {m.refNo}
+      </Link>
+    );
+  }
   if (m.refType === 'GoodsReceipt' && m.refId) {
     return (
       <Link to={`/goods-receipt/${m.refId}`} className="font-mono text-xs font-semibold text-primary hover:underline">

@@ -10,6 +10,8 @@ const menuSchema = new mongoose.Schema({
   // key resource di config/permissions.js. Menu tampil di sidebar hanya jika user punya izin 'view'.
   // null = tidak butuh izin (mis. Dashboard, Appearance) atau menu grup.
   resource: { type: String, default: null },
+  // urutan di sidebar di antara saudaranya (kecil dulu); null = paling akhir, lalu urut nama
+  order: { type: Number, default: null },
 
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

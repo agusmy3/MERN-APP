@@ -8,7 +8,7 @@ const GROUPS = ['sku', 'produk', 'kategori', 'gudang'];
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * GET /api/stock-valuation?groupBy=sku|produk|kategori|gudang&gudang=&kategori=&search=&includeZero=
+ * GET /api/stock-valuation?groupBy=sku|produk|kategori|gudang&gudang=&kategori=&search=&includeZero=&missingOnly=
  * Nilai persediaan SAAT INI = saldo (StockBalance) x HPP rata-rata SKU (ProdukSku.avgCost).
  * Izin vendorPrice:view (HPP & nilai persediaan = data biaya, keputusan yang sama dengan harga beli).
  *
@@ -66,6 +66,11 @@ exports.getValuation = async (req, res) => {
           missingCost: avgCost === null && b.qty !== 0,
         };
       });
+
+    // hanya baris berstok tanpa HPP (untuk dilengkapi lewat Cost Revaluation)
+    if (req.query.missingOnly === 'true') {
+      for (let i = rows0.length - 1; i >= 0; i--) if (!rows0[i].missingCost) rows0.splice(i, 1);
+    }
 
     const groups = new Map();
     const keyOf = {

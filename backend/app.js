@@ -33,6 +33,7 @@ app.use('/api/gudang', require('./routes/gudangRoutes'));
 app.use('/api/stock-adjustment', require('./routes/stockRoutes').adjustment);
 app.use('/api/stock-movement', require('./routes/stockRoutes').movement);
 app.use('/api/stock-valuation', require('./routes/stockRoutes').valuation);
+app.use('/api/cost-revaluation', require('./routes/stockRoutes').revaluation);
 app.use('/api/purchase-order', require('./routes/purchaseRoutes').purchaseOrder);
 app.use('/api/goods-receipt', require('./routes/purchaseRoutes').goodsReceipt);
 app.use('/api/setting', require('./routes/settingRoutes'));

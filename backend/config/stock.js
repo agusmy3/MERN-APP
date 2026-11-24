@@ -28,6 +28,7 @@ const MOVEMENT_TYPES = {
   ADJUSTMENT: 'Adjustment',
   OPNAME: 'Stock Opname',
   PURCHASE: 'Purchase (Goods Receipt)',
+  REVALUATION: 'Cost Revaluation',   // qty 0, hanya nilai (HPP) yang berubah
 };
 
 // batas baris per dokumen (opname 1 gudang bisa ratusan SKU)

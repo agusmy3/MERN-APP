@@ -64,3 +64,16 @@ export const getStockValuation = async (token, params) => {
   const res = await axios.get('/api/stock-valuation', { ...getHeaders(token), params });
   return res.data.data;
 };
+
+// ---------- Cost Revaluation (revaluasi HPP) ----------
+
+const REV = '/api/cost-revaluation';
+export const getCostRevaluations = async (token, params) => (await axios.get(REV, { ...getHeaders(token), params })).data.data;
+export const getCostRevaluation = async (id, token) => (await axios.get(`${REV}/${id}`, getHeaders(token))).data.data;
+/** params { search } | { produk } | { kategori } | { missingOnly: true } -> [{ _id, sku, produk, variant, uom, qty, avgCost }] */
+export const searchRevaluationSkus = async (token, params) => (await axios.get(`${REV}/skus`, { ...getHeaders(token), params })).data.data;
+export const createCostRevaluation = (data, token) => axios.post(REV, data, getHeaders(token));
+export const updateCostRevaluation = (id, data, token) => axios.put(`${REV}/${id}`, data, getHeaders(token));
+export const deleteCostRevaluation = (id, token) => axios.delete(`${REV}/${id}`, getHeaders(token));
+export const postCostRevaluation = (id, token) => axios.post(`${REV}/${id}/post`, {}, getHeaders(token));
+export const cancelCostRevaluation = (id, reason, token) => axios.post(`${REV}/${id}/cancel`, { reason }, getHeaders(token));

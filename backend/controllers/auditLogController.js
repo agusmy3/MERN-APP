@@ -26,11 +26,12 @@ const ENTITY_RESOURCE = {
   stockAdjustment: 'stockAdjustment',
   purchaseOrder: 'purchaseOrder',
   goodsReceipt: 'goodsReceipt',
+  costRevaluation: 'costRevaluation',
   setting: 'setting',
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'purchaseOrder', 'goodsReceipt'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'purchaseOrder', 'goodsReceipt', 'costRevaluation'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };
