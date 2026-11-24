@@ -190,6 +190,7 @@ export default function PurchaseOrderDetail() {
   const uomCode = (uomId) => options.uoms.find((u) => u._id === uomId)?.code || '';
 
   // ---------- baris ----------
+  const existingSkus = useMemo(() => new Set(lines.map((l) => l.sku._id)), [lines]);
   const addItem = (item) => {
     const line = lineFromItem(item);
     if (lines.some((l) => l.sku._id === line.sku._id && l.uomBeli === line.uomBeli)) {
@@ -442,7 +443,7 @@ export default function PurchaseOrderDetail() {
             </div>
             {editable && (
               <div className="px-4 py-3 border-b border-line-soft bg-subtle">
-                <PoItemPicker token={user.token} vendor={form.vendor} onAdd={addItem} />
+                <PoItemPicker token={user.token} vendor={form.vendor} existing={existingSkus} onAdd={addItem} />
               </div>
             )}
 

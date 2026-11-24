@@ -34,6 +34,28 @@ test('settings: defaults, validation, audit', async () => {
   assert.equal((await viewer.put('/api/setting', { values: { 'tax.ppnRate': 5 } })).status, 403);
 });
 
+test('PO item search: vendor scope vs all SKU', async () => {
+  const admin = await t.loginAs();
+  const m = await createMasters(admin);
+  const listed = await createProduct(admin, m, 'Scope Listed');
+  const other = await createProduct(admin, m, 'Scope Other');
+  ok(await admin.post('/api/vendor-price', { vendor: m.vendor._id, skus: [listed._id], uomBeli: m.box._id, konversi: 12, hargaBeli: 120000 }), 201);
+  const ids = (rows) => rows.map((r) => String(r._id));
+
+  // vendor (default): hanya SKU dengan harga vendor, juga saat mencari
+  const all = ok(await admin.get(`/api/purchase-order/items?vendor=${m.vendor._id}`));
+  assert.deepEqual(ids(all), [String(listed._id)]);
+  assert.equal(all[0].prices[0].hargaBeli, 120000);
+  const searched = ok(await admin.get(`/api/purchase-order/items?vendor=${m.vendor._id}&search=Scope`));
+  assert.deepEqual(ids(searched), [String(listed._id)]);
+
+  // all: semua SKU, search wajib; harga vendor tetap ikut bila ada
+  assert.deepEqual(ok(await admin.get(`/api/purchase-order/items?vendor=${m.vendor._id}&scope=all`)), []);
+  const wide = ok(await admin.get(`/api/purchase-order/items?vendor=${m.vendor._id}&scope=all&search=Scope`));
+  assert.deepEqual(ids(wide).sort(), [String(listed._id), String(other._id)].sort());
+  assert.equal(wide.find((r) => String(r._id) === String(other._id)).prices.length, 0);
+});
+
 test('PO: totals, issue snapshot, only draft editable', async () => {
   const admin = await t.loginAs();
   const m = await createMasters(admin);

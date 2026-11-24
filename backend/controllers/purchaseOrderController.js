@@ -239,14 +239,16 @@ exports.getPurchaseOrder = async (req, res) => {
 };
 
 /**
- * GET /api/purchase-order/items?vendor=&search=
- * Cari SKU untuk baris PO + pilihan harga dari vendor tsb (satuan beli, konversi, harga, min. order).
- * Tanpa search: semua SKU yang punya harga dari vendor ini.
+ * GET /api/purchase-order/items?vendor=&search=&scope=vendor|all
+ * Cari SKU aktif untuk baris PO + pilihan harga dari vendor tsb (satuan beli, konversi, harga, min. order).
+ * - scope=vendor (default): hanya SKU yang punya harga dari vendor ini, search opsional (maks. 200)
+ * - scope=all             : semua SKU, search wajib (maks. 30)
  */
 exports.searchItems = async (req, res) => {
   try {
     const { vendor, search } = req.query;
     if (!mongoose.isValidObjectId(vendor)) return errorResponse(res, 'Please select a vendor first', 400);
+    const vendorOnly = req.query.scope !== 'all';
 
     const filter = { isActive: true };
     const q = String(search || '').trim();
@@ -254,15 +256,16 @@ exports.searchItems = async (req, res) => {
       const rx = { $regex: escapeRegex(q), $options: 'i' };
       const produkIds = await Produk.find({ name: rx }).distinct('_id');
       filter.$or = [{ sku: rx }, { produk: { $in: produkIds } }];
-    } else {
-      filter._id = { $in: await VendorPrice.find({ vendor }).distinct('sku') };
+    } else if (!vendorOnly) {
+      return successResponse(res, []);
     }
+    if (vendorOnly) filter._id = { $in: await VendorPrice.find({ vendor }).distinct('sku') };
 
     const skus = await ProdukSku.find(filter)
       .select('sku produk variantValues')
       .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code name' } })
       .sort({ sku: 1 })
-      .limit(q ? 20 : 200)
+      .limit(vendorOnly ? 200 : 30)
       .lean();
 
     const prices = await VendorPrice.find({ vendor, sku: { $in: skus.map((s) => s._id) } })
