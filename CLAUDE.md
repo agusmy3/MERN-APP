@@ -19,6 +19,9 @@ Tidak ada package.json di root; backend dan frontend dijalankan terpisah.
 npm run dev      # node --watch server.js, auto-restart saat file berubah
 npm start        # node server.js
 npm test         # semua test (unit + API); npm run test:unit | test:api | test:watch
+npm run db:init -- --email=<email> --password=<password>  # SIAPKAN DATABASE (baru/lama), idempotent: cek replica set, koleksi & index (hanya menambah), Super Admin pertama (jika belum ada user), seed:rbac, menu:organize --apply
+npm run seed:admin -- --email=... --password=...  # Super Admin pertama, hanya jika belum ada user (atau ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME di .env; password min. 8)
+npm run seed:demo  # data contoh (4 produk, 12 SKU, 2 gudang, 3 vendor fiktif, stok awal ber-HPP, reorder, PO terlambat, draft); DITOLAK jika sudah ada produk
 npm run seed:rbac  # migrasi RBAC (idempotent): role Super Admin -> admin@mern.com, tautkan Menu ke resource, buat menu User, Role, Audit Log, System Settings, Warehouse, grup Inventory (Stock Adjustment, Stock Movement, Reorder, Stock Valuation, Cost Revaluation) & grup Purchasing (Purchase Order, Goods Receipt)
 npm run menu:organize  # rapikan menu ke susunan standar (Dashboard, Master Data, Inventory, Purchasing, Settings); default dry-run, `-- --apply` untuk menerapkan (backup JSON di backend/backups/, diabaikan git; audit log)
 npm run migrate:produk-sku  # migrasi produk lama (idempotent): UoM PCS, 1 SKU default per produk (harga -> hargaJual, qty -> stok)
@@ -28,6 +31,8 @@ npm run stock:reconcile        # cek StockBalance & ProdukSku.stok vs kartu stok
 npm run rs:init  # inisialisasi replica set 1 node (idempotent; biasanya lewat setup-replica-set.ps1)
 ```
 Butuh `backend/.env` dengan `MONGO_URI`, `JWT_SECRET`, `PORT` (default 5000).
+
+**Database baru / dikosongkan:** aktifkan replica set (di bawah), lalu `npm run db:init -- --email=... --password=...` (+ `npm run seed:demo` untuk data contoh). Script `migrate:*` hanya untuk memindahkan data lama (aman, tidak berbuat apa-apa di database kosong).
 
 **MongoDB wajib replica set** (untuk transaksi). Standalone -> backend berhenti saat start dengan petunjuk. Setup sekali di Windows (PowerShell *Run as Administrator*, dari `backend/`):
 ```

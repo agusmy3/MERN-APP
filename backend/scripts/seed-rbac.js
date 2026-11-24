@@ -3,7 +3,7 @@
  *   cd backend && npm run seed:rbac
  *
  * 1. Membuat role "Super Admin" (isSystem) jika belum ada
- * 2. Memberikan role tsb ke admin@mern.com
+ * 2. Memberikan role tsb ke admin@mern.com (instalasi lama); database baru: buat admin dengan npm run seed:admin
  * 3. Mengisi isActive = true untuk user lama yang belum punya field ini
  * 4. Menautkan menu yang sudah ada ke resource-nya berdasarkan route (mis. /produk -> produk)
  * 5. Membuat menu "User" (/users), "Role" (/roles) & "Audit Log" (/audit-log) jika belum ada
@@ -79,13 +79,15 @@ async function main() {
     console.log('[+] Role "Super Admin" dibuat');
   }
 
-  // 2. admin@mern.com -> Super Admin
-  const admin = await User.findOne({ email: SUPER_ADMIN_EMAIL });
-  if (!admin) {
-    console.error(`[!] User ${SUPER_ADMIN_EMAIL} TIDAK DITEMUKAN. Buat user tsb lalu jalankan script ini lagi.`);
-  } else {
+  // 2. admin@mern.com (instalasi lama) -> Super Admin; selain itu pakai Super Admin yang sudah ada
+  let admin = await User.findOne({ email: SUPER_ADMIN_EMAIL });
+  if (admin) {
     await User.updateOne({ _id: admin._id }, { role: superAdmin._id, isActive: true });
     console.log(`[+] ${SUPER_ADMIN_EMAIL} -> role "${superAdmin.name}"`);
+  } else {
+    admin = await User.findOne({ role: superAdmin._id, isActive: { $ne: false } }).sort({ createdDate: 1 });
+    if (admin) console.log(`[=] Super Admin: ${admin.email}`);
+    else console.error('[!] Belum ada user Super Admin. Jalankan: npm run seed:admin -- --email=<email> --password=<password>');
   }
 
   // 3. isActive untuk user lama

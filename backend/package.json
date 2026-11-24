@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "db:init": "node scripts/db-init.js",
+    "seed:admin": "node scripts/seed-admin.js",
     "seed:rbac": "node scripts/seed-rbac.js",
+    "seed:demo": "node scripts/seed-demo.js",
     "menu:organize": "node scripts/organize-menu.js",
     "migrate:produk-sku": "node scripts/migrate-produk-sku.js",
     "migrate:stock-opening": "node scripts/migrate-stock-opening.js",
