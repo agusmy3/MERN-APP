@@ -42,7 +42,7 @@ const newKey = () => `l${++keySeq}`;
 
 const lineFromDoc = (l) => ({
   key: l._id,
-  sku: { _id: l.sku?._id, sku: l.sku?.sku ?? '(deleted SKU)', produkName: l.produk?.name || '', variant: variantLabel(l.sku), baseUom: l.produk?.uom?.code || '' },
+  sku: { _id: l.sku?._id, sku: l.sku?.sku ?? '(deleted SKU)', produkName: l.produk?.name || '', variant: variantLabel(l.sku), baseUom: l.produk?.uom?.code || '', baseUomId: l.produk?.uom?._id || '' },
   prices: [],
   uomBeli: l.uomBeli?._id || '',
   konversi: l.konversi,
@@ -54,14 +54,29 @@ const lineFromDoc = (l) => ({
   outstanding: l.outstanding ?? null,
 });
 
-const lineFromItem = (item) => {
-  const price = item.prices.find((p) => p.isPreferred) || item.prices[0];
+/**
+ * Satuan beli yang boleh dipakai baris PO: satuan di daftar harga vendor (konversi dari sana) + satuan dasar
+ * (konversi 1). Backend menolak satuan lain dan selalu mengisi konversi sendiri.
+ */
+const uomChoices = (l) => {
+  const list = l.prices.map((p) => ({ _id: p.uomBeli?._id, code: p.uomBeli?.code, konversi: p.konversi, price: p }));
+  if (l.sku.baseUomId && !list.some((u) => u._id === l.sku.baseUomId)) list.push({ _id: l.sku.baseUomId, code: l.sku.baseUom, konversi: 1, price: null });
+  return list.filter((u) => u._id);
+};
+
+/** item = hasil pencarian; `used` = satuan yang sudah dipakai SKU ini di baris lain (null = semua terpakai) */
+const lineFromItem = (item, used = new Set()) => {
+  const sku = { _id: item._id, sku: item.sku, produkName: item.produk?.name || '', variant: item.variant, baseUom: item.baseUom?.code || '', baseUomId: item.baseUom?._id || '' };
+  const ordered = [...item.prices].sort((a, b) => Number(b.isPreferred) - Number(a.isPreferred));
+  const choice = uomChoices({ sku, prices: ordered }).find((u) => !used.has(u._id));
+  if (!choice) return null;
+  const price = choice.price;
   return {
     key: newKey(),
-    sku: { _id: item._id, sku: item.sku, produkName: item.produk?.name || '', variant: item.variant, baseUom: item.baseUom?.code || '' },
+    sku,
     prices: item.prices,
-    uomBeli: price?.uomBeli?._id || item.baseUom?._id || '',
-    konversi: price?.konversi ?? 1,
+    uomBeli: choice._id,
+    konversi: choice.konversi,
     qty: price?.minOrder || '',
     hargaBeli: price?.hargaBeli ?? '',
     diskonPersen: 0,
@@ -191,22 +206,36 @@ export default function PurchaseOrderDetail() {
 
   // ---------- baris ----------
   const existingSkus = useMemo(() => new Set(lines.map((l) => l.sku._id)), [lines]);
+  const focusQty = (key) => requestAnimationFrame(() => {
+    const el = document.getElementById(`po-qty-${key}`);
+    el?.focus();
+    el?.select();
+  });
+  // SKU yang sudah ada: tambah baris dengan satuan beli lain yang belum dipakai; jika semua sudah dipakai -> fokus ke qty
   const addItem = (item) => {
-    const line = lineFromItem(item);
-    if (lines.some((l) => l.sku._id === line.sku._id && l.uomBeli === line.uomBeli)) {
-      toast.info(`${item.sku} dengan satuan tersebut sudah ada. Ubah qty-nya, atau pilih satuan lain di baris baru.`);
+    const same = lines.filter((l) => l.sku._id === item._id);
+    const line = lineFromItem(item, new Set(same.map((l) => l.uomBeli)));
+    if (!line) {
+      toast.info(`${item.sku} sudah ada di PO untuk semua satuan belinya. Ubah qty di baris tersebut.`);
+      focusQty(same[0].key);
+      return;
     }
     setLines((prev) => [...prev, line]);
+    if (same.length) toast.info(`${item.sku} ditambahkan lagi dengan satuan ${uomCode(line.uomBeli) || 'lain'}.`);
+    focusQty(line.key);
   };
   const setLine = (key, patch) => setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const removeLine = (key) => setLines((prev) => prev.filter((l) => l.key !== key));
 
-  // ganti satuan beli: ambil konversi & harga dari daftar harga vendor bila ada
+  // ganti satuan beli: konversi (dan harga, bila ada di daftar harga vendor) mengikuti pilihan
   const changeUom = (l, uomId) => {
-    const price = l.prices.find((p) => p.uomBeli?._id === uomId);
-    if (price) setLine(l.key, { uomBeli: uomId, konversi: price.konversi, hargaBeli: price.hargaBeli });
-    else if (uomCode(uomId) === l.sku.baseUom) setLine(l.key, { uomBeli: uomId, konversi: 1 });
-    else setLine(l.key, { uomBeli: uomId });
+    const choice = uomChoices(l).find((u) => u._id === uomId);
+    if (!choice) return;
+    if (lines.some((o) => o.key !== l.key && o.sku._id === l.sku._id && o.uomBeli === uomId)) {
+      toast.warning(`${l.sku.sku} dengan satuan ${choice.code} sudah ada di baris lain.`);
+      return;
+    }
+    setLine(l.key, { uomBeli: uomId, konversi: choice.konversi, ...(choice.price ? { hargaBeli: choice.price.hargaBeli } : {}) });
   };
 
   const changeVendor = async (vendor) => {
@@ -234,8 +263,10 @@ export default function PurchaseOrderDetail() {
     if (!form.vendor) return 'Pilih vendor.';
     if (!form.gudang) return 'Pilih gudang tujuan.';
     if (!lines.length) return 'Tambahkan minimal 1 item.';
-    const bad = lines.find((l) => !l.uomBeli || isBlank(l.qty) || Number(l.qty) <= 0 || isBlank(l.hargaBeli) || !(Number(l.konversi) > 0));
-    if (bad) return `${bad.sku.sku}: lengkapi satuan, konversi, qty (> 0), dan harga.`;
+    const bad = lines.find((l) => !l.uomBeli || isBlank(l.qty) || Number(l.qty) <= 0 || isBlank(l.hargaBeli));
+    if (bad) return `${bad.sku.sku}: lengkapi satuan, qty (> 0), dan harga.`;
+    const unlisted = lines.find((l) => !uomChoices(l).some((u) => u._id === l.uomBeli));
+    if (unlisted) return `${unlisted.sku.sku}: satuan ${uomCode(unlisted.uomBeli) || ''} tidak ada di daftar harga vendor. Pakai satuan dasar atau daftarkan dulu di Vendor Prices.`;
     const keys = lines.map((l) => `${l.sku._id}:${l.uomBeli}`);
     if (new Set(keys).size !== keys.length) return 'Ada SKU dengan satuan yang sama lebih dari sekali. Gabungkan qty-nya.';
     return null;
@@ -469,7 +500,9 @@ export default function PurchaseOrderDetail() {
                     const price = l.prices.find((p) => p.uomBeli?._id === l.uomBeli);
                     const belowMin = price?.minOrder && Number(l.qty) > 0 && Number(l.qty) < price.minOrder;
                     const priceDiff = price && !isBlank(l.hargaBeli) && Number(l.hargaBeli) !== price.hargaBeli;
-                    const uomOptions = options.uoms;
+                    const choices = editable ? uomChoices(l) : [];
+                    const unlisted = editable && l.uomBeli && !choices.some((u) => u._id === l.uomBeli);
+                    const takenUoms = new Set(lines.filter((o) => o.key !== l.key && o.sku._id === l.sku._id).map((o) => o.uomBeli));
                     const sub = isBlank(l.qty) || isBlank(l.hargaBeli) ? null : lineSubtotal(l);
                     const done = l.qtyReceived >= l.qty;
                     return (
@@ -482,27 +515,26 @@ export default function PurchaseOrderDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           {editable ? (
                             <select aria-label={`UoM ${l.sku.sku}`} value={l.uomBeli} disabled={busy}
-                              onChange={(e) => changeUom(l, e.target.value)} className={`${cellInput} px-1`}>
-                              <option value="">—</option>
-                              {uomOptions.map((u) => (
-                                <option key={u._id} value={u._id}>
-                                  {u.code}{l.prices.some((p) => p.uomBeli?._id === u._id) ? ' ★' : ''}
+                              onChange={(e) => changeUom(l, e.target.value)} className={`${cellInput} px-1 ${unlisted ? 'border-danger' : ''}`}>
+                              {unlisted && <option value={l.uomBeli}>{uomCode(l.uomBeli) || '?'} (tidak terdaftar)</option>}
+                              {choices.map((u) => (
+                                <option key={u._id} value={u._id} disabled={takenUoms.has(u._id)}>
+                                  {u.code}{u.price ? ' ★' : ''}
                                 </option>
                               ))}
                             </select>
                           ) : uomCode(l.uomBeli)}
-                          {editable && <div className="text-[10px] text-muted mt-0.5">★ = ada harga vendor</div>}
+                          {unlisted
+                            ? <div className="text-[10px] text-danger mt-0.5">tidak ada di daftar harga vendor</div>
+                            : editable && <div className="text-[10px] text-muted mt-0.5">★ = daftar harga vendor</div>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
-                          {editable ? (
-                            <input aria-label={`Conversion ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.konversi} disabled={busy}
-                              onChange={(e) => setLine(l.key, { konversi: e.target.value })} className={`${cellInput} text-right tabular-nums`} />
-                          ) : <span className="tabular-nums">{formatNumber(l.konversi)}</span>}
+                          <span className="tabular-nums" title="Dari daftar harga vendor (satuan dasar = 1)">{unlisted ? '-' : formatNumber(l.konversi)}</span>
                           <div className="text-[10px] text-muted mt-0.5">{l.sku.baseUom}</div>
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
-                            <input aria-label={`Qty ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.qty} disabled={busy}
+                            <input id={`po-qty-${l.key}`} aria-label={`Qty ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.qty} disabled={busy}
                               onChange={(e) => setLine(l.key, { qty: e.target.value })} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{formatNumber(l.qty)}</span>}
                           {belowMin && <div className="text-[10px] text-warning-fg mt-0.5">min. order {formatNumber(price.minOrder)}</div>}

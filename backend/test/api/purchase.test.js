@@ -6,8 +6,12 @@ const { ok, createMasters, createProduct, postAdjustment } = require('../helpers
 const t = useTestApp();
 const skuDoc = (id) => t.model('ProdukSku').findById(id).lean();
 
+/** Harga vendor BOX isi 12 (satuan beli selain satuan dasar wajib ada di daftar harga vendor) */
+const boxPrice = (admin, m, sku) => admin.post('/api/vendor-price', { vendor: m.vendor._id, skus: [sku._id], uomBeli: m.box._id, konversi: 12, hargaBeli: 120000 });
+
 /** PO terbit: BOX isi 12 @120.000 -10% dan PCS @11.000 */
 async function issuedPo(admin, m, sku, extra = {}) {
+  if (!(await t.model('VendorPrice').exists({ vendor: m.vendor._id, sku: sku._id, uomBeli: m.box._id }))) ok(await boxPrice(admin, m, sku), 201);
   return ok(await admin.post('/api/purchase-order', {
     vendor: m.vendor._id, gudang: m.gudang._id, issue: true,
     lines: [
@@ -56,10 +60,39 @@ test('PO item search: vendor scope vs all SKU', async () => {
   assert.equal(wide.find((r) => String(r._id) === String(other._id)).prices.length, 0);
 });
 
+test('PO UoM: base unit or vendor price list only; conversion comes from the source', async () => {
+  const admin = await t.loginAs();
+  const m = await createMasters(admin);
+  const sku = await createProduct(admin, m, 'UoM Rule');
+  const po = (lines) => admin.post('/api/purchase-order', { vendor: m.vendor._id, gudang: m.gudang._id, lines });
+
+  // BOX belum ada di daftar harga vendor -> ditolak
+  const rejected = await po([{ sku: sku._id, uomBeli: m.box._id, konversi: 12, qty: 1, hargaBeli: 1000 }]);
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.message, /not in the vendor's price list/);
+
+  // satuan dasar: konversi selalu 1, meski klien mengirim angka lain
+  const base = ok(await po([{ sku: sku._id, uomBeli: m.pcs._id, konversi: 5, qty: 2, hargaBeli: 1000 }]), 201);
+  assert.equal(base.lines[0].konversi, 1);
+
+  // satuan dari daftar harga: konversi dari VendorPrice
+  ok(await boxPrice(admin, m, sku), 201);
+  const listed = ok(await po([{ sku: sku._id, uomBeli: m.box._id, konversi: 99, qty: 1, hargaBeli: 1000 }]), 201);
+  assert.equal(listed.lines[0].konversi, 12);
+
+  // SKU + UoM yang sama dua kali -> ditolak
+  const dup = await po([
+    { sku: sku._id, uomBeli: m.pcs._id, qty: 1, hargaBeli: 1 },
+    { sku: sku._id, uomBeli: m.pcs._id, qty: 2, hargaBeli: 1 },
+  ]);
+  assert.equal(dup.status, 400);
+});
+
 test('PO: totals, issue snapshot, only draft editable', async () => {
   const admin = await t.loginAs();
   const m = await createMasters(admin);
   const sku = await createProduct(admin, m, 'PO Item');
+  ok(await boxPrice(admin, m, sku), 201);
   const draft = ok(await admin.post('/api/purchase-order', {
     vendor: m.vendor._id, gudang: m.gudang._id,
     lines: [{ sku: sku._id, uomBeli: m.box._id, konversi: 12, qty: 10, hargaBeli: 120000, diskonPersen: 10 }],

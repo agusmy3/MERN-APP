@@ -20,7 +20,15 @@ const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 
   focus:outline-none focus:border-primary`;
 const keyOf = (r) => `${r.sku._id}:${r.gudang._id}`;
 
-// rencana pesan per baris (bisa diubah sebelum Create PO): vendor, satuan beli, konversi, qty, harga
+// rencana pesan per baris (bisa diubah sebelum Create PO): vendor, satuan beli, qty, harga.
+// Satuan beli = daftar harga vendor tsb atau satuan dasar; konversi mengikuti pilihan (tidak diketik).
+const uomChoicesOf = (r, vendor) => {
+  const list = (r.priceOptions || [])
+    .filter((o) => String(o.vendor) === String(vendor))
+    .map((o) => ({ _id: o.uomBeli?._id, code: o.uomBeli?.code, konversi: o.konversi, option: o }));
+  if (r.uomId && !list.some((u) => u._id === r.uomId)) list.push({ _id: r.uomId, code: r.uom, konversi: 1, option: null });
+  return list.filter((u) => u._id);
+};
 const planOf = (r) => (r.suggestion ? {
   vendor: r.suggestion.vendor?._id || '',
   uomBeli: r.suggestion.uomBeli?._id || '',
@@ -83,6 +91,29 @@ export default function Reorder() {
   useEffect(() => { load(); }, [load]);
 
   const setPlan = (key, patch) => setPlans((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  // ganti vendor: pakai satuan dari daftar harga vendor tsb (utama dulu), jika tidak ada -> satuan dasar
+  const changeVendor = (r, vendor) => {
+    const choices = uomChoicesOf(r, vendor).sort((a, b) => Number(!!b.option?.isPreferred) - Number(!!a.option?.isPreferred));
+    const c = choices[0];
+    setPlan(keyOf(r), {
+      vendor,
+      uomBeli: c?._id || '',
+      konversi: c?.konversi ?? 1,
+      hargaBeli: c?.option?.hargaBeli ?? '',
+      ...(c && r.suggestedQty > 0 ? { qty: Math.max(Math.ceil(r.suggestedQty / c.konversi), c.option?.minOrder || 0) } : {}),
+    });
+  };
+  const changeUom = (r, uomId) => {
+    const p = plans[keyOf(r)] || {};
+    const c = uomChoicesOf(r, p.vendor).find((u) => u._id === uomId);
+    if (!c) return;
+    setPlan(keyOf(r), {
+      uomBeli: uomId,
+      konversi: c.konversi,
+      ...(c.option?.hargaBeli !== undefined ? { hargaBeli: c.option.hargaBeli } : {}),
+      ...(r.suggestedQty > 0 ? { qty: Math.max(Math.ceil(r.suggestedQty / c.konversi), c.option?.minOrder || 0) } : {}),
+    });
+  };
   const toggle = (key, checked) => setSelected((prev) => {
     const next = new Set(prev);
     if (checked) next.add(key); else next.delete(key);
@@ -97,9 +128,10 @@ export default function Reorder() {
     const items = selectedRows.map((r) => ({ sku: r.sku._id, gudang: r.gudang._id, ...plans[keyOf(r)] }));
     const bad = selectedRows.find((r) => {
       const p = plans[keyOf(r)];
-      return !p.vendor || !p.uomBeli || !(Number(p.qty) > 0) || p.hargaBeli === '' || !(Number(p.konversi) > 0);
+      return !p.vendor || !p.uomBeli || !(Number(p.qty) > 0) || p.hargaBeli === ''
+        || !uomChoicesOf(r, p.vendor).some((u) => u._id === p.uomBeli);
     });
-    if (bad) return toast.warning(`${bad.sku.sku}: lengkapi vendor, satuan, konversi, qty, dan harga.`);
+    if (bad) return toast.warning(`${bad.sku.sku}: lengkapi vendor, satuan (dari daftar harga vendor atau satuan dasar), qty, dan harga.`);
     const groups = new Set(items.map((i) => `${i.vendor}:${i.gudang}`)).size;
     const ok = await confirm({
       title: 'Create purchase orders?',
@@ -228,21 +260,20 @@ export default function Reorder() {
                     {poPerm.canCreate && (
                       <>
                         <td className="px-2 py-1.5 border-t border-line-soft">
-                          <select aria-label={`Vendor ${r.sku.sku}`} value={p.vendor} onChange={(e) => setPlan(key, { vendor: e.target.value })} className={`${cellInput} px-1`}>
+                          <select aria-label={`Vendor ${r.sku.sku}`} value={p.vendor} onChange={(e) => changeVendor(r, e.target.value)} className={`${cellInput} px-1`}>
                             <option value="">— vendor —</option>
                             {options.vendors.map((v) => <option key={v._id} value={v._id}>{v.companyName}</option>)}
                           </select>
                           {r.suggestion?.isPreferred && <div className="text-[10px] text-muted mt-0.5">vendor utama</div>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
-                          <select aria-label={`UoM ${r.sku.sku}`} value={p.uomBeli} onChange={(e) => setPlan(key, { uomBeli: e.target.value })} className={`${cellInput} px-1`}>
-                            <option value="">—</option>
-                            {options.uoms.map((u) => <option key={u._id} value={u._id}>{u.code}</option>)}
+                          <select aria-label={`UoM ${r.sku.sku}`} value={p.uomBeli} disabled={!p.vendor} onChange={(e) => changeUom(r, e.target.value)} className={`${cellInput} px-1`}>
+                            {!p.vendor && <option value="">—</option>}
+                            {uomChoicesOf(r, p.vendor).map((u) => <option key={u._id} value={u._id}>{u.code}{u.option ? ' ★' : ''}</option>)}
                           </select>
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
-                          <input aria-label={`Conversion ${r.sku.sku}`} type="number" min="0.01" step="0.01" value={p.konversi}
-                            onChange={(e) => setPlan(key, { konversi: e.target.value })} className={`${cellInput} text-right tabular-nums`} />
+                          <div className="px-2 py-1 text-right tabular-nums" title="Dari daftar harga vendor (satuan dasar = 1)">{p.vendor ? formatNumber(p.konversi) : '-'}</div>
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <input aria-label={`Qty ${r.sku.sku}`} type="number" min="0.01" step="0.01" value={p.qty}

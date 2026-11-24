@@ -49,6 +49,11 @@ test('alerts: OUT / CRITICAL / ORDERED with open PO counted, suggestion in purch
   assert.equal(byName('Kritis').suggestedQty, 95);
   assert.equal(byName('Kritis').suggestion.qty, 8);          // ceil(95 / 12)
   assert.equal(byName('Habis').suggestion.value, 600000);
+  const opt = byName('Habis').priceOptions;
+  assert.equal(opt.length, 1);
+  assert.equal(opt[0].konversi, 12);
+  assert.equal(String(opt[0].vendor), String(m.vendor._id));
+  assert.equal(opt[0].hargaBeli, 120000);
 
   // PO terbuka menutupi kekurangan -> ORDERED, tidak disarankan lagi
   ok(await admin.post('/api/purchase-order', {
@@ -81,6 +86,7 @@ test('create PO from alerts: one draft per vendor + warehouse; needs purchaseOrd
     { sku: b._id, gudang: m.gudang._id, vendor: m.vendor._id, uomBeli: m.box._id, konversi: 12, qty: 2, hargaBeli: 10000 },
     { sku: c._id, gudang: m.gudang._id, vendor: v2._id, uomBeli: m.pcs._id, konversi: 1, qty: 1, hargaBeli: 500 },
   ];
+  ok(await admin.post('/api/vendor-price', { vendor: m.vendor._id, skus: [b._id], uomBeli: m.box._id, konversi: 12, hargaBeli: 10000 }), 201);
   const viewer = await t.loginAs({ reorder: [] });
   assert.equal((await viewer.post('/api/reorder/create-po', { items })).status, 403);
 

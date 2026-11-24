@@ -138,6 +138,7 @@ exports.getAlerts = async (req, res) => {
 
     // vendor utama (atau satu-satunya harga) per SKU -> saran dalam satuan beli
     const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
+    const showPrice = canSeeCost || hasPermission(req.user, 'purchaseOrder', 'create');
     const prices = await VendorPrice.find({ sku: { $in: rows.map((r) => r.sku._id) } })
       .populate('vendor', 'companyName').populate('uomBeli', 'code').lean();
     const bySku = new Map();
@@ -146,6 +147,15 @@ exports.getAlerts = async (req, res) => {
       const list = bySku.get(String(r.sku._id)) || [];
       const price = list.find((p) => p.isPreferred) || (list.length === 1 ? list[0] : null);
       r.vendorPriceCount = list.length;
+      // pilihan satuan beli per vendor (rencana pesan hanya boleh memakai ini atau satuan dasar)
+      r.priceOptions = list.map((p) => ({
+        vendor: p.vendor?._id || p.vendor,
+        uomBeli: p.uomBeli,
+        konversi: p.konversi,
+        minOrder: p.minOrder || null,
+        isPreferred: !!p.isPreferred,
+        ...(showPrice ? { hargaBeli: p.hargaBeli } : {}),
+      }));
       if (price) {
         let qty = r.suggestedQty > 0 ? Math.ceil(r.suggestedQty / price.konversi) : 0;
         if (qty > 0 && price.minOrder && qty < price.minOrder) qty = price.minOrder;
@@ -155,7 +165,7 @@ exports.getAlerts = async (req, res) => {
           konversi: price.konversi,
           qty,
           isPreferred: !!price.isPreferred,
-          ...(canSeeCost || hasPermission(req.user, 'purchaseOrder', 'create')
+          ...(showPrice
             ? { hargaBeli: price.hargaBeli, value: round2(qty * price.hargaBeli) }
             : {}),
         };

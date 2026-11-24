@@ -68,8 +68,8 @@ const parsePo = (body) => {
     if (seen.has(key)) throw new HttpError(`${n}: the same SKU & UoM appears more than once`, 400);
     seen.add(key);
 
+    // konversi tidak diambil dari input: diisi resolveRefs dari daftar harga vendor / satuan dasar
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true })
-      || checkAmount(l.konversi, 'Conversion', { min: 0, exclusive: true })
       || checkAmount(l.hargaBeli, 'Price')
       || checkAmount(l.diskonPersen ?? 0, 'Discount');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
@@ -79,7 +79,6 @@ const parsePo = (body) => {
     const line = {
       sku: String(l.sku),
       uomBeli: String(l.uomBeli),
-      konversi: round2(l.konversi),
       qty: round2(l.qty),
       hargaBeli: round2(l.hargaBeli),
       diskonPersen,
@@ -93,7 +92,11 @@ const parsePo = (body) => {
   return { vendor: String(body.vendor), gudang: String(body.gudang), date, expectedDate, taxRate, note: trimText(body.note), lines };
 };
 
-/** Referensi di dalam transaksi + kunci (bentrok dengan hapus vendor/gudang/UoM/produk). Mengisi line.produk. */
+/**
+ * Referensi di dalam transaksi + kunci (bentrok dengan hapus vendor/gudang/UoM/produk). Mengisi line.produk
+ * dan line.konversi. Satuan beli yang sah: satuan dasar produk (konversi 1) atau satuan yang ada di daftar
+ * harga vendor tsb untuk SKU itu (konversi dari VendorPrice). Satuan lain -> daftarkan dulu di Vendor Prices.
+ */
 const resolveRefs = async (parsed) => {
   const skuIds = parsed.lines.map((l) => l.sku);
   const uomIds = [...new Set(parsed.lines.map((l) => l.uomBeli))];
@@ -114,8 +117,25 @@ const resolveRefs = async (parsed) => {
   if (skus.length !== new Set(skuIds).size) throw new HttpError('One or more SKUs no longer exist', 400);
   const inactive = skus.find((s) => s.isActive === false);
   if (inactive) throw new HttpError(`${inactive.sku} is inactive and cannot be ordered`, 400);
-  const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
-  parsed.lines.forEach((l) => { l.produk = produkOf.get(l.sku); });
+  const skuOf = new Map(skus.map((s) => [String(s._id), s]));
+  const produks = await Produk.find({ _id: { $in: [...new Set(skus.map((s) => String(s.produk)))] } }).select('uom').lean();
+  const baseUomOf = new Map(produks.map((p) => [String(p._id), String(p.uom)]));
+  const prices = await VendorPrice.find({ vendor: parsed.vendor, sku: { $in: skuIds } }).select('sku uomBeli konversi').lean();
+  const konversiOf = new Map(prices.map((p) => [`${p.sku}:${p.uomBeli}`, p.konversi]));
+
+  parsed.lines.forEach((l, i) => {
+    const sku = skuOf.get(l.sku);
+    l.produk = sku.produk;
+    const listed = konversiOf.get(`${l.sku}:${l.uomBeli}`);
+    if (listed !== undefined) l.konversi = listed;
+    else if (baseUomOf.get(String(sku.produk)) === l.uomBeli) l.konversi = 1;
+    else {
+      throw new HttpError(
+        `Line ${i + 1}: ${sku.sku} - this UoM is not in the vendor's price list. Use the base unit or add it in Vendor Prices first`,
+        400
+      );
+    }
+  });
 };
 
 /** Terapkan isi PO + snapshot setting pajak + total */
