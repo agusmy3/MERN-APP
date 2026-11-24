@@ -13,6 +13,7 @@ const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { generateSkuCode } = require('../helpers/skuHelper');
 const { skusWithStockHistory } = require('../helpers/stockHelper');
+const { assertConvertible } = require('../helpers/uomHelper');
 
 const SORTABLE_FIELDS = ['name', 'createdDate', 'updatedDate'];
 
@@ -220,6 +221,12 @@ exports.updateProduk = async (req, res) => {
       );
       const refError = await validateRefs({ kategori, uom, variants });
       if (refError) throw new HttpError(refError, 400);
+
+      // ganti satuan dasar: harga vendor yang ada harus tetap bisa dikonversi ke satuan baru
+      if (String(uom) !== String(produk.uom)) {
+        const prices = await VendorPrice.find({ produk: produk._id }).select('uomBeli konversi').lean();
+        await assertConvertible(prices.map((p) => ({ purchaseId: p.uomBeli, baseId: uom, konversi: p.konversi, label: 'Existing vendor price' })));
+      }
 
       const before = await audit.snap('produk', [produk]);
       const batchId = audit.newBatchId();

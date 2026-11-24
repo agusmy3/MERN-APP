@@ -15,7 +15,7 @@ const { dropdownHandler } = require('../helpers/dropdownHelper');
 
 // Izin: view = lihat/cari/detail, create/update/delete sesuai operasi (lihat config/permissions.js)
 // /dropdown cukup login: untuk pilihan di form resource lain, hanya field ringkas
-router.get('/dropdown', protect, dropdownHandler(Uom, '_id code name', { code: 1 }));
+router.get('/dropdown', protect, dropdownHandler(Uom, '_id code name type', { code: 1 }));
 router.get('/all', protect, authorize('uom', 'view'), getAllUom);
 router.get('/', protect, authorize('uom', 'view'), getUom);
 router.get('/:id', protect, authorize('uom', 'view'), getSingleUom);

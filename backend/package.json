@@ -14,6 +14,7 @@
     "migrate:produk-sku": "node scripts/migrate-produk-sku.js",
     "migrate:stock-opening": "node scripts/migrate-stock-opening.js",
     "migrate:avg-cost": "node scripts/migrate-avg-cost.js",
+    "migrate:uom-type": "node scripts/migrate-uom-type.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",
     "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",

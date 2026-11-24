@@ -10,6 +10,15 @@ const {
 const audit = require('../helpers/auditLogger');
 const { checkAmount, round2 } = require('../helpers/number');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+const Produk = require('../models/Produk');
+const { assertConvertible } = require('../helpers/uomHelper');
+
+/** satuan beli harus bisa dikonversi ke satuan dasar tiap produk (lihat config/uom.js) */
+const checkConversion = async (produkIds, uomBeli, konversi) => {
+  const produks = await Produk.find({ _id: { $in: produkIds } }).select('name uom').lean();
+  await lock(produks.map((p) => ref('uom', p.uom))); // bentrok dengan ganti jenis UoM dasar
+  await assertConvertible(produks.map((p) => ({ purchaseId: uomBeli, baseId: p.uom, konversi, label: p.name })));
+};
 
 const handleError = (res, error) => {
   if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
@@ -115,6 +124,7 @@ exports.createVendorPrice = async (req, res) => {
       );
       const skus = await ProdukSku.find({ _id: { $in: skuIds } }).select('produk').lean();
       if (skus.length !== skuIds.length) throw new HttpError('One or more SKUs are not valid', 400);
+      await checkConversion([...new Set(skus.map((s) => String(s.produk)))], uomBeli, round2(konversi));
 
       // nilai lama (untuk audit) dari harga yang akan ditimpa oleh upsert
       const existing = await VendorPrice.find({ vendor, uomBeli, sku: { $in: skuIds } }).lean();
@@ -190,6 +200,7 @@ exports.updateVendorPrice = async (req, res) => {
 
       if (uomBeli !== undefined) price.uomBeli = uomBeli;
       if (konversi !== undefined) price.konversi = round2(konversi);
+      await checkConversion([price.produk], price.uomBeli, price.konversi);
       if (hargaBeli !== undefined) price.hargaBeli = round2(hargaBeli);
       if (isPreferred !== undefined) price.isPreferred = !!isPreferred;
       if (minOrder !== undefined) price.minOrder = toMinOrder(minOrder);

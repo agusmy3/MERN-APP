@@ -9,6 +9,7 @@
  * 3. seed:admin      -> Super Admin pertama (jika belum ada user)
  * 4. seed:rbac       -> role Super Admin, menu & tautan resource
  * 5. menu:organize   -> susunan & urutan menu standar (--apply)
+ * 6. migrate:uom-type -> isi jenis UoM yang masih kosong dari kodenya
  * Data contoh (opsional, terpisah): npm run seed:demo
  */
 const path = require('path');
@@ -57,6 +58,7 @@ async function main() {
   step('3. Super Admin pertama (seed:admin)', 'seed-admin.js', passArgs);
   step('4. Role & menu (seed:rbac)', 'seed-rbac.js');
   step('5. Susunan menu (menu:organize)', 'organize-menu.js', ['--apply']);
+  step('6. Jenis UoM lama (migrate:uom-type)', 'migrate-uom-type.js');
 
   console.log('\nDatabase siap. Jalankan backend: npm run dev. Data contoh (opsional): npm run seed:demo');
 }

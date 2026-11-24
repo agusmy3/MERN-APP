@@ -24,7 +24,7 @@ async function main() {
 
   let pcs = await Uom.findOne({ code: 'PCS' });
   if (!pcs) {
-    pcs = await Uom.create({ code: 'PCS', name: 'Pieces', deskripsi: 'Satuan per buah', createdBy: admin?._id });
+    pcs = await Uom.create({ code: 'PCS', name: 'Pieces', type: 'COUNT', deskripsi: 'Satuan per buah', createdBy: admin?._id });
     console.log('[+] UoM PCS dibuat');
   } else {
     console.log('[=] UoM PCS sudah ada');

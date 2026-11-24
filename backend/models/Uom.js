@@ -1,8 +1,11 @@
 const mongoose = require('mongoose');
+const { UOM_TYPES } = require('../config/uom');
 
 const uomSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true, uppercase: true, trim: true }, // contoh: PCS, KG, BOX
   name: { type: String, required: true, trim: true },                              // contoh: Pieces, Kilogram
+  // jenis satuan (config/uom.js); null = data lama belum diisi (konversi tidak dicek)
+  type: { type: String, enum: [...Object.keys(UOM_TYPES), null], default: null },
   deskripsi: { type: String },
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

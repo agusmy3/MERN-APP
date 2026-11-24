@@ -106,6 +106,7 @@ const ENTITIES = {
     fields: {
       code: { label: 'Code' },
       name: { label: 'Name' },
+      type: { label: 'Type', labels: require('../config/uom').UOM_TYPES },
       deskripsi: { label: 'Description' },
     },
     label: (doc) => `${doc.code} — ${doc.name}`,

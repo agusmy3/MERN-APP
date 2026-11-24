@@ -65,11 +65,11 @@ async function main() {
       makanan: await findOrCreate(Kategori, 'kategori', { name: 'Makanan & Minuman' }, { deskripsi: 'Produk konsumsi' }),
     };
     const uom = {
-      pcs: await findOrCreate(Uom, 'uom', { code: 'PCS' }, { name: 'Pieces', deskripsi: 'Satuan per buah' }),
-      box: await findOrCreate(Uom, 'uom', { code: 'BOX' }, { name: 'Box' }),
-      dus: await findOrCreate(Uom, 'uom', { code: 'DUS' }, { name: 'Dus / Karton' }),
-      kg: await findOrCreate(Uom, 'uom', { code: 'KG' }, { name: 'Kilogram' }),
-      sak: await findOrCreate(Uom, 'uom', { code: 'SAK' }, { name: 'Sak (25 kg)' }),
+      pcs: await findOrCreate(Uom, 'uom', { code: 'PCS' }, { name: 'Pieces', type: 'COUNT', deskripsi: 'Satuan per buah' }),
+      box: await findOrCreate(Uom, 'uom', { code: 'BOX' }, { name: 'Box', type: 'PACK' }),
+      dus: await findOrCreate(Uom, 'uom', { code: 'DUS' }, { name: 'Dus / Karton', type: 'PACK' }),
+      kg: await findOrCreate(Uom, 'uom', { code: 'KG' }, { name: 'Kilogram', type: 'WEIGHT' }),
+      sak: await findOrCreate(Uom, 'uom', { code: 'SAK' }, { name: 'Sak (25 kg)', type: 'PACK' }),
     };
     const color = await findOrCreate(Variant, 'variant', { code: 'COLOR' }, { name: 'Warna', values: ['Merah', 'Biru', 'Hitam'] });
     const size = await findOrCreate(Variant, 'variant', { code: 'SIZE' }, { name: 'Ukuran', values: ['S', 'M', 'L'] });

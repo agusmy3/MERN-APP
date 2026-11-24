@@ -63,3 +63,12 @@ test('audit formatting helpers', () => {
   assert.match(summarizeGroup(groups[0].logs), /2 SKU/);
   assert.equal(summarizeGroup(groups[1].logs), 'Created Product');
 });
+
+test('UoM conversion rule: same type or package', async () => {
+  const { canConvert } = await import('../src/utils/uomMeta.js');
+  assert.equal(canConvert('WEIGHT', 'COUNT'), false);
+  assert.equal(canConvert('PACK', 'COUNT'), true);
+  assert.equal(canConvert('WEIGHT', 'WEIGHT'), true);
+  assert.equal(canConvert('COUNT', 'PACK'), true);
+  assert.equal(canConvert(null, 'COUNT'), true);
+});

@@ -19,7 +19,7 @@ Tidak ada package.json di root; backend dan frontend dijalankan terpisah.
 npm run dev      # node --watch server.js, auto-restart saat file berubah
 npm start        # node server.js
 npm test         # semua test (unit + API); npm run test:unit | test:api | test:watch
-npm run db:init -- --email=<email> --password=<password>  # SIAPKAN DATABASE (baru/lama), idempotent: cek replica set, koleksi & index (hanya menambah), Super Admin pertama (jika belum ada user), seed:rbac, menu:organize --apply
+npm run db:init -- --email=<email> --password=<password>  # SIAPKAN DATABASE (baru/lama), idempotent: cek replica set, koleksi & index (hanya menambah), Super Admin pertama (jika belum ada user), seed:rbac, menu:organize --apply, migrate:uom-type
 npm run seed:admin -- --email=... --password=...  # Super Admin pertama, hanya jika belum ada user (atau ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME di .env; password min. 8)
 npm run seed:demo  # data contoh (4 produk, 12 SKU, 2 gudang, 3 vendor fiktif, stok awal ber-HPP, reorder, PO terlambat, draft); DITOLAK jika sudah ada produk
 npm run seed:rbac  # migrasi RBAC (idempotent): role Super Admin -> admin@mern.com, tautkan Menu ke resource, buat menu User, Role, Audit Log, System Settings, Warehouse, grup Inventory (Stock Adjustment, Stock Transfer, Stock Movement, Reorder, Stock Valuation, Cost Revaluation) & grup Purchasing (Purchase Order, Goods Receipt)
@@ -27,6 +27,7 @@ npm run menu:organize  # rapikan menu ke susunan standar (Dashboard, Master Data
 npm run migrate:produk-sku  # migrasi produk lama (idempotent): UoM PCS, 1 SKU default per produk (harga -> hargaJual, qty -> stok)
 npm run migrate:stock-opening  # (idempotent) gudang MAIN + 1 dokumen Saldo Awal (POSTED) untuk stok SKU yang belum punya kartu stok; argumen opsional: kode gudang
 npm run migrate:avg-cost       # (idempotent) HPP awal SKU yang kosong = harga vendor utama / termurah per satuan dasar
+npm run migrate:uom-type       # (idempotent) isi jenis UoM yang kosong dari kodenya (PCS -> Count, KG -> Weight, BOX -> Package), laporkan harga vendor yang konversinya tidak cocok
 npm run stock:reconcile        # cek StockBalance & ProdukSku.stok vs kartu stok; `-- --fix` menulis ulang cache dari movement
 npm run rs:init  # inisialisasi replica set 1 node (idempotent; biasanya lewat setup-replica-set.ps1)
 ```
@@ -182,7 +183,7 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
 | Kategori | `name`, `deskripsi` |
 | Produk | Induk produk: `name`, `deskripsi`, `kategori` (ref), `uom` (ref Uom, satuan dasar stok & jual), `variants` (ref Variant[], jenis varian; kosong = tanpa varian). **Tidak** menyimpan harga/stok. |
 | ProdukSku | Unit yang distok & dijual: `produk`, `sku` (unique, uppercase), `variantValues` (`[{ variant, value }]`, kosong = SKU default), `comboKey` (unique per produk), `hargaJual`, `stok` (cache total semua gudang, baca saja), `avgCost` (HPP, lihat Stok), `isActive` |
-| VendorPrice | Harga beli terkini: `vendor`, `produk` (disalin dari SKU), `sku`, `uomBeli` (ref Uom), `konversi` (1 uomBeli = N satuan dasar), `hargaBeli` (per uomBeli), `isPreferred` (maks. 1 per SKU), `minOrder`, `catatan`. Unique `(vendor, sku, uomBeli)`. Harga pokok = `hargaBeli / konversi`. |
+| VendorPrice | Harga beli terkini: `vendor`, `produk` (disalin dari SKU), `sku`, `uomBeli` (ref Uom), `konversi` (1 uomBeli = N satuan dasar), `hargaBeli` (per uomBeli), `isPreferred` (maks. 1 per SKU), `minOrder`, `catatan`. Unique `(vendor, sku, uomBeli)`. Harga pokok = `hargaBeli / konversi`. **Konversi harus masuk akal** ([config/uom.js](backend/config/uom.js), [helpers/uomHelper.js](backend/helpers/uomHelper.js)): jenis satuan beli = jenis satuan dasar, atau salah satunya `PACK`; satuan dasar sendiri = konversi 1. Dicek saat simpan harga vendor, ganti satuan dasar produk, dan ganti jenis UoM (ditolak jika membuat harga vendor tidak sah). |
 | Vendor | `companyName`, `picName`, `picContact`, `companyAddress` |
 | Gudang | `code` (unique, uppercase, mis. `MAIN`), `name`, `alamat`, `provinsi`, `kota` (kota/kabupaten), `kecamatan`, `kodePos` (5 digit), `latitude`/`longitude` (derajat desimal, keduanya diisi atau null, 7 desimal), `deskripsi`, `isActive`. Wilayah masih teks bebas (belum master wilayah). |
 | StockBalance | Saldo per `(sku, gudang)` unique: `produk`, `qty` (min. 0). Cache, hanya lewat `applyMovements`. |
@@ -195,7 +196,7 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
 | Setting | `_id` = key, `value`, `updatedDate`, `updatedBy` |
 | ReorderRule | `sku`, `produk`, `gudang`, `minQty`, `maxQty` (unique `(sku, gudang)`) |
 | CostRevaluation | `no` (`REV-YYYYMM-NNNN`), `date`, `note` (alasan, wajib), `status`, `lines: [{ sku, produk, newCost, oldCost, qty, valueChange, note }]`, `posted*`, `cancelled*`/`cancelReason` |
-| Uom | `code` (unique, uppercase, mis. `PCS`), `name`, `deskripsi` |
+| Uom | `code` (unique, uppercase, mis. `PCS`), `name`, `type` (`COUNT|WEIGHT|VOLUME|LENGTH|PACK`, wajib untuk UoM baru; null = data lama, tidak dicek), `deskripsi` |
 | Variant | `code` (unique, uppercase, mis. `COLOR`), `name`, `values` (array string, min. 1, dinormalisasi: trim + tanpa duplikat), `deskripsi` |
 | Menu | `menu`, `parent_id` (ref Menu, hierarki), `component` (path route frontend), `img`, `icon` (class FontAwesome), `deskripsi` (subjudul halaman), `resource` (izin yang dibutuhkan; null = semua user / grup), `order` (urutan di antara saudara; null = paling akhir, lalu nama) |
 

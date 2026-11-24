@@ -15,15 +15,19 @@ import { AuditDetail } from '../components/AuditInfo';
 import { historyAside } from '../utils/historyAside';
 import { auditColumn, actionColumn } from '../utils/tableColumns';
 import { inputClass } from '../utils/formStyles';
+import { UOM_TYPES, uomTypeLabel } from '../utils/uomMeta';
+import useToast from '../hooks/useToast';
 
 const EMPTY_FORM = {
   code: '',
   name: '',
+  type: '',
   deskripsi: ''
 };
 
 export default function Uom() {
   const { user } = useAuth();
+  const toast = useToast();
 
   const fetchUom = useCallback(async (params) => {
     const res = await getUom(user.token, params);
@@ -39,8 +43,16 @@ export default function Uom() {
     toForm: (row) => ({
       code: row.code,
       name: row.name,
+      type: row.type || '',
       deskripsi: row.deskripsi || ''
     }),
+    prepare: (form) => {
+      if (!form.type) {
+        toast.warning('Please select a UoM type');
+        return null;
+      }
+      return form;
+    },
     getLabel: (row) => row.code,
     create: (payload) => createUom(payload, user.token),
     update: (id, payload) => updateUom(id, payload, user.token),
@@ -54,6 +66,12 @@ export default function Uom() {
   const columns = [
     { key: 'code', header: 'Code', sortField: 'code', width: 120, className: 'font-semibold' },
     { key: 'name', header: 'Name', sortField: 'name', width: 200 },
+    {
+      key: 'type',
+      header: 'Type',
+      width: 130,
+      render: (row) => (row.type ? uomTypeLabel(row.type) : <span className="text-danger text-xs" title="Isi jenis satuan supaya konversi harga vendor bisa dicek">not set</span>),
+    },
     { key: 'deskripsi', header: 'Description', width: 300 },
     auditColumn(table.sortField),
     actionColumn(crud),
@@ -96,6 +114,18 @@ export default function Uom() {
             className={inputClass}
             required
           />
+        </FormField>
+
+        <FormField
+          label="Type"
+          htmlFor="uom-type"
+          required
+          hint={form.type ? UOM_TYPES[form.type].hint : 'Menentukan konversi harga vendor yang sah: satuan beli harus sejenis dengan satuan dasar produk, kecuali Package.'}
+        >
+          <select id="uom-type" name="type" value={form.type} onChange={crud.handleChange} className={`${inputClass} text-fg`} required>
+            <option value="">Select type</option>
+            {Object.entries(UOM_TYPES).map(([key, t]) => <option key={key} value={key}>{t.label}</option>)}
+          </select>
         </FormField>
 
         <FormField label="Description" htmlFor="uom-deskripsi">

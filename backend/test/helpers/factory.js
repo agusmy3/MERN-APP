@@ -15,8 +15,8 @@ let codeSeq = 0;
 async function createMasters(admin) {
   codeSeq += 1;
   const kategori = ok(await admin.post('/api/kategori', { name: `Kategori ${codeSeq}` }), 201);
-  const pcs = ok(await admin.post('/api/uom', { code: `PCS${codeSeq}`, name: 'Pieces' }), 201);
-  const box = ok(await admin.post('/api/uom', { code: `BOX${codeSeq}`, name: 'Box' }), 201);
+  const pcs = ok(await admin.post('/api/uom', { code: `PCS${codeSeq}`, name: 'Pieces', type: 'COUNT' }), 201);
+  const box = ok(await admin.post('/api/uom', { code: `BOX${codeSeq}`, name: 'Box', type: 'PACK' }), 201);
   const vendor = ok(await admin.post('/api/vendor', { companyName: `Vendor ${codeSeq}`, picName: 'PIC', picContact: '0800', companyAddress: 'Jl. Test' }), 201);
   const gudang = ok(await admin.post('/api/gudang', { code: `WH${codeSeq}`, name: `Warehouse ${codeSeq}` }), 201);
   return { kategori, pcs, box, vendor, gudang };

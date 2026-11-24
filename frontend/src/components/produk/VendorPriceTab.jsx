@@ -16,6 +16,7 @@ import { AuditCell, AuditDetail } from '../AuditInfo';
 import { actionColumn } from '../../utils/tableColumns';
 import { inputClass } from '../../utils/formStyles';
 import { formatNumber, formatRupiah, variantLabel } from '../../utils/formatHelper';
+import { canConvert, uomTypeLabel } from '../../utils/uomMeta';
 
 const skuText = (sku) => `${sku?.sku || '-'} (${variantLabel(sku)})`;
 
@@ -120,6 +121,11 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
 
   const shown = skuFilter ? prices.filter((p) => p.sku?._id === skuFilter) : prices;
   const selectedUom = uoms.find((u) => u._id === form.uomBeli);
+  // satuan beli yang sah untuk satuan dasar produk ini (config jenis UoM); satuan dasar = konversi 1
+  const baseUomType = uoms.find((u) => u._id === produk.uom?._id)?.type;
+  const uomChoices = uoms.filter((u) => canConvert(u.type, baseUomType) || u._id === form.uomBeli);
+  const isBaseUom = form.uomBeli && form.uomBeli === produk.uom?._id;
+  const invalidUom = selectedUom && !isBaseUom && !canConvert(selectedUom.type, baseUomType);
   const unitPreview = Number(form.konversi) > 0 ? Number(form.hargaBeli || 0) / Number(form.konversi) : null;
 
   const columns = [
@@ -276,15 +282,23 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
               id="price-uom"
               name="uomBeli"
               value={form.uomBeli}
-              onChange={crud.handleChange}
-              className={`${inputClass} text-fg`}
+              onChange={(e) => {
+                const uomBeli = e.target.value;
+                crud.setForm((f) => ({ ...f, uomBeli, ...(uomBeli === produk.uom?._id ? { konversi: 1 } : {}) }));
+              }}
+              className={`${inputClass} text-fg ${invalidUom ? 'border-danger' : ''}`}
               required
             >
               <option value="">Select UoM</option>
-              {uoms.map((u) => (
-                <option key={u._id} value={u._id}>{u.code} — {u.name}</option>
+              {uomChoices.map((u) => (
+                <option key={u._id} value={u._id}>{u.code} — {u.name}{u.type ? ` (${uomTypeLabel(u.type)})` : ''}</option>
               ))}
             </select>
+            {invalidUom && (
+              <p className="mt-1 text-xs text-danger">
+                {selectedUom.code} ({uomTypeLabel(selectedUom.type)}) tidak bisa dikonversi ke {baseUom} ({uomTypeLabel(baseUomType)}).
+              </p>
+            )}
           </FormField>
 
           <FormField label="Conversion" htmlFor="price-konversi" required hint={`1 ${selectedUom?.code || '?'} = ${form.konversi || '?'} ${baseUom}`}>
@@ -296,7 +310,9 @@ export default function VendorPriceTab({ produk, skus, token, onChanged }) {
               step="0.01"
               value={form.konversi}
               onChange={crud.handleChange}
-              className={`${inputClass} text-right`}
+              readOnly={isBaseUom}
+              title={isBaseUom ? 'Satuan dasar: konversi selalu 1' : undefined}
+              className={`${inputClass} text-right ${isBaseUom ? 'bg-subtle' : ''}`}
               required
             />
           </FormField>
