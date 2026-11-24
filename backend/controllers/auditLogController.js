@@ -27,6 +27,7 @@ const ENTITY_RESOURCE = {
   purchaseOrder: 'purchaseOrder',
   goodsReceipt: 'goodsReceipt',
   costRevaluation: 'costRevaluation',
+  reorderRule: 'reorder',
   setting: 'setting',
 };
 
@@ -143,3 +144,6 @@ exports.getAuditLogs = async (req, res) => {
     return errorResponse(res, error.message, 500);
   }
 };
+
+// dipakai dashboard (aktivitas terbaru disaring sesuai izin)
+exports.ENTITY_RESOURCE = ENTITY_RESOURCE;

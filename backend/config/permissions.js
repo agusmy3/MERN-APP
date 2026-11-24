@@ -29,6 +29,8 @@ const RESOURCES = [
   { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // kartu stok & laporan pergerakan (baca saja; stok hanya berubah lewat dokumen)
   { key: 'stockMovement', label: 'Stock Movement', group: 'Inventory', actions: ['view'] },
+  // reorder alert: view = daftar & badge; update = atur min/max per SKU + gudang
+  { key: 'reorder', label: 'Reorder', group: 'Inventory', actions: ['view', 'update'] },
   // revaluasi HPP (data biaya): create/update/delete = draft; post = posting & pembatalan
   { key: 'costRevaluation', label: 'Cost Revaluation', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // PO: create = buat draft / terbitkan; update = ubah draft, close & cancel PO; delete = hapus draft

@@ -210,6 +210,7 @@ exports.deleteSku = async (req, res) => {
       const skuSnap = await audit.snap('produkSku', [sku]);
 
       await VendorPrice.deleteMany({ sku: sku._id });
+      await require('../models/ReorderRule').deleteMany({ sku: sku._id });
       await sku.deleteOne();
 
       const batchId = audit.newBatchId();

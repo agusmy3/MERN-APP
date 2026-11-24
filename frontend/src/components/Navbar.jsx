@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ReorderBadge from './ReorderBadge';
 
 // "Agus Maulana Yusup" -> "AM"
 const getInitials = (name = '') =>
@@ -37,6 +38,7 @@ export default function Navbar({ sidebarOpen, onToggleSidebar }) {
       </div>
 
       <div className="flex items-center gap-2">
+        <ReorderBadge className={iconButton} />
         <Link to="/appearance" className={iconButton} aria-label="Appearance" title="Appearance">
           <i className="fa fa-palette"></i>
         </Link>

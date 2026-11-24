@@ -1,10 +1,9 @@
+/**
+ * Aplikasi Express (route & middleware) TANPA koneksi database dan TANPA listen,
+ * supaya bisa dipakai test (supertest). Server sungguhan dijalankan oleh server.js.
+ */
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
-const connectDB = require('./config/db');
-
-dotenv.config();
-connectDB();
 
 const app = express();
 app.use(cors());
@@ -34,9 +33,10 @@ app.use('/api/stock-adjustment', require('./routes/stockRoutes').adjustment);
 app.use('/api/stock-movement', require('./routes/stockRoutes').movement);
 app.use('/api/stock-valuation', require('./routes/stockRoutes').valuation);
 app.use('/api/cost-revaluation', require('./routes/stockRoutes').revaluation);
+app.use('/api/reorder', require('./routes/stockRoutes').reorder);
 app.use('/api/purchase-order', require('./routes/purchaseRoutes').purchaseOrder);
 app.use('/api/goods-receipt', require('./routes/purchaseRoutes').goodsReceipt);
 app.use('/api/setting', require('./routes/settingRoutes'));
+app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+module.exports = app;

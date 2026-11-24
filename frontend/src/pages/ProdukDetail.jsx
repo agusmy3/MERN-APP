@@ -87,6 +87,7 @@ export default function ProdukDetail() {
   const pricePerm = usePermission('vendorPrice');
   const stockPerm = usePermission('stockMovement');
   const adjustPerm = usePermission('stockAdjustment');
+  const reorderPerm = usePermission('reorder');
   const confirm = useConfirm();
   const toast = useToast();
   const options = useProdukOptions(user.token);
@@ -253,6 +254,8 @@ export default function ProdukDetail() {
                 skus={skuData.skus}
                 token={user.token}
                 canAdjust={adjustPerm.canCreate}
+                canViewReorder={reorderPerm.canView}
+                canEditReorder={reorderPerm.canUpdate}
                 refreshKey={version}
               />
             )}

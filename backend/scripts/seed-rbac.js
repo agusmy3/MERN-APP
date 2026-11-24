@@ -36,6 +36,7 @@ const ROUTE_RESOURCE = {
   '/stock-movement': 'stockMovement',
   '/stock-valuation': 'vendorPrice',
   '/cost-revaluation': 'costRevaluation',
+  '/reorder': 'reorder',
   '/purchase-order': 'purchaseOrder',
   '/goods-receipt': 'goodsReceipt',
   '/settings': 'setting',
@@ -49,6 +50,7 @@ const PURCHASING_MENUS = [
 const INVENTORY_MENUS = [
   { menu: 'Stock Adjustment', component: '/stock-adjustment', icon: 'fa-solid fa-boxes-stacked', resource: 'stockAdjustment', deskripsi: 'Penyesuaian stok & stock opname (draft, posting, pembatalan)' },
   { menu: 'Stock Valuation', component: '/stock-valuation', icon: 'fa-solid fa-sack-dollar', resource: 'vendorPrice', deskripsi: 'Nilai persediaan saat ini: stok x HPP rata-rata' },
+  { menu: 'Reorder', component: '/reorder', icon: 'fa-solid fa-bell', resource: 'reorder', deskripsi: 'SKU yang perlu dipesan ulang (stok <= minimum) & buat draft PO' },
   { menu: 'Cost Revaluation', component: '/cost-revaluation', icon: 'fa-solid fa-scale-balanced', resource: 'costRevaluation', deskripsi: 'Isi / koreksi HPP SKU tanpa mengubah jumlah stok' },
   { menu: 'Stock Movement', component: '/stock-movement', icon: 'fa-solid fa-right-left', resource: 'stockMovement', deskripsi: 'Kartu stok: semua pergerakan stok per SKU dan gudang' },
 ];

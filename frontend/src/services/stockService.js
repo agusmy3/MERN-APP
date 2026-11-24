@@ -77,3 +77,16 @@ export const updateCostRevaluation = (id, data, token) => axios.put(`${REV}/${id
 export const deleteCostRevaluation = (id, token) => axios.delete(`${REV}/${id}`, getHeaders(token));
 export const postCostRevaluation = (id, token) => axios.post(`${REV}/${id}/post`, {}, getHeaders(token));
 export const cancelCostRevaluation = (id, reason, token) => axios.post(`${REV}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Reorder (izin reorder) ----------
+
+const RO = '/api/reorder';
+/** params { status: OUT|CRITICAL|ORDERED|ALL, gudang, kategori, vendor, search } */
+export const getReorderAlerts = async (token, params) => (await axios.get(RO, { ...getHeaders(token), params })).data.data;
+/** -> { OUT, CRITICAL, ORDERED, needAction, monitored } */
+export const getReorderSummary = async (token) => (await axios.get(`${RO}/summary`, getHeaders(token))).data.data;
+export const getReorderRules = async (token, produk) => (await axios.get(`${RO}/rules`, { ...getHeaders(token), params: { produk } })).data.data;
+/** rules: [{ sku, gudang, minQty, maxQty }] (min & max kosong = hapus) */
+export const saveReorderRules = (rules, token) => axios.put(`${RO}/rules`, { rules }, getHeaders(token));
+/** items: [{ sku, gudang, vendor, uomBeli, konversi, qty, hargaBeli }] -> draft PO per vendor + gudang */
+export const createPoFromReorder = (items, token) => axios.post(`${RO}/create-po`, { items }, getHeaders(token));

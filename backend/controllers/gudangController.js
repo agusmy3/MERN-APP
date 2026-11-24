@@ -193,6 +193,7 @@ exports.deleteGudang = async (req, res) => {
       }
 
       const before = await audit.snap('gudang', [gudang]);
+      await require('../models/ReorderRule').deleteMany({ gudang: gudang._id });
       await gudang.deleteOne();
       await audit.logDelete(req, 'gudang', before);
       return gudang;

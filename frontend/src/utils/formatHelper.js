@@ -40,3 +40,9 @@ export const calcMargin = (hargaJual, hargaPokok) => {
 /** Label kombinasi varian SKU: "Merah / M" ("Default" untuk produk tanpa varian) */
 export const variantLabel = (sku) =>
   (sku?.variantValues || []).map((v) => v.value).join(' / ') || 'Default';
+
+/** Angka ringkas untuk sumbu / kartu: 1250000 -> "1,25 jt" */
+export const formatCompact = (value) => Number(value || 0).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 2 });
+
+/** Rupiah ringkas: 1250000 -> "Rp 1,25 jt" */
+export const formatRupiahCompact = (value) => `Rp ${formatCompact(value)}`;

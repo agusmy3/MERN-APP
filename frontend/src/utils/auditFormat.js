@@ -19,6 +19,7 @@ export const ENTITY_META = {
   purchaseOrder: { label: 'Purchase Order', icon: 'fa-file-invoice' },
   goodsReceipt: { label: 'Goods Receipt', icon: 'fa-truck-ramp-box' },
   costRevaluation: { label: 'Cost Revaluation', icon: 'fa-scale-balanced' },
+  reorderRule: { label: 'Reorder Level', icon: 'fa-bell' },
   setting: { label: 'System Settings', icon: 'fa-sliders' },
 };
 

@@ -22,6 +22,7 @@ import GoodsReceipt from './pages/GoodsReceipt';
 import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
 import Settings from './pages/Settings';
 import StockValuation from './pages/StockValuation';
+import Reorder from './pages/Reorder';
 import CostRevaluation from './pages/CostRevaluation';
 import CostRevaluationDetail from './pages/CostRevaluationDetail';
 import NotFound from './pages/NotFound';
@@ -57,6 +58,7 @@ function App() {
         <Route path="/stock-adjustment/:id" element={guard('stockAdjustment', <StockAdjustmentDetail />)} />
         <Route path="/stock-movement" element={guard('stockMovement', <StockMovement />)} />
         {/* nilai persediaan = data biaya -> izin yang sama dengan harga beli */}
+        <Route path="/reorder" element={guard('reorder', <Reorder />)} />
         <Route path="/stock-valuation" element={guard('vendorPrice', <StockValuation />)} />
         <Route path="/cost-revaluation" element={guard('costRevaluation', <CostRevaluation />)} />
         {/* :id = 'new' (?missing=1 = muat SKU tanpa HPP) atau id dokumen */}

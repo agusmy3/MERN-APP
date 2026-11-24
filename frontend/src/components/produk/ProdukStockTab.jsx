@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { getStockBalances } from '../../services/stockService';
+import { getStockBalances, getReorderRules, saveReorderRules } from '../../services/stockService';
+import { getGudangDropdown } from '../../services/gudangService';
+import useToast from '../../hooks/useToast';
 import StockCardDrawer from './StockCardDrawer';
 import { formatNumber, variantLabel } from '../../utils/formatHelper';
 
@@ -10,9 +12,17 @@ import { formatNumber, variantLabel } from '../../utils/formatHelper';
  * jadi bisa dibuka dari link lain dan tombol Back menutupnya.
  * Kolom SKU (kiri) & Total (kanan) menempel saat tabel digeser (banyak gudang).
  * Stok hanya berubah lewat dokumen Stock Adjustment (tombol New Adjustment jika diizinkan).
+ * Reorder (izin reorder): tiap sel menampilkan min/max; mode "Edit reorder levels" (reorder:update)
+ * mengisi min & max per SKU x gudang (kosongkan keduanya = hapus).
  */
-export default function ProdukStockTab({ produk, skus, token, canAdjust, refreshKey }) {
+export default function ProdukStockTab({ produk, skus, token, canAdjust, refreshKey, canViewReorder, canEditReorder }) {
+  const toast = useToast();
   const [balances, setBalances] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [allGudangs, setAllGudangs] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({}); // "sku:gudang" -> { minQty, maxQty }
+  const [saving, setSaving] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,12 +31,67 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
     getStockBalances(token, produk._id).then(setBalances).catch(console.error);
   }, [token, produk._id, refreshKey]);
 
-  // kolom gudang = gudang yang pernah punya saldo untuk produk ini
+  const loadRules = useCallback(() => {
+    if (!canViewReorder) return;
+    getReorderRules(token, produk._id).then(setRules).catch(console.error);
+  }, [token, produk._id, canViewReorder]);
+  useEffect(() => { loadRules(); }, [loadRules, refreshKey]);
+
+  useEffect(() => {
+    if (canEditReorder) getGudangDropdown(token).then((list) => setAllGudangs(list.filter((g) => g.isActive !== false))).catch(console.error);
+  }, [token, canEditReorder]);
+
+  const ruleOf = useMemo(() => {
+    const map = new Map(rules.map((r) => [`${r.sku}:${r.gudang}`, r]));
+    return (skuId, gudangId) => map.get(`${skuId}:${gudangId}`) || null;
+  }, [rules]);
+
+  // kolom gudang = gudang yang pernah punya saldo / rule untuk produk ini (+ semua gudang aktif saat edit)
   const gudangs = useMemo(() => {
     const map = new Map();
     balances.forEach((b) => b.gudang && map.set(b.gudang._id, b.gudang));
+    const known = new Map(allGudangs.map((g) => [g._id, g]));
+    rules.forEach((r) => { if (!map.has(String(r.gudang)) && known.has(String(r.gudang))) map.set(String(r.gudang), known.get(String(r.gudang))); });
+    if (editing) allGudangs.forEach((g) => { if (!map.has(g._id)) map.set(g._id, g); });
     return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
-  }, [balances]);
+  }, [balances, rules, allGudangs, editing]);
+
+  // ---------- edit min / max ----------
+  const startEdit = () => {
+    setDraft(Object.fromEntries(rules.map((r) => [`${r.sku}:${r.gudang}`, { minQty: r.minQty, maxQty: r.maxQty }])));
+    setEditing(true);
+  };
+  const setCell = (key, field, value) => setDraft((d) => ({ ...d, [key]: { ...(d[key] || { minQty: '', maxQty: '' }), [field]: value } }));
+  const saveRules = async () => {
+    const changed = [];
+    for (const s of skus) {
+      for (const g of gudangs) {
+        const key = `${s._id}:${g._id}`;
+        const cur = ruleOf(s._id, g._id);
+        const d = draft[key] || { minQty: '', maxQty: '' };
+        const same = cur ? String(cur.minQty) === String(d.minQty) && String(cur.maxQty) === String(d.maxQty)
+          : d.minQty === '' && d.maxQty === '';
+        if (!same) changed.push({ sku: s._id, gudang: g._id, minQty: d.minQty, maxQty: d.maxQty });
+      }
+    }
+    if (!changed.length) {
+      setEditing(false);
+      return;
+    }
+    const incomplete = changed.find((c) => (c.minQty === '') !== (c.maxQty === ''));
+    if (incomplete) return toast.warning('Isi min dan max sekaligus (atau kosongkan keduanya untuk menghapus).');
+    setSaving(true);
+    try {
+      const res = await saveReorderRules(changed, token);
+      toast.success(res.data.message);
+      setEditing(false);
+      loadRules();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save reorder levels');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const qtyOf = useMemo(() => {
     const map = new Map(balances.map((b) => [`${b.sku}:${b.gudang?._id}`, b.qty]));
@@ -81,10 +146,24 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
             <h3 className="font-semibold text-fg">Stock per warehouse</h3>
             <p className="text-xs text-muted">
               Dalam {uom || 'satuan dasar'}. Klik angka untuk membuka kartu stok. Kolom gudang = gudang yang pernah punya stok produk ini.
+              {canViewReorder && ' Angka kecil = batas reorder min / max.'}
             </p>
           </div>
-          {canAdjust && (
+          {editing ? (
             <div className="flex gap-2">
+              <button type="button" onClick={() => setEditing(false)} disabled={saving} className="px-3 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer">Cancel</button>
+              <button type="button" onClick={saveRules} disabled={saving}
+                className="bg-primary hover:bg-primary-hover text-primary-fg px-3 py-2 rounded text-sm cursor-pointer disabled:opacity-50">
+                <i className="fa fa-save"></i> {saving ? 'Saving...' : 'Save reorder levels'}
+              </button>
+            </div>
+          ) : (canAdjust || canEditReorder) && (
+            <div className="flex gap-2">
+              {canEditReorder && (
+                <button type="button" onClick={startEdit} className="px-3 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer">
+                  <i className="fa fa-bell"></i> Edit reorder levels
+                </button>
+              )}
               <Link to="/stock-adjustment/new?type=OPNAME" className="px-3 py-2 rounded border border-line hover:bg-subtle text-sm">
                 <i className="fa fa-clipboard-check"></i> Stock Opname
               </Link>
@@ -95,7 +174,7 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 340 + gudangs.length * 110 }}>
+          <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 340 + gudangs.length * (editing ? 170 : 110) }}>
             <thead className="text-left">
               <tr>
                 <th className={`${stickyLeft} bg-head text-head-fg px-3 py-2 border-b border-r border-line font-semibold w-64`}>SKU</th>
@@ -117,11 +196,39 @@ export default function ProdukStockTab({ produk, skus, token, canAdjust, refresh
                     </div>
                     <div className="text-xs text-muted truncate max-w-56">{variantLabel(s)}</div>
                   </td>
-                  {gudangs.map((g) => (
-                    <td key={g._id} className="px-1 py-1 border-t border-line-soft">
-                      {cellButton(s, g, formatNumber(qtyOf(s._id, g._id)))}
-                    </td>
-                  ))}
+                  {gudangs.map((g) => {
+                    const key = `${s._id}:${g._id}`;
+                    const qty = qtyOf(s._id, g._id);
+                    const rule = ruleOf(s._id, g._id);
+                    if (editing) {
+                      const d = draft[key] || { minQty: '', maxQty: '' };
+                      return (
+                        <td key={g._id} className="px-1 py-1 border-t border-line-soft">
+                          <div className="flex items-center gap-1">
+                            <input aria-label={`Min ${s.sku} ${g.code}`} type="number" min="0" step="0.01" placeholder="min" value={d.minQty}
+                              onChange={(e) => setCell(key, 'minQty', e.target.value)}
+                              className="w-full bg-input text-fg border border-line rounded px-1.5 py-1 text-xs text-right tabular-nums focus:outline-none focus:border-primary" />
+                            <input aria-label={`Max ${s.sku} ${g.code}`} type="number" min="0" step="0.01" placeholder="max" value={d.maxQty}
+                              onChange={(e) => setCell(key, 'maxQty', e.target.value)}
+                              className="w-full bg-input text-fg border border-line rounded px-1.5 py-1 text-xs text-right tabular-nums focus:outline-none focus:border-primary" />
+                          </div>
+                          <div className="text-[10px] text-muted text-right mt-0.5">stok {formatNumber(qty)}</div>
+                        </td>
+                      );
+                    }
+                    const low = rule && qty <= rule.minQty;
+                    return (
+                      <td key={g._id} className="px-1 py-1 border-t border-line-soft">
+                        {cellButton(s, g, formatNumber(qty))}
+                        {canViewReorder && rule && (
+                          <div className={`text-[10px] text-right px-2 ${low ? 'text-danger font-semibold' : 'text-muted'}`}
+                            title={low ? 'Stok di bawah / sama dengan minimum' : 'Batas reorder'}>
+                            {low && <i className="fa fa-triangle-exclamation mr-0.5"></i>}{formatNumber(rule.minQty)} / {formatNumber(rule.maxQty)}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className={`${stickyRight} px-1 py-1 border-t border-l border-line-soft font-semibold`}>
                     {cellButton(s, null, formatNumber(s.stok))}
                   </td>

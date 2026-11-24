@@ -451,3 +451,17 @@ exports.closePurchaseOrder = async (req, res) => {
     return handleError(res, error);
   }
 };
+
+/**
+ * Buat draft PO di DALAM transaksi yang sedang berjalan (dipakai mis. "Create PO" dari Reorder).
+ * body sama dengan POST /api/purchase-order (tanpa issue). Return dokumen PO.
+ */
+exports.createDraftPoInTransaction = async (req, body) => {
+  const parsed = parsePo(body);
+  await resolveRefs(parsed);
+  const doc = new PurchaseOrder({ no: await nextDocNo('PO'), createdBy: req.user._id });
+  fillPo(doc, parsed, await getSettings());
+  await doc.save();
+  await audit.logCreate(req, 'purchaseOrder', [doc]);
+  return doc;
+};

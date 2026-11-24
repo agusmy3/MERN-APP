@@ -6,7 +6,7 @@
  * Susunan:
  *   Dashboard (/)
  *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Warehouse
- *   Inventory   : Stock Adjustment, Stock Movement, Stock Valuation, Cost Revaluation
+ *   Inventory   : Stock Adjustment, Stock Movement, Reorder, Stock Valuation, Cost Revaluation
  *   Purchasing  : Purchase Order, Goods Receipt
  *   Settings    : User, Role, Menu, System Settings, Audit Log
  *
@@ -48,6 +48,7 @@ const TARGET = [
     children: [
       leaf('/stock-adjustment', 'Stock Adjustment', 'fa-solid fa-boxes-stacked', 'stockAdjustment', 'Penyesuaian stok & stock opname (draft, posting, pembatalan)'),
       leaf('/stock-movement', 'Stock Movement', 'fa-solid fa-right-left', 'stockMovement', 'Kartu stok: semua pergerakan stok per SKU dan gudang'),
+      leaf('/reorder', 'Reorder', 'fa-solid fa-bell', 'reorder', 'SKU yang perlu dipesan ulang (stok <= minimum) & buat draft PO'),
       leaf('/stock-valuation', 'Stock Valuation', 'fa-solid fa-sack-dollar', 'vendorPrice', 'Nilai persediaan saat ini: stok x HPP rata-rata'),
       leaf('/cost-revaluation', 'Cost Revaluation', 'fa-solid fa-scale-balanced', 'costRevaluation', 'Isi / koreksi HPP SKU tanpa mengubah jumlah stok'),
     ],

@@ -187,6 +187,17 @@ const ENTITIES = {
     },
     label: (doc) => doc.no,
   },
+  reorderRule: {
+    fields: {
+      sku: { label: 'SKU', ref: ['ProdukSku', 'sku'] },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      minQty: { label: 'Min', format: 'number' },
+      maxQty: { label: 'Max', format: 'number' },
+    },
+    label: (doc, flat) => `${flat.sku?.text || '?'} @ ${flat.gudang?.text || '?'}`,
+    // histori produk ikut memuat perubahan batas reorder-nya
+    parent: (doc) => ({ entity: 'produk', id: doc.produk?._id ?? doc.produk }),
+  },
   setting: {
     fields: {
       value: { label: 'Value' },

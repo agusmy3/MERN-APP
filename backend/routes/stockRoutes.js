@@ -5,6 +5,7 @@ const adj = require('../controllers/stockAdjustmentController');
 const mov = require('../controllers/stockMovementController');
 const val = require('../controllers/stockValuationController');
 const rev = require('../controllers/costRevaluationController');
+const ro = require('../controllers/reorderController');
 
 /**
  * Stock Adjustment (/api/stock-adjustment)
@@ -45,4 +46,15 @@ revaluation.delete('/:id', protect, authorize('costRevaluation', 'delete'), rev.
 revaluation.post('/:id/post', protect, authorize('costRevaluation', 'post'), rev.postRevaluation);
 revaluation.post('/:id/cancel', protect, authorize('costRevaluation', 'post'), rev.cancelRevaluation);
 
-module.exports = { adjustment, movement, valuation, revaluation };
+/**
+ * Reorder (/api/reorder): alert stok minimum per SKU + gudang.
+ * create-po juga butuh purchaseOrder:create (dicek di controller).
+ */
+const reorder = express.Router();
+reorder.get('/summary', protect, authorize('reorder', 'view'), ro.getSummary);
+reorder.get('/rules', protect, authorize('reorder', 'view'), ro.getRules);
+reorder.put('/rules', protect, authorize('reorder', 'update'), ro.saveRules);
+reorder.post('/create-po', protect, authorize('reorder', 'view'), ro.createPurchaseOrders);
+reorder.get('/', protect, authorize('reorder', 'view'), ro.getAlerts);
+
+module.exports = { adjustment, movement, valuation, revaluation, reorder };
