@@ -13,6 +13,7 @@ const { evaluateRules } = require('./reorderController');
 const { gudangFilter, gudangScope } = require('../helpers/gudangAccess');
 const StockTransfer = require('../models/StockTransfer');
 const { inTransitSummary } = require('./stockTransferController');
+const SalesInvoice = require('../models/SalesInvoice');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -72,6 +73,64 @@ const inventoryWidgets = async (g) => {
     skuWithoutHpp: f.missing?.[0]?.n || 0,
     valueByGudang: clean(f.byGudang),
     valueByKategori: clean(f.byKategori).slice(0, 8),
+  };
+};
+
+/**
+ * Penjualan (invoice POSTED, menurut tanggal invoice): hari ini, bulan ini, per bulan (6 bulan) &
+ * produk terlaris 30 hari. Penjualan = dpp (bersih, tanpa PPN). Laba kotor (dpp - HPP) hanya jika withCost.
+ */
+const salesWidgets = async (tz, withCost, g) => {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth() - 6, 1); // longgar, dipotong per kunci bulan
+  const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const monthKey = dayKey.slice(0, 7);
+  const rows = await SalesInvoice.aggregate([
+    { $match: { status: 'POSTED', date: { $gte: from }, ...g } },
+    {
+      $project: {
+        dpp: 1,
+        profit: { $subtract: ['$dpp', { $ifNull: ['$cogs', 0] }] },
+        day: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: tz } },
+        month: { $dateToString: { format: '%Y-%m', date: '$date', timezone: tz } },
+      }
+    },
+    { $group: { _id: { month: '$month', today: { $eq: ['$day', dayKey] } }, value: { $sum: '$dpp' }, profit: { $sum: '$profit' }, count: { $sum: 1 } } },
+  ]);
+  const byMonth = new Map();
+  const today = { value: 0, profit: 0, count: 0 };
+  for (const r of rows) {
+    const m = byMonth.get(r._id.month) || { value: 0, profit: 0, count: 0 };
+    m.value += r.value; m.profit += r.profit; m.count += r.count;
+    byMonth.set(r._id.month, m);
+    if (r._id.today) Object.assign(today, { value: r.value, profit: r.profit, count: r.count });
+  }
+  const pick = (m) => ({ value: round2(m?.value || 0), count: m?.count || 0, ...(withCost ? { grossProfit: round2(m?.profit || 0) } : {}) });
+  const salesByMonth = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { key, ...pick(byMonth.get(key)) };
+  });
+
+  // produk terlaris 30 hari: pendapatan bersih per SKU (subtotal baris x dpp/subtotal)
+  const since = new Date(Date.now() - 29 * DAY);
+  since.setHours(0, 0, 0, 0);
+  const top = await SalesInvoice.aggregate([
+    { $match: { status: 'POSTED', date: { $gte: since }, ...g } },
+    { $project: { lines: 1, ratio: { $cond: [{ $gt: ['$subtotal', 0] }, { $divide: ['$dpp', '$subtotal'] }, 0] } } },
+    { $unwind: '$lines' },
+    { $group: { _id: '$lines.sku', qty: { $sum: '$lines.qty' }, value: { $sum: { $multiply: ['$lines.subtotal', '$ratio'] } } } },
+    { $sort: { value: -1 } },
+    { $limit: 8 },
+    { $lookup: { from: 'produkskus', localField: '_id', foreignField: '_id', as: 's' } },
+    { $lookup: { from: 'produks', localField: 's.produk', foreignField: '_id', as: 'p' } },
+    { $project: { qty: 1, value: 1, label: { $first: '$s.sku' }, name: { $first: '$p.name' }, produk: { $first: '$p._id' } } },
+  ]);
+
+  return {
+    sales: { today: pick(today), month: { key: monthKey, ...pick(byMonth.get(monthKey)) } },
+    salesByMonth,
+    topProducts: top.map((r) => ({ id: r._id, produk: r.produk, label: r.label || '?', name: r.name, qty: round2(r.qty), value: round2(r.value) })),
   };
 };
 
@@ -203,6 +262,7 @@ exports.getDashboard = async (req, res) => {
       }));
     }
     if (can('purchaseOrder')) jobs.push(purchaseOrderWidgets(gAgg).then((w) => Object.assign(data, w)));
+    if (can('salesInvoice')) jobs.push(salesWidgets(tz, canSeeCost, gAgg).then((w) => Object.assign(data, w)));
 
     // pekerjaan tertunda: draft yang menunggu diposting
     const pending = {};
@@ -215,6 +275,7 @@ exports.getDashboard = async (req, res) => {
       jobs.push(StockTransfer.countDocuments({ status: 'DRAFT', ...from }).then((n) => { pending.stockTransfer = n; }));
       jobs.push(StockTransfer.countDocuments({ status: 'IN_TRANSIT', ...to }).then((n) => { pending.transferIncoming = n; }));
     }
+    if (can('salesInvoice')) jobs.push(SalesInvoice.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.salesInvoice = n; }));
     if (can('costRevaluation')) jobs.push(CostRevaluation.countDocuments({ status: 'DRAFT' }).then((n) => { pending.costRevaluation = n; }));
 
     if (can('goodsReceipt') && canSeeCost) jobs.push(purchasesByMonth(tz, gAgg).then((v) => { data.purchasesByMonth = v; }));

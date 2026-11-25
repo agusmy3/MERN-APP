@@ -10,6 +10,7 @@
  * 6. Membuat menu "Warehouse" (/gudang, di grup yang sama dengan /uom) dan grup "Inventory"
  *    berisi "Stock Adjustment", "Stock Movement" & "Stock Valuation" (/stock-valuation)
  * 7. Grup "Purchasing" (Purchase Order, Goods Receipt) & menu "System Settings" (/settings)
+ * 8. Grup "Sales" (Sales Invoice) & menu "Customer" (/customer, di grup yang sama dengan /vendor)
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -41,7 +42,13 @@ const ROUTE_RESOURCE = {
   '/purchase-order': 'purchaseOrder',
   '/goods-receipt': 'goodsReceipt',
   '/settings': 'setting',
+  '/customer': 'customer',
+  '/sales-invoice': 'salesInvoice',
 };
+
+const SALES_MENUS = [
+  { menu: 'Sales Invoice', component: '/sales-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'salesInvoice', deskripsi: 'Penjualan langsung: stok keluar & laba kotor saat diposting' },
+];
 
 const PURCHASING_MENUS = [
   { menu: 'Purchase Order', component: '/purchase-order', icon: 'fa-solid fa-file-invoice', resource: 'purchaseOrder', deskripsi: 'Pesanan pembelian ke vendor' },
@@ -179,6 +186,36 @@ async function main() {
       createdBy: admin?._id,
     });
     console.log('[+] Menu "System Settings" (/settings) dibuat');
+  }
+
+  // 8. Sales + Customer
+  let sales = await Menu.findOne({ menu: 'Sales', component: null });
+  for (const item of SALES_MENUS) {
+    if (await Menu.exists({ component: item.component })) {
+      console.log(`[=] Menu ${item.component} sudah ada`);
+      continue;
+    }
+    if (!sales) {
+      sales = await Menu.create({ menu: 'Sales', icon: 'fa-solid fa-cash-register', createdBy: admin?._id });
+      console.log('[+] Menu grup "Sales" dibuat');
+    }
+    await Menu.create({ ...item, parent_id: sales._id, createdBy: admin?._id });
+    console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
+  }
+  if (await Menu.exists({ component: '/customer' })) {
+    console.log('[=] Menu /customer sudah ada');
+  } else {
+    const vendorMenu = await Menu.findOne({ component: '/vendor' });
+    await Menu.create({
+      menu: 'Customer',
+      component: '/customer',
+      icon: 'fa-solid fa-user-tag',
+      resource: 'customer',
+      deskripsi: 'Data pelanggan',
+      parent_id: vendorMenu?.parent_id ?? null,
+      createdBy: admin?._id,
+    });
+    console.log('[+] Menu "Customer" (/customer) dibuat');
   }
 
   // Ringkasan user tanpa role (bisa login tapi tidak punya akses ke menu mana pun)

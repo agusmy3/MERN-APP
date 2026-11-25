@@ -31,6 +31,7 @@ const MOVEMENT_TYPES = {
   REVALUATION: 'Cost Revaluation',   // qty 0, hanya nilai (HPP) yang berubah
   TRANSFER_OUT: 'Transfer Out',       // kirim ke gudang lain (pembalik = transfer dibatalkan)
   TRANSFER_IN: 'Transfer In',         // terima dari gudang lain (HPP saat dikirim)
+  SALE: 'Sale',                       // penjualan (Sales Invoice); pembalik = invoice dibatalkan
 };
 
 // batas baris per dokumen (opname 1 gudang bisa ratusan SKU)

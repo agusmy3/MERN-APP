@@ -24,7 +24,17 @@ const SETTINGS = [
     default: 11,
     min: 0,
     max: 100,
-    description: 'Tarif PPN default untuk Purchase Order baru (bisa diubah per PO selama draft; 0 = vendor non-PKP).',
+    description: 'Tarif PPN default untuk Purchase Order baru (bisa diubah per PO selama draft; 0 = vendor non-PKP) '
+      + 'dan Sales Invoice baru (jika perusahaan PKP; non-PKP = 0).',
+  },
+  {
+    key: 'sales.priceIncludesTax',
+    label: 'Selling price includes PPN',
+    group: 'Sales',
+    type: 'bool',
+    default: false,
+    description: 'Harga jual sudah termasuk PPN (umum di retail): PPN dihitung dari dalam total. '
+      + 'Jika tidak, PPN ditambahkan di atas harga. Disalin ke Sales Invoice saat dibuat (bisa diubah per dokumen selama draft).',
   },
 ];
 

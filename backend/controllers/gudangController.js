@@ -189,7 +189,8 @@ exports.deleteGudang = async (req, res) => {
       ]);
       const poCount = await require('../models/PurchaseOrder').countDocuments({ gudang: gudang._id });
       const trfCount = await require('../models/StockTransfer').countDocuments({ $or: [{ fromGudang: gudang._id }, { toGudang: gudang._id }] });
-      if (balance || movement || docs || poCount || trfCount) {
+      const invCount = await require('../models/SalesInvoice').countDocuments({ gudang: gudang._id });
+      if (balance || movement || docs || poCount || trfCount || invCount) {
         throw new HttpError('Warehouse already has stock history or documents. Deactivate it instead.', 400);
       }
 

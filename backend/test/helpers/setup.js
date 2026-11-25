@@ -22,6 +22,7 @@ const MODELS = [
   'User', 'Role', 'Menu', 'Kategori', 'Uom', 'Variant', 'Vendor', 'Produk', 'ProdukSku', 'VendorPrice',
   'AuditLog', 'TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment',
   'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule', 'StockTransfer',
+  'Customer', 'SalesInvoice',
 ];
 
 const model = (name) => mongoose.model(name);

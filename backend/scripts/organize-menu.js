@@ -5,9 +5,10 @@
  *
  * Susunan:
  *   Dashboard (/)
- *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Warehouse
+ *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Customer, Warehouse
  *   Inventory   : Stock Adjustment, Stock Transfer, Stock Movement, Reorder, Stock Valuation, Cost Revaluation
  *   Purchasing  : Purchase Order, Goods Receipt
+ *   Sales       : Sales Invoice
  *   Settings    : User, Role, Menu, System Settings, Audit Log
  *
  * - Menu dicocokkan lewat route (`component`); yang ada dipindah (parent & order), nama/ikon tidak diubah.
@@ -40,6 +41,7 @@ const TARGET = [
       leaf('/variant', 'Variant', 'fa-solid fa-swatchbook', 'variant', 'Jenis varian & nilainya'),
       leaf('/uom', 'Unit of Measure', 'fa-solid fa-ruler', 'uom', 'Satuan produk'),
       leaf('/vendor', 'Vendor', 'fa-solid fa-building', 'vendor', 'Data vendor / supplier'),
+      leaf('/customer', 'Customer', 'fa-solid fa-user-tag', 'customer', 'Data pelanggan'),
       leaf('/gudang', 'Warehouse', 'fa-solid fa-warehouse', 'gudang', 'Kelola gudang / lokasi penyimpanan stok'),
     ],
   },
@@ -59,6 +61,12 @@ const TARGET = [
     children: [
       leaf('/purchase-order', 'Purchase Order', 'fa-solid fa-file-invoice', 'purchaseOrder', 'Pesanan pembelian ke vendor'),
       leaf('/goods-receipt', 'Goods Receipt', 'fa-solid fa-truck-ramp-box', 'goodsReceipt', 'Penerimaan barang dari PO: stok & HPP bertambah saat diposting'),
+    ],
+  },
+  {
+    group: 'Sales', aliases: [], icon: 'fa-solid fa-cash-register', order: 5,
+    children: [
+      leaf('/sales-invoice', 'Sales Invoice', 'fa-solid fa-file-invoice-dollar', 'salesInvoice', 'Penjualan langsung: stok keluar & laba kotor saat diposting'),
     ],
   },
   {

@@ -6,6 +6,9 @@ import Produk from './pages/Produk';
 import ProdukDetail from './pages/ProdukDetail';
 import Menu from './pages/Menu';
 import Vendor from './pages/Vendor';
+import Customer from './pages/Customer';
+import SalesInvoice from './pages/SalesInvoice';
+import SalesInvoiceDetail from './pages/SalesInvoiceDetail';
 import Uom from './pages/Uom';
 import Variant from './pages/Variant';
 import Users from './pages/Users';
@@ -52,6 +55,7 @@ function App() {
         <Route path="/produk" element={guard('produk', <Produk />)} />
         <Route path="/produk/:id" element={guard('produk', <ProdukDetail />)} />
         <Route path="/vendor" element={guard('vendor', <Vendor />)} />
+        <Route path="/customer" element={guard('customer', <Customer />)} />
         <Route path="/uom" element={guard('uom', <Uom />)} />
         <Route path="/variant" element={guard('variant', <Variant />)} />
         <Route path="/gudang" element={guard('gudang', <Gudang />)} />
@@ -74,6 +78,9 @@ function App() {
         <Route path="/goods-receipt" element={guard('goodsReceipt', <GoodsReceipt />)} />
         {/* :id = 'new' (?po=<poId>) atau id dokumen */}
         <Route path="/goods-receipt/:id" element={guard('goodsReceipt', <GoodsReceiptDetail />)} />
+        <Route path="/sales-invoice" element={guard('salesInvoice', <SalesInvoice />)} />
+        {/* :id = 'new' atau id dokumen */}
+        <Route path="/sales-invoice/:id" element={guard('salesInvoice', <SalesInvoiceDetail />)} />
         <Route path="/settings" element={guard('setting', <Settings />)} />
         <Route path="/menu" element={guard('menu', <Menu />)} />
         <Route path="/users" element={guard('user', <Users />)} />

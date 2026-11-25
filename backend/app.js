@@ -37,6 +37,8 @@ app.use('/api/cost-revaluation', require('./routes/stockRoutes').revaluation);
 app.use('/api/reorder', require('./routes/stockRoutes').reorder);
 app.use('/api/purchase-order', require('./routes/purchaseRoutes').purchaseOrder);
 app.use('/api/goods-receipt', require('./routes/purchaseRoutes').goodsReceipt);
+app.use('/api/customer', require('./routes/salesRoutes').customer);
+app.use('/api/sales-invoice', require('./routes/salesRoutes').salesInvoice);
 app.use('/api/setting', require('./routes/settingRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 

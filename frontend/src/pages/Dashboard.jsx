@@ -70,6 +70,7 @@ export default function Dashboard() {
     ['transferIncoming', 'Transfers to receive', '/stock-transfer?status=IN_TRANSIT', 'fa-truck-fast'],
     ['goodsReceipt', 'Goods receipt drafts', '/goods-receipt', 'fa-truck-ramp-box'],
     ['costRevaluation', 'Cost revaluation drafts', '/cost-revaluation', 'fa-scale-balanced'],
+    ['salesInvoice', 'Sales invoice drafts', '/sales-invoice?status=DRAFT', 'fa-file-invoice-dollar'],
   ].filter(([k]) => d?.pending?.[k] !== undefined).map(([k, label, to, icon]) => ({ key: k, label, to, icon, count: d.pending[k] })) : [];
   if (d?.poDrafts !== undefined) pendingItems.push({ key: 'poDrafts', label: 'Purchase order drafts', to: '/purchase-order', icon: 'fa-file-invoice', count: d.poDrafts });
 
@@ -87,6 +88,14 @@ export default function Dashboard() {
         <div className="space-y-4">
           {/* ---------- KPI ---------- */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+            {d.sales && (
+              <>
+                <Kpi label="Sales today" icon="fa-cash-register" value={formatRupiahCompact(d.sales.today.value)} to="/sales-invoice?status=POSTED"
+                  sub={`${d.sales.today.count} invoice${d.sales.today.grossProfit !== undefined ? ` · GP ${formatRupiahCompact(d.sales.today.grossProfit)}` : ''}`} />
+                <Kpi label="Sales this month" icon="fa-chart-line" value={formatRupiahCompact(d.sales.month.value)} to="/sales-invoice?status=POSTED"
+                  sub={`${d.sales.month.count} invoice${d.sales.month.grossProfit !== undefined ? ` · GP ${formatRupiahCompact(d.sales.month.grossProfit)}` : ''}`} />
+              </>
+            )}
             {d.inventoryValue !== undefined && (
               <Kpi label="Inventory value" icon="fa-sack-dollar" value={formatRupiahCompact(d.inventoryValue)} to="/stock-valuation"
                 sub={`${formatRupiah(d.inventoryValue)}${d.inTransit?.value ? ` · + ${formatRupiahCompact(d.inTransit.value)} in transit` : ''}`} />
@@ -164,6 +173,22 @@ export default function Dashboard() {
 
           {/* ---------- grafik ---------- */}
           <div className="grid gap-4 lg:grid-cols-2">
+            {d.salesByMonth && (
+              <Card title="Net sales (excl. PPN), last 6 months" icon="fa-chart-line" action={moreLink('/sales-invoice')}>
+                <ColumnChart
+                  ariaLabel="Net sales per month"
+                  points={d.salesByMonth.map((p) => ({ key: p.key, label: dayjs(`${p.key}-01`).format('MMM YY'), value: p.value }))}
+                  format={formatRupiahCompact}
+                />
+              </Card>
+            )}
+            {d.topProducts && (
+              <Card title="Top products, last 30 days" icon="fa-ranking-star">
+                {d.topProducts.length ? (
+                  <BarList items={d.topProducts.map((p) => ({ key: p.id, label: p.label, sub: `${p.name} · ${formatNumber(p.qty)} sold`, value: p.value }))} format={formatRupiahCompact} />
+                ) : <p className="text-sm text-muted py-4 text-center">Belum ada penjualan 30 hari terakhir.</p>}
+              </Card>
+            )}
             {d.valueByGudang && (
               <Card title="Inventory value by warehouse" icon="fa-warehouse" action={moreLink('/stock-valuation', 'Valuation')}>
                 <BarList items={d.valueByGudang.map((g) => ({ key: g.id, label: g.label, sub: g.name, value: g.value }))} format={formatRupiahCompact} />

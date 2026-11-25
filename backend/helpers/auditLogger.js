@@ -162,6 +162,35 @@ const ENTITIES = {
     },
     label: (doc) => doc.no,
   },
+  customer: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      phone: { label: 'Phone' },
+      email: { label: 'Email' },
+      address: { label: 'Address' },
+      npwp: { label: 'NPWP' },
+      deskripsi: { label: 'Note' },
+      isActive: { label: 'Active', format: 'bool' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  salesInvoice: {
+    fields: {
+      customer: { label: 'Customer', ref: ['Customer', 'name'] },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      date: { label: 'Date', format: 'date' },
+      priceIncludesTax: { label: 'Price incl. PPN', format: 'bool' },
+      taxRate: { label: 'Tax Rate (%)', format: 'number' },
+      lines: { label: 'Items', format: 'salesLines' },
+      discountAmount: { label: 'Document Discount', format: 'money' },
+      total: { label: 'Total', format: 'money' },
+      status: { label: 'Status' },
+      note: { label: 'Note' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
   purchaseOrder: {
     fields: {
       vendor: { label: 'Vendor', ref: ['Vendor', 'companyName'] },
@@ -260,7 +289,7 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
-      if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines'].includes(def.format)) {
+      if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines'].includes(def.format)) {
         (doc[field] || []).forEach((l) => {
           add('ProdukSku', 'sku', idOf(l.sku));
           if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
@@ -317,6 +346,14 @@ const normalizeValue = (def, value, texts) => {
       return `${sku}: ${num(l.qty)}${recv}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
+  if (def.format === 'salesLines') {
+    // mis. "KAOS-M: 2 x 75,000 -10%"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((l) => {
+      const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
+      return `${sku}: ${num(l.qty)} x ${num(l.hargaJual)}${l.diskonPersen ? ` -${num(l.diskonPersen)}%` : ''}${l.note ? ` · ${l.note}` : ''}`;
+    });
+  }
   if (def.format === 'revalLines') {
     // mis. "KAOS-M: HPP 9,000 -> 9,500" (HPP lama diisi saat post)
     const num = (n) => (n === null || n === undefined ? '-' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
@@ -365,7 +402,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines'];
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

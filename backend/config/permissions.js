@@ -25,6 +25,7 @@ const RESOURCES = [
   // harga beli = data sensitif (margin), dipisah dari izin produk
   { key: 'vendorPrice', label: 'Vendor Price', group: 'Master Data' },
   { key: 'gudang', label: 'Warehouse', group: 'Master Data' },
+  { key: 'customer', label: 'Customer', group: 'Master Data' },
   // dokumen stok: create/update/delete = draft; post = posting & pembatalan (mengubah stok)
   { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // transfer antar gudang: create/update/delete = draft; post = kirim, terima & batalkan.
@@ -40,6 +41,9 @@ const RESOURCES = [
   { key: 'purchaseOrder', label: 'Purchase Order', group: 'Purchasing' },
   // Penerimaan barang: create/update/delete = draft; post = posting & pembatalan (mengubah stok & HPP)
   { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // penjualan langsung: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali).
+  // HPP & laba kotor hanya untuk vendorPrice:view
+  { key: 'salesInvoice', label: 'Sales Invoice', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },
   { key: 'role', label: 'Role', group: 'Settings' },
   { key: 'user', label: 'User', group: 'Settings' },

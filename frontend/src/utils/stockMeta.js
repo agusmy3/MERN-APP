@@ -42,6 +42,7 @@ export const MOVEMENT_TYPES = {
   REVALUATION: 'Cost Revaluation',
   TRANSFER_OUT: 'Transfer Out',
   TRANSFER_IN: 'Transfer In',
+  SALE: 'Sale',
 };
 
 // Stock Transfer: DRAFT -> IN_TRANSIT (dikirim) -> RECEIVED; IN_TRANSIT -> CANCELLED

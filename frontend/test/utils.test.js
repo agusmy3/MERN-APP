@@ -72,3 +72,13 @@ test('UoM conversion rule: same type or package', async () => {
   assert.equal(canConvert('COUNT', 'PACK'), true);
   assert.equal(canConvert(null, 'COUNT'), true);
 });
+
+test('sales totals match backend (PPN exclusive / inclusive, document discount)', async () => {
+  const { salesTotals, salesLineSubtotal } = await import('../src/utils/salesMeta.js');
+  const lines = [{ qty: 2, hargaJual: 100000, diskonPersen: 10 }, { qty: '1', hargaJual: '50000' }];
+  assert.equal(salesLineSubtotal(lines[0]), 180000);
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11 }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 22000, total: 222000 });
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: '11', priceIncludesTax: true }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000 });
+});
