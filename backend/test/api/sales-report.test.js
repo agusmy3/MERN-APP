@@ -15,6 +15,8 @@ async function seed(admin) {
   const m = await createMasters(admin);
   const sku1 = await createProduct(admin, m, 'Laporan Satu');
   const sku2 = await createProduct(admin, m, 'Laporan Dua');
+  await t.model('ProdukSku').updateOne({ _id: sku1._id }, { hargaJual: 100000 });
+  await t.model('ProdukSku').updateOne({ _id: sku2._id }, { hargaJual: 50000 });
   await postAdjustment(admin, m.gudang._id, [{ sku: sku1._id, qtyChange: 10, unitCost: 60000 }, { sku: sku2._id, qtyChange: 10, unitCost: 30000 }], 'OPENING');
   const a = ok(await admin.post('/api/customer', { name: 'Alpha' }), 201);
   const b = ok(await admin.post('/api/customer', { name: 'Beta' }), 201);

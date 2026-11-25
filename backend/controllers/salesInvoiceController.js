@@ -75,26 +75,21 @@ const parseInvoice = (body) => {
     if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
     if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
     seen.add(String(l.sku));
+    // harga TIDAK diambil dari input (dibekukan): diisi applyPrices dari price list / harga default
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true })
-      || checkAmount(l.hargaJual, 'Price')
       || checkAmount(l.diskonPersen ?? 0, 'Discount');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
     const diskonPersen = round2(l.diskonPersen ?? 0);
     if (diskonPersen > 100) throw new HttpError(`${n}: Discount must be <= 100`, 400);
-    const line = {
+    return {
       sku: String(l.sku),
       qty: round2(l.qty),
-      hargaJual: round2(l.hargaJual),
+      hargaJual: null,       // diisi applyPrices
       diskonPersen,
       unitCost: null,
       note: trimText(l.note, 200) || undefined,
     };
-    line.subtotal = salesLineSubtotal(line);
-    return line;
   });
-
-  const subtotal = round2(lines.reduce((s, l) => s + l.subtotal, 0));
-  if (round2(discountAmount) > subtotal) throw new HttpError('Document discount cannot exceed the subtotal', 400);
 
   let dueDate;
   if (body.dueDate) {
@@ -143,6 +138,21 @@ const resolveRefs = async (parsed) => {
   const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
   parsed.lines.forEach((l) => { l.produk = produkOf.get(l.sku); });
   return { customer };
+};
+
+/**
+ * Harga jual baris = price list customer (aktif & SKU ada) atau harga jual SKU. Harga dibekukan:
+ * user tidak bisa mengubahnya, pengurangan hanya lewat diskon baris / dokumen. Dihitung ulang setiap
+ * draft disimpan (di dalam transaksi); dokumen POSTED menyimpan harga saat itu.
+ */
+const applyPrices = async (parsed) => {
+  const prices = await resolvePrices(parsed.customer, parsed.lines.map((l) => l.sku));
+  parsed.lines.forEach((l) => {
+    l.hargaJual = round2(prices.get(l.sku)?.price ?? 0);
+    l.subtotal = salesLineSubtotal(l);
+  });
+  const subtotal = round2(parsed.lines.reduce((s, l) => s + l.subtotal, 0));
+  if (parsed.discountAmount > subtotal) throw new HttpError('Document discount cannot exceed the subtotal', 400);
 };
 
 /** Isi dokumen + pajak (salinan setting bila tidak dikirim) + total */
@@ -392,6 +402,7 @@ exports.createInvoice = async (req, res) => {
     assertGudang(req, parsed.gudang);
     const doc = await runInTransaction(async () => {
       const { customer } = await resolveRefs(parsed);
+      await applyPrices(parsed);
       const settings = await getSettings();
       const doc = new SalesInvoice({ no: await nextDocNo('INV'), status: 'DRAFT', createdBy: req.user._id });
       fillInvoice(doc, parsed, settings, customer);
@@ -413,6 +424,7 @@ exports.updateInvoice = async (req, res) => {
       const parsed = parseInvoice(req.body);
       assertGudang(req, parsed.gudang);
       const { customer } = await resolveRefs(parsed);
+      await applyPrices(parsed);
       const before = await audit.snap('salesInvoice', [doc]);
       fillInvoice(doc, parsed, await getSettings(), customer);
       doc.updatedDate = new Date();

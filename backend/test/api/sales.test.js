@@ -12,6 +12,7 @@ const balanceOf = async (sku, gudang) => (await t.model('StockBalance').findOne(
 async function setup(admin) {
   const m = await createMasters(admin);
   const sku = await createProduct(admin, m, `Jual ${Date.now()}`);
+  await t.model('ProdukSku').updateOne({ _id: sku._id }, { hargaJual: 100000 }); // harga jual default
   await postAdjustment(admin, m.gudang._id, [{ sku: sku._id, qtyChange: 10, unitCost: 60000 }], 'OPENING');
   const customer = ok(await admin.post('/api/customer', { name: 'PT Pelanggan', phone: '0811' }), 201);
   return { m, sku, customer };
@@ -109,6 +110,7 @@ test('invoice: oversell rejected atomically; inactive SKU cannot be sold; price 
   const admin = await t.loginAs();
   const s = await setup(admin);
   const other = await createProduct(admin, s.m, 'Jual Lain');
+  await t.model('ProdukSku').updateOne({ _id: other._id }, { hargaJual: 2000 });
   await postAdjustment(admin, s.m.gudang._id, [{ sku: other._id, qtyChange: 5, unitCost: 1000 }], 'OPENING');
 
   const draft = ok(await admin.post('/api/sales-invoice', draftBody(s, {
@@ -120,13 +122,13 @@ test('invoice: oversell rejected atomically; inactive SKU cannot be sold; price 
   assert.equal(await balanceOf(other._id, s.m.gudang._id), 5); // baris lain ikut batal
   assert.equal((await t.model('SalesInvoice').findById(draft._id).lean()).status, 'DRAFT');
 
-  // harga termasuk PPN
+  // harga termasuk PPN (harga 100.000)
   const incl = ok(await admin.post('/api/sales-invoice', draftBody(s, {
-    priceIncludesTax: true, lines: [{ sku: s.sku._id, qty: 1, hargaJual: 111000 }],
+    priceIncludesTax: true, lines: [{ sku: s.sku._id, qty: 1 }],
   })), 201);
-  assert.equal(incl.total, 111000);
-  assert.equal(incl.taxAmount, 11000);
-  assert.equal(incl.dpp, 100000);
+  assert.equal(incl.total, 100000);
+  assert.equal(incl.taxAmount, 9909.91);
+  assert.equal(incl.dpp, 90090.09);
 
   await t.model('ProdukSku').updateOne({ _id: other._id }, { isActive: false });
   const inactive = await admin.post('/api/sales-invoice', draftBody(s, { lines: [{ sku: other._id, qty: 1, hargaJual: 1 }] }));
@@ -136,6 +138,24 @@ test('invoice: oversell rejected atomically; inactive SKU cannot be sold; price 
   // SKU, gudang & customer yang dipakai invoice tidak bisa dihapus
   assert.equal((await admin.del(`/api/produk/${s.sku.produk._id}/sku/${s.sku._id}`)).status, 400);
   assert.equal((await admin.del(`/api/gudang/${s.m.gudang._id}`)).status, 400);
+});
+
+test('selling price is frozen: client price ignored, master / price list price used', async () => {
+  const admin = await t.loginAs();
+  const s = await setup(admin);
+  const inv = ok(await admin.post('/api/sales-invoice', draftBody(s, { lines: [{ sku: s.sku._id, qty: 1, hargaJual: 1 }] })), 201);
+  assert.equal(inv.lines[0].hargaJual, 100000);
+  assert.equal(inv.subtotal, 100000);
+  // diskon tetap boleh
+  const disc = ok(await admin.put(`/api/sales-invoice/${inv._id}`, draftBody(s, { lines: [{ sku: s.sku._id, qty: 1, hargaJual: 5, diskonPersen: 20 }] })));
+  assert.equal(disc.lines[0].hargaJual, 100000);
+  assert.equal(disc.subtotal, 80000);
+  // price list customer
+  const pl = ok(await admin.post('/api/price-list', { code: `PL${Date.now()}`, name: 'Khusus', items: [{ sku: s.sku._id, price: 90000 }] }), 201);
+  ok(await admin.put(`/api/customer/${s.customer._id}`, { priceList: pl._id }));
+  const repriced = ok(await admin.put(`/api/sales-invoice/${inv._id}`, draftBody(s, { lines: [{ sku: s.sku._id, qty: 1 }] })));
+  assert.equal(repriced.lines[0].hargaJual, 90000);
+  ok(await admin.put(`/api/customer/${s.customer._id}`, { priceList: '' }));
 });
 
 test('permissions: cost hidden without vendorPrice:view, post needs post, warehouse access', async () => {

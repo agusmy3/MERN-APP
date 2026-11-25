@@ -79,7 +79,8 @@ const toPayload = (form, lines) => ({
   taxRate: form.taxRate,
   priceIncludesTax: form.priceIncludesTax,
   discountAmount: form.discountAmount || 0,
-  lines: lines.map((l) => ({ sku: l.sku._id, qty: l.qty, hargaJual: l.hargaJual, diskonPersen: l.diskonPersen || 0, note: l.note })),
+  // harga tidak dikirim: backend mengisinya dari price list / harga jual SKU (dibekukan)
+  lines: lines.map((l) => ({ sku: l.sku._id, qty: l.qty, diskonPersen: l.diskonPersen || 0, note: l.note })),
 });
 
 /**
@@ -273,8 +274,8 @@ export default function SalesInvoiceDetail() {
     if (!form.customer) return 'Pilih customer.';
     if (!form.gudang) return 'Pilih gudang.';
     if (!lines.length) return 'Tambahkan minimal 1 SKU.';
-    const bad = lines.find((l) => isBlank(l.qty) || Number(l.qty) <= 0 || isBlank(l.hargaJual) || Number(l.hargaJual) < 0);
-    if (bad) return `${bad.sku.sku}: isi qty (> 0) dan harga.`;
+    const bad = lines.find((l) => isBlank(l.qty) || Number(l.qty) <= 0);
+    if (bad) return `${bad.sku.sku}: isi qty (> 0).`;
     const disc = lines.find((l) => Number(l.diskonPersen) < 0 || Number(l.diskonPersen) > 100);
     if (disc) return `${disc.sku.sku}: diskon 0 – 100%.`;
     if (Number(form.discountAmount) > totals.subtotal) return 'Diskon dokumen tidak boleh melebihi subtotal.';
@@ -477,7 +478,7 @@ export default function SalesInvoiceDetail() {
             <div className="px-4 py-3 border-b border-line">
               <h3 className="font-semibold text-fg">Items ({lines.length})</h3>
               <p className="text-xs text-muted">
-                Qty & harga per satuan dasar, maks. 2 desimal. Harga terisi dari harga jual SKU dan bisa diubah.
+                Qty & harga per satuan dasar, maks. 2 desimal. Harga dari price list customer / harga jual SKU dan tidak bisa diubah; potongan harga lewat diskon.
               </p>
             </div>
 
@@ -540,11 +541,9 @@ export default function SalesInvoiceDetail() {
                           ) : <span className="tabular-nums">{formatNumber(l.qty)}</span>}
                           {l.qtyReturned > 0 && <div className="text-[10px] text-danger mt-0.5">returned {formatNumber(l.qtyReturned)}</div>}
                         </td>
-                        <td className="px-2 py-1.5 border-t border-line-soft text-right">
-                          {editable ? (
-                            <input aria-label={`Price ${l.sku.sku}`} type="number" min="0" step="0.01" value={l.hargaJual} disabled={busy}
-                              onChange={(e) => setLine(l.sku._id, 'hargaJual', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
-                          ) : <span className="tabular-nums">{formatRupiah(l.hargaJual)}</span>}
+                        <td className="px-2 py-1.5 border-t border-line-soft text-right"
+                          title={editable ? 'Harga dari price list customer / harga jual SKU (tidak bisa diubah; pakai kolom diskon)' : undefined}>
+                          <span className={`tabular-nums ${editable ? 'inline-block py-1' : ''}`}>{formatRupiah(l.hargaJual)}</span>
                           {editable && l.priceSource === 'list' && <div className="text-[10px] text-primary mt-0.5">price list</div>}
                           {canSeeCost && isDraft && below && <div className="text-[10px] text-warning-fg mt-0.5">di bawah HPP</div>}
                         </td>
