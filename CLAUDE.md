@@ -19,22 +19,28 @@ Tidak ada package.json di root; backend dan frontend dijalankan terpisah.
 npm run dev      # node --watch server.js, auto-restart saat file berubah
 npm start        # node server.js
 npm test         # semua test (unit + API); npm run test:unit | test:api | test:watch
-npm run db:init -- --email=<email> --password=<password>  # SIAPKAN DATABASE (baru/lama), idempotent: cek replica set, koleksi & index (hanya menambah), Super Admin pertama (jika belum ada user), seed:rbac, menu:organize --apply, migrate:uom-type
+npm run init -- --wipe --email=<email> --password=<password> [--name=] [--pkp=true|false] [--ppn=11] [--price-includes-tax=true|false]
+                 # DEPLOY BARU: MENGHAPUS SELURUH DATABASE, lalu koleksi & index, System Settings, semua menu (config/menus.js),
+                 # role Super Admin + role standar (config/roles.js), 1 Super Admin, customer walk-in.
+                 # Wajib --wipe; NODE_ENV=production (backend/.env) wajib juga --force. Email/password bisa dari ADMIN_EMAIL/ADMIN_PASSWORD
+npm run demo -- --password=<password user demo>  # data contoh SETELAH init (ditolak jika sudah ada gudang/produk/transaksi):
+                 # 2 gudang, 2 outlet (lokasi lengkap), UoM & varian umum, 4 kategori, 6 produk + barcode + harga vendor, stok awal ber-HPP,
+                 # reorder, price list, customer, 1 user per role (@demo.local), PO terlambat, draft, invoice kredit, 1 shift POS
+# --- database LAMA (tanpa menghapus data) ---
 npm run seed:admin -- --email=... --password=...  # Super Admin pertama, hanya jika belum ada user (atau ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME di .env; password min. 8)
-npm run seed:demo  # data contoh (4 produk, 12 SKU, 2 gudang, 3 vendor fiktif, stok awal ber-HPP, reorder, PO terlambat, draft); DITOLAK jika sudah ada produk
 npm run seed:rbac  # migrasi RBAC (idempotent): role Super Admin -> admin@mern.com, tautkan Menu ke resource, buat menu User, Role, Audit Log, System Settings, Warehouse, grup Inventory (Stock Adjustment, Stock Transfer, Stock Movement, Reorder, Stock Valuation, Cost Revaluation) & grup Purchasing (Purchase Order, Goods Receipt), grup Sales (Sales Invoice, Sales Return, Sales Payment, Price List, Sales Report), grup POS (Cashier, POS Shift) & menu Customer, Outlet
 npm run menu:organize  # rapikan menu ke susunan standar (Dashboard, Master Data, Inventory, Purchasing, Sales, POS, Settings); default dry-run, `-- --apply` untuk menerapkan (backup JSON di backend/backups/, diabaikan git; audit log)
 npm run migrate:produk-sku  # migrasi produk lama (idempotent): UoM PCS, 1 SKU default per produk (harga -> hargaJual, qty -> stok)
 npm run migrate:stock-opening  # (idempotent) gudang MAIN + 1 dokumen Saldo Awal (POSTED) untuk stok SKU yang belum punya kartu stok; argumen opsional: kode gudang
 npm run migrate:avg-cost       # (idempotent) HPP awal SKU yang kosong = harga vendor utama / termurah per satuan dasar
-npm run seed:defaults          # (idempotent) data bawaan: customer "Umum / Walk-in" (juga dijalankan db:init)
+npm run seed:defaults          # (idempotent) data bawaan: customer "Umum / Walk-in" (sudah termasuk di init)
 npm run migrate:uom-type       # (idempotent) isi jenis UoM yang kosong dari kodenya (PCS -> Count, KG -> Weight, BOX -> Package), laporkan harga vendor yang konversinya tidak cocok
 npm run stock:reconcile        # cek StockBalance & ProdukSku.stok vs kartu stok; `-- --fix` menulis ulang cache dari movement
 npm run rs:init  # inisialisasi replica set 1 node (idempotent; biasanya lewat setup-replica-set.ps1)
 ```
 Butuh `backend/.env` dengan `MONGO_URI`, `JWT_SECRET`, `PORT` (default 5000).
 
-**Database baru / dikosongkan:** aktifkan replica set (di bawah), lalu `npm run db:init -- --email=... --password=...` (+ `npm run seed:demo` untuk data contoh). Script `migrate:*` hanya untuk memindahkan data lama (aman, tidak berbuat apa-apa di database kosong).
+**Deploy baru:** aktifkan replica set (di bawah), lalu `npm run init -- --wipe --email=... --password=...` (+ `npm run demo -- --password=...` untuk data contoh). **Database lama** (tanpa menghapus): `seed:rbac`, `menu:organize -- --apply`, `seed:defaults`, `migrate:*` (semua idempotent). Susunan menu standar = [config/menus.js](backend/config/menus.js) (dipakai `init` & `menu:organize`), role standar = [config/roles.js](backend/config/roles.js) (Owner / Manager, Admin Master Data, Warehouse Staff, Warehouse Supervisor, Purchasing, Sales Admin, Finance, Cashier, Store Supervisor; data biaya hanya Owner, Warehouse Supervisor, Purchasing, Finance; Warehouse Staff hanya draft dokumen stok, posting oleh Supervisor). Test `test/scripts/init-demo.test.js` menjalankan kedua script ke MongoDB sementara.
 
 **MongoDB wajib replica set** (untuk transaksi). Standalone -> backend berhenti saat start dengan petunjuk. Setup sekali di Windows (PowerShell *Run as Administrator*, dari `backend/`):
 ```

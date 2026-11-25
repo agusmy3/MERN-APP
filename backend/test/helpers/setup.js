@@ -44,6 +44,7 @@ function useTestApp() {
     const app = require('../../app');
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
     ctx.baseUrl = `http://127.0.0.1:${server.address().port}`;
+    ctx.mongoUri = mongo.uri; // untuk test script (scripts/*.js) di database yang sama
   });
 
   after(async () => {
