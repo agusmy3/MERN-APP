@@ -11,6 +11,8 @@ const userSchema = new mongoose.Schema({
   // akses gudang: true (default, juga user lama tanpa field) = semua gudang, termasuk gudang baru;
   // false = hanya `gudangs`. Super Admin selalu semua gudang. Lihat helpers/gudangAccess.js
   allGudang: { type: Boolean, default: true },
+  // outlet POS tempat user boleh berjualan (kasir). Super Admin = semua outlet.
+  outlets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Outlet' }],
   gudangs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Gudang' }],
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

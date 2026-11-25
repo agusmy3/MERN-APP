@@ -16,6 +16,7 @@ const produkSkuSchema = new mongoose.Schema({
   // kunci kombinasi varian (lihat helpers/skuHelper.js) supaya kombinasi tidak dobel dalam 1 produk
   comboKey: { type: String, default: '' },
   hargaJual: { type: Number, default: 0, min: 0 },
+  barcode: { type: String, trim: true },  // opsional, unik (EAN/UPC/internal) untuk scanner POS
   // total saldo semua gudang (cache dari StockBalance/StockMovement). JANGAN diubah langsung:
   // stok hanya berubah lewat dokumen stok (helpers/stockHelper.js applyMovements).
   stok: { type: Number, default: 0, min: 0 },
@@ -30,5 +31,6 @@ const produkSkuSchema = new mongoose.Schema({
 });
 
 produkSkuSchema.index({ produk: 1, comboKey: 1 }, { unique: true });
+produkSkuSchema.index({ barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string' } } });
 
 module.exports = mongoose.model('ProdukSku', produkSkuSchema);

@@ -18,7 +18,7 @@ export const PAYMENT_STATUS_META = {
   OVERPAID: { label: 'Overpaid', icon: 'fa-arrow-rotate-left', tone: 'bg-danger-soft text-danger' },
 };
 
-export const PAYMENT_METHODS = { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' };
+export const PAYMENT_METHODS = { CASH: 'Cash', CARD: 'Debit / Card', QRIS: 'QRIS', TRANSFER: 'Transfer', OTHER: 'Other' };
 export const PAYMENT_TYPES = { PAYMENT: 'Payment', REFUND: 'Refund' };
 
 /** Subtotal 1 baris: qty x harga x (1 - diskon%) (salinan backend/helpers/salesHelper.js) */

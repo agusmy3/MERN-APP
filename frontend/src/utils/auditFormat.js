@@ -22,6 +22,8 @@ export const ENTITY_META = {
   salesReturn: { label: 'Sales Return', icon: 'fa-rotate-left' },
   salesPayment: { label: 'Sales Payment', icon: 'fa-money-bill-wave' },
   priceList: { label: 'Price List', icon: 'fa-tags' },
+  outlet: { label: 'Outlet', icon: 'fa-store' },
+  posShift: { label: 'POS Shift', icon: 'fa-clock' },
   purchaseOrder: { label: 'Purchase Order', icon: 'fa-file-invoice' },
   goodsReceipt: { label: 'Goods Receipt', icon: 'fa-truck-ramp-box' },
   costRevaluation: { label: 'Cost Revaluation', icon: 'fa-scale-balanced' },

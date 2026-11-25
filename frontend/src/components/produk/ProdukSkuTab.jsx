@@ -28,7 +28,7 @@ const costOf = (s) => {
 const EMPTY_BULK = { hargaJual: '', isActive: '' };
 
 // stok TIDAK diedit di sini (baca saja): hanya lewat dokumen Stock Adjustment
-const toRow = (s) => ({ _id: s._id, sku: s.sku, hargaJual: s.hargaJual, isActive: s.isActive !== false });
+const toRow = (s) => ({ _id: s._id, sku: s.sku, barcode: s.barcode || '', hargaJual: s.hargaJual, isActive: s.isActive !== false });
 
 /**
  * Tab "Variants & SKU": generator kombinasi varian + tabel SKU yang bisa diedit langsung
@@ -148,7 +148,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
   const original = useMemo(() => new Map(skus.map((s) => [s._id, toRow(s)])), [skus]);
   const dirtyRows = rows.filter((r) => {
     const o = original.get(r._id);
-    return o && (o.sku !== r.sku || Number(o.hargaJual) !== Number(r.hargaJual) || o.isActive !== r.isActive);
+    return o && (o.sku !== r.sku || o.barcode !== r.barcode || Number(o.hargaJual) !== Number(r.hargaJual) || o.isActive !== r.isActive);
   });
 
   const setField = (id, field, value) => {
@@ -307,7 +307,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                     />
                   </th>
                 )}
-                <th className="px-3 py-2 border-b border-line font-semibold w-52">SKU Code</th>
+                <th className="px-3 py-2 border-b border-line font-semibold w-52">SKU Code <span className="font-normal text-muted">/ Barcode</span></th>
                 <th className="px-3 py-2 border-b border-line font-semibold">Variant</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">Selling Price</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-28 text-right">Stock</th>
@@ -442,6 +442,15 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                         disabled={!canUpdate}
                         onChange={(e) => setField(r._id, 'sku', e.target.value.toUpperCase())}
                         className={`${cellInput} font-mono text-xs`}
+                      />
+                      <input
+                        aria-label="Barcode"
+                        value={r.barcode}
+                        disabled={!canUpdate}
+                        placeholder={canUpdate ? 'Barcode (scan)' : ''}
+                        maxLength={64}
+                        onChange={(e) => setField(r._id, 'barcode', e.target.value.replace(/\s/g, ''))}
+                        className={`${cellInput} mt-1 font-mono text-[11px] text-muted`}
                       />
                     </td>
                     <td className="px-3 py-1.5 border-t border-line-soft">

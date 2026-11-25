@@ -43,6 +43,9 @@ app.use('/api/sales-return', require('./routes/salesRoutes').salesReturn);
 app.use('/api/sales-payment', require('./routes/salesRoutes').salesPayment);
 app.use('/api/price-list', require('./routes/salesRoutes').priceList);
 app.use('/api/sales-report', require('./routes/salesRoutes').salesReport);
+app.use('/api/outlet', require('./routes/posRoutes').outlet);
+app.use('/api/pos', require('./routes/posRoutes').pos);
+app.use('/api/pos-shift', require('./routes/posRoutes').posShift);
 app.use('/api/setting', require('./routes/settingRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 

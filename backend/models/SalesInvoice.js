@@ -25,7 +25,12 @@ const lineSchema = new mongoose.Schema({
 }, { _id: false });
 
 const salesInvoiceSchema = new mongoose.Schema({
-  no: { type: String, required: true, unique: true },  // INV-202611-0001
+  no: { type: String, required: true, unique: true },  // INV-202611-0001 (POS: POS-202611-0001)
+  source: { type: String, enum: ['BACKOFFICE', 'POS'], default: 'BACKOFFICE' },
+  outlet: { type: mongoose.Schema.Types.ObjectId, ref: 'Outlet', default: null },   // POS
+  shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null },  // POS
+  cashTendered: { type: Number, default: null },  // POS: uang tunai diterima
+  change: { type: Number, default: null },        // POS: kembalian
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   date: { type: Date, required: true },
@@ -59,6 +64,8 @@ const salesInvoiceSchema = new mongoose.Schema({
 salesInvoiceSchema.index({ status: 1, date: -1 });
 salesInvoiceSchema.index({ gudang: 1, status: 1 });
 salesInvoiceSchema.index({ customer: 1 });
+salesInvoiceSchema.index({ shift: 1 });
+salesInvoiceSchema.index({ outlet: 1, date: -1 });
 salesInvoiceSchema.index({ status: 1, paymentStatus: 1, dueDate: 1 });
 salesInvoiceSchema.index({ 'lines.sku': 1 });
 

@@ -24,6 +24,7 @@ const populateUser = (query) => query
   .select('-password')
   .populate('role', 'name isSystem')
   .populate('gudangs', 'code name isActive')
+  .populate('outlets', 'code name isActive')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name');
 
@@ -47,6 +48,18 @@ const parseGudangAccess = async (body) => {
     throw new HttpError('One or more warehouses are not valid', 400);
   }
   return { allGudang: false, gudangs: ids };
+};
+
+/** Outlet POS dari body.outlets (di dalam transaksi, outlet dikunci); undefined = tidak diubah */
+const parseOutlets = async (body) => {
+  if (body.outlets === undefined) return undefined;
+  const ids = [...new Set((Array.isArray(body.outlets) ? body.outlets : []).map(String))];
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw new HttpError('Invalid outlet', 400);
+  await lock(ids.map((id) => ref('outlet', id)));
+  if ((await require('../models/Outlet').countDocuments({ _id: { $in: ids } })) !== ids.length) {
+    throw new HttpError('One or more outlets are not valid', 400);
+  }
+  return ids;
 };
 
 /**
@@ -129,7 +142,9 @@ exports.createUser = async (req, res) => {
       if (!role) throw new HttpError('Please select a valid role', 400);
 
       const access = (await parseGudangAccess(req.body)) || { allGudang: true, gudangs: [] };
+      const outlets = (await parseOutlets(req.body)) || [];
       const user = await User.create({
+        outlets,
         name,
         email,
         password, // di-hash oleh pre('save')
@@ -187,8 +202,10 @@ exports.updateUser = async (req, res) => {
       }
 
       const access = await parseGudangAccess(req.body);
+      const outlets = await parseOutlets(req.body);
       const before = await audit.snap('user', [user]);
       if (access) Object.assign(user, access);
+      if (outlets) user.outlets = outlets;
       if (password) user.password = password; // di-hash oleh pre('save')
       user.name = name || user.name;
       user.email = email || user.email;

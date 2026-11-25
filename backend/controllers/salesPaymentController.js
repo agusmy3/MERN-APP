@@ -11,7 +11,7 @@ const { invoiceBalance } = require('../helpers/salesHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 
 const TYPES = ['PAYMENT', 'REFUND'];
-const METHODS = ['CASH', 'TRANSFER', 'OTHER'];
+const METHODS = ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'];
 const SORTABLE_FIELDS = ['no', 'date', 'amount', 'createdDate'];
 
 const handleError = (res, error) => {
@@ -168,6 +168,10 @@ exports.cancelPayment = async (req, res) => {
       if (!doc) throw new HttpError('Payment not found', 404);
       assertGudang(req, doc.gudang);
       if (doc.status !== 'POSTED') throw new HttpError('Payment is already cancelled', 400);
+      if (doc.shift) {
+        const shift = await require('../models/PosShift').findById(doc.shift).select('status no').lean();
+        if (shift?.status === 'CLOSED') throw new HttpError(`Payment belongs to POS shift ${shift.no}, which is already closed`, 400);
+      }
       await lock(ref('salesInvoice', doc.salesInvoice));
       const inv = await SalesInvoice.findById(doc.salesInvoice);
       if (!inv) throw new HttpError('Sales invoice no longer exists', 400);

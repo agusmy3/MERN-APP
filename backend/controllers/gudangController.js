@@ -11,41 +11,7 @@ const { runInTransaction, HttpError, lock, ref } = require('../helpers/transacti
 
 const SORTABLE_FIELDS = ['code', 'name', 'provinsi', 'kota', 'createdDate', 'updatedDate'];
 
-const TEXT_FIELDS = ['alamat', 'provinsi', 'kota', 'kecamatan', 'deskripsi'];
-const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
-
-/**
- * Validasi & normalisasi field lokasi dari body. Hanya field yang dikirim yang dikembalikan
- * (update parsial). Koordinat: keduanya diisi atau keduanya kosong, maks. 7 desimal (~1 cm).
- */
-const parseLocation = (body) => {
-  const out = {};
-  for (const f of TEXT_FIELDS) {
-    if (body[f] !== undefined) out[f] = isBlank(body[f]) ? '' : String(body[f]).trim();
-  }
-  if (body.kodePos !== undefined) {
-    const kodePos = isBlank(body.kodePos) ? '' : String(body.kodePos).trim();
-    if (kodePos && !/^\d{5}$/.test(kodePos)) throw new HttpError('Postal code must be 5 digits', 400);
-    out.kodePos = kodePos;
-  }
-  if (body.latitude !== undefined || body.longitude !== undefined) {
-    const latBlank = isBlank(body.latitude);
-    const lngBlank = isBlank(body.longitude);
-    if (latBlank !== lngBlank) throw new HttpError('Fill in both latitude and longitude, or leave both empty', 400);
-    if (latBlank) {
-      out.latitude = null;
-      out.longitude = null;
-    } else {
-      const lat = Number(body.latitude);
-      const lng = Number(body.longitude);
-      if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new HttpError('Latitude must be between -90 and 90', 400);
-      if (!Number.isFinite(lng) || lng < -180 || lng > 180) throw new HttpError('Longitude must be between -180 and 180', 400);
-      out.latitude = Math.round(lat * 1e7) / 1e7;
-      out.longitude = Math.round(lng * 1e7) / 1e7;
-    }
-  }
-  return out;
-};
+const { parseLocation } = require('../helpers/locationHelper');
 
 const handleError = (res, error) => {
   if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
@@ -190,6 +156,8 @@ exports.deleteGudang = async (req, res) => {
       const poCount = await require('../models/PurchaseOrder').countDocuments({ gudang: gudang._id });
       const trfCount = await require('../models/StockTransfer').countDocuments({ $or: [{ fromGudang: gudang._id }, { toGudang: gudang._id }] });
       const invCount = await require('../models/SalesInvoice').countDocuments({ gudang: gudang._id });
+      const outletCount = await require('../models/Outlet').countDocuments({ gudang: gudang._id });
+      if (outletCount) throw new HttpError(`Warehouse supplies ${outletCount} POS outlet(s). Move or delete them first.`, 400);
       if (balance || movement || docs || poCount || trfCount || invCount) {
         throw new HttpError('Warehouse already has stock history or documents. Deactivate it instead.', 400);
       }

@@ -48,7 +48,15 @@ const ROUTE_RESOURCE = {
   '/sales-payment': 'salesPayment',
   '/price-list': 'priceList',
   '/sales-report': 'salesReport',
+  '/outlet': 'outlet',
+  '/pos': 'pos',
+  '/pos-shift': 'posShift',
 };
+
+const POS_MENUS = [
+  { menu: 'Cashier', component: '/pos', icon: 'fa-solid fa-cash-register', resource: 'pos', deskripsi: 'Layar kasir: scan barang, bayar, cetak struk' },
+  { menu: 'POS Shift', component: '/pos-shift', icon: 'fa-solid fa-clock', resource: 'posShift', deskripsi: 'Shift kasir: modal, penjualan, kas & selisih' },
+];
 
 const SALES_MENUS = [
   { menu: 'Sales Invoice', component: '/sales-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'salesInvoice', deskripsi: 'Penjualan langsung: stok keluar & laba kotor saat diposting' },
@@ -224,6 +232,31 @@ async function main() {
       createdBy: admin?._id,
     });
     console.log('[+] Menu "Customer" (/customer) dibuat');
+  }
+
+  // 9. POS + Outlet
+  let posGroup = await Menu.findOne({ menu: 'POS', component: null });
+  for (const item of POS_MENUS) {
+    if (await Menu.exists({ component: item.component })) {
+      console.log(`[=] Menu ${item.component} sudah ada`);
+      continue;
+    }
+    if (!posGroup) {
+      posGroup = await Menu.create({ menu: 'POS', icon: 'fa-solid fa-store', createdBy: admin?._id });
+      console.log('[+] Menu grup "POS" dibuat');
+    }
+    await Menu.create({ ...item, parent_id: posGroup._id, createdBy: admin?._id });
+    console.log(`[+] Menu "${item.menu}" (${item.component}) dibuat`);
+  }
+  if (await Menu.exists({ component: '/outlet' })) {
+    console.log('[=] Menu /outlet sudah ada');
+  } else {
+    const gudangMenu = await Menu.findOne({ component: '/gudang' });
+    await Menu.create({
+      menu: 'Outlet', component: '/outlet', icon: 'fa-solid fa-store', resource: 'outlet',
+      deskripsi: 'Toko / outlet POS dan gudang sumber stoknya', parent_id: gudangMenu?.parent_id ?? null, createdBy: admin?._id,
+    });
+    console.log('[+] Menu "Outlet" (/outlet) dibuat');
   }
 
   // Ringkasan user tanpa role (bisa login tapi tidak punya akses ke menu mana pun)

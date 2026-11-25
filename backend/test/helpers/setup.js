@@ -22,7 +22,7 @@ const MODELS = [
   'User', 'Role', 'Menu', 'Kategori', 'Uom', 'Variant', 'Vendor', 'Produk', 'ProdukSku', 'VendorPrice',
   'AuditLog', 'TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment',
   'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule', 'StockTransfer',
-  'Customer', 'SalesInvoice', 'SalesReturn', 'SalesPayment', 'PriceList',
+  'Customer', 'SalesInvoice', 'SalesReturn', 'SalesPayment', 'PriceList', 'Outlet', 'PosShift',
 ];
 
 const model = (name) => mongoose.model(name);
@@ -87,7 +87,7 @@ function useTestApp() {
         name: `Role ${seq}`,
         permissions: Object.entries(permissions).map(([resource, actions]) => ({ resource, actions: ['view', ...actions] })),
       });
-    const access = opts.gudangs ? { allGudang: false, gudangs: opts.gudangs } : {};
+    const access = { ...(opts.gudangs ? { allGudang: false, gudangs: opts.gudangs } : {}), ...(opts.outlets ? { outlets: opts.outlets } : {}) };
     const user = await User.create({ name: name || `User ${seq}`, email: `user${seq}@test.com`, password: 'secret123', role: role._id, ...access });
     return { ...client(generateToken(user._id)), user };
   };

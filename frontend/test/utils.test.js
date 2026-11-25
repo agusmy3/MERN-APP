@@ -82,3 +82,18 @@ test('sales totals match backend (PPN exclusive / inclusive, document discount)'
   assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: '11', priceIncludesTax: true }),
     { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000 });
 });
+
+test('POS receipt html: escapes text, shows totals, change and paper width', async () => {
+  const { receiptHtml } = await import('../src/utils/receiptPrint.js');
+  const html = receiptHtml({
+    no: 'POS-202611-0001', date: '2026-11-25T10:00:00Z', outlet: { name: 'Toko <A>', receiptWidth: 80, receiptFooter: 'Terima kasih' },
+    createdBy: { name: 'Kasir' }, customer: { name: 'Umum', isWalkIn: true },
+    lines: [{ qty: 2, hargaJual: 11100, subtotal: 22200, produk: { name: 'Kopi' }, sku: { sku: 'KOPI', variantValues: [] } }],
+    subtotal: 22200, total: 22200, taxRate: 11, taxAmount: 2200, priceIncludesTax: true,
+    payments: [{ method: 'CASH', amount: 22200 }], cashTendered: 30000, change: 7800,
+  });
+  assert.ok(html.includes('Toko &lt;A&gt;'));
+  assert.ok(html.includes('80mm'));
+  assert.ok(html.includes('7.800'));
+  assert.ok(html.includes('Terima kasih'));
+});

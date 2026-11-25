@@ -16,7 +16,8 @@ const salesPaymentSchema = new mongoose.Schema({
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   date: { type: Date, required: true },
-  method: { type: String, required: true, enum: ['CASH', 'TRANSFER', 'OTHER'] },
+  method: { type: String, required: true, enum: ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'] },
+  shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null }, // POS: masuk laci shift ini
   amount: { type: Number, required: true },            // selalu positif
   reference: { type: String, default: '' },            // no. bukti transfer / kuitansi
   note: { type: String, default: '' },
@@ -33,5 +34,6 @@ const salesPaymentSchema = new mongoose.Schema({
 salesPaymentSchema.index({ salesInvoice: 1, status: 1 });
 salesPaymentSchema.index({ status: 1, date: -1 });
 salesPaymentSchema.index({ customer: 1 });
+salesPaymentSchema.index({ shift: 1, status: 1 });
 
 module.exports = mongoose.model('SalesPayment', salesPaymentSchema);

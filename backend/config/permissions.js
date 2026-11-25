@@ -26,6 +26,8 @@ const RESOURCES = [
   { key: 'vendorPrice', label: 'Vendor Price', group: 'Master Data' },
   { key: 'gudang', label: 'Warehouse', group: 'Master Data' },
   { key: 'customer', label: 'Customer', group: 'Master Data' },
+  // outlet / toko POS (stok dari 1 gudang)
+  { key: 'outlet', label: 'Outlet', group: 'Master Data' },
   // dokumen stok: create/update/delete = draft; post = posting & pembatalan (mengubah stok)
   { key: 'stockAdjustment', label: 'Stock Adjustment', group: 'Inventory', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // transfer antar gudang: create/update/delete = draft; post = kirim, terima & batalkan.
@@ -52,6 +54,11 @@ const RESOURCES = [
   { key: 'priceList', label: 'Price List', group: 'Sales' },
   // laporan penjualan & umur piutang (baca saja; HPP & laba hanya untuk vendorPrice:view)
   { key: 'salesReport', label: 'Sales Report', group: 'Sales', actions: ['view'] },
+  // layar kasir: view = buka layar; create = buka/tutup shift sendiri, kas masuk/keluar, transaksi
+  // (outlet harus ditugaskan ke user lewat User.outlets)
+  { key: 'pos', label: 'POS Cashier', group: 'POS', actions: ['view', 'create'] },
+  // semua shift kasir: view = daftar & ringkasan; update = tutup shift kasir lain
+  { key: 'posShift', label: 'POS Shift', group: 'POS', actions: ['view', 'update'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },
   { key: 'role', label: 'Role', group: 'Settings' },
   { key: 'user', label: 'User', group: 'Settings' },

@@ -7,6 +7,7 @@ import {
 } from '../services/userService';
 import { getRoleDropdown } from '../services/roleService';
 import { getGudangDropdown } from '../services/gudangService';
+import { getOutletDropdown } from '../services/posService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -29,6 +30,7 @@ const EMPTY_FORM = {
   isActive: true,
   allGudang: true,
   gudangs: [],
+  outlets: [],
 };
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -53,8 +55,10 @@ export default function Users() {
 
   // pilihan gudang untuk penugasan (semua gudang, termasuk nonaktif yang sudah ditugaskan)
   const [gudangs, setGudangs] = useState([]);
+  const [outletList, setOutletList] = useState([]);
   useEffect(() => {
     getGudangDropdown(user.token).then(setGudangs).catch((err) => console.error(err));
+    getOutletDropdown(user.token).then(setOutletList).catch((err) => console.error(err));
   }, [user.token]);
 
   const isSelf = (row) => row && String(row._id) === String(user._id);
@@ -71,6 +75,7 @@ export default function Users() {
       isActive: row.isActive !== false,
       allGudang: row.allGudang !== false,
       gudangs: (row.gudangs || []).map((g) => g._id || g),
+      outlets: (row.outlets || []).map((o) => o._id || o),
     }),
     getLabel: (row) => row.name,
     // password kosong saat edit = tidak diubah
@@ -94,6 +99,10 @@ export default function Users() {
 
   const { editingRow, form, mode } = crud;
   const editingSelf = mode !== 'create' && isSelf(editingRow);
+  const toggleOutlet = (id) => crud.setForm((prev) => ({
+    ...prev,
+    outlets: prev.outlets.includes(id) ? prev.outlets.filter((x) => x !== id) : [...prev.outlets, id],
+  }));
   const toggleGudang = (id) => crud.setForm((prev) => ({
     ...prev,
     gudangs: prev.gudangs.includes(id) ? prev.gudangs.filter((x) => x !== id) : [...prev.gudangs, id],
@@ -266,6 +275,24 @@ export default function Users() {
           {!form.allGudang && form.gudangs.length === 0 && (
             <p className="mt-1 text-xs text-danger">Tanpa gudang, user ini tidak bisa membuka dokumen stok apa pun.</p>
           )}
+        </FormField>
+
+        <FormField
+          label="POS Outlets"
+          htmlFor="user-outlets"
+          hint="Outlet tempat user boleh membuka shift kasir (butuh juga izin POS Cashier di role). Super Admin bisa di semua outlet."
+        >
+          <div id="user-outlets" className="max-h-40 overflow-y-auto rounded border border-line divide-y divide-line-soft">
+            {outletList.map((o) => (
+              <label key={o._id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-subtle">
+                <input type="checkbox" checked={form.outlets.includes(o._id)} onChange={() => toggleOutlet(o._id)} className="w-4 h-4 accent-primary" />
+                <span className="font-mono text-xs font-semibold">{o.code}</span>
+                <span className="text-muted truncate">{o.name}</span>
+                {o.isActive === false && <span className="ml-auto text-[10px] px-1 rounded bg-subtle text-muted">inactive</span>}
+              </label>
+            ))}
+            {outletList.length === 0 && <p className="px-3 py-2 text-sm text-muted">Belum ada outlet.</p>}
+          </div>
         </FormField>
 
         <FormField

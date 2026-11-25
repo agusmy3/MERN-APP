@@ -15,6 +15,9 @@ import SalesPayment from './pages/SalesPayment';
 import PriceList from './pages/PriceList';
 import PriceListDetail from './pages/PriceListDetail';
 import SalesReport from './pages/SalesReport';
+import Outlet from './pages/Outlet';
+import Pos from './pages/Pos';
+import PosShift from './pages/PosShift';
 import Uom from './pages/Uom';
 import Variant from './pages/Variant';
 import Users from './pages/Users';
@@ -94,6 +97,9 @@ function App() {
         <Route path="/price-list" element={guard('priceList', <PriceList />)} />
         <Route path="/price-list/:id" element={guard('priceList', <PriceListDetail />)} />
         <Route path="/sales-report" element={guard('salesReport', <SalesReport />)} />
+        <Route path="/outlet" element={guard('outlet', <Outlet />)} />
+        <Route path="/pos" element={guard('pos', <Pos />)} />
+        <Route path="/pos-shift" element={guard('posShift', <PosShift />)} />
         <Route path="/settings" element={guard('setting', <Settings />)} />
         <Route path="/menu" element={guard('menu', <Menu />)} />
         <Route path="/users" element={guard('user', <Users />)} />

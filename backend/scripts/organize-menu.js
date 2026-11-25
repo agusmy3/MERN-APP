@@ -5,10 +5,11 @@
  *
  * Susunan:
  *   Dashboard (/)
- *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Customer, Warehouse
+ *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Customer, Warehouse, Outlet
  *   Inventory   : Stock Adjustment, Stock Transfer, Stock Movement, Reorder, Stock Valuation, Cost Revaluation
  *   Purchasing  : Purchase Order, Goods Receipt
  *   Sales       : Sales Invoice, Sales Return, Sales Payment, Price List, Sales Report
+ *   POS         : Cashier, POS Shift
  *   Settings    : User, Role, Menu, System Settings, Audit Log
  *
  * - Menu dicocokkan lewat route (`component`); yang ada dipindah (parent & order), nama/ikon tidak diubah.
@@ -43,6 +44,7 @@ const TARGET = [
       leaf('/vendor', 'Vendor', 'fa-solid fa-building', 'vendor', 'Data vendor / supplier'),
       leaf('/customer', 'Customer', 'fa-solid fa-user-tag', 'customer', 'Data pelanggan'),
       leaf('/gudang', 'Warehouse', 'fa-solid fa-warehouse', 'gudang', 'Kelola gudang / lokasi penyimpanan stok'),
+      leaf('/outlet', 'Outlet', 'fa-solid fa-store', 'outlet', 'Toko / outlet POS dan gudang sumber stoknya'),
     ],
   },
   {
@@ -71,6 +73,13 @@ const TARGET = [
       leaf('/sales-payment', 'Sales Payment', 'fa-solid fa-money-bill-wave', 'salesPayment', 'Pembayaran & refund invoice penjualan'),
       leaf('/price-list', 'Price List', 'fa-solid fa-tags', 'priceList', 'Harga jual khusus per customer'),
       leaf('/sales-report', 'Sales Report', 'fa-solid fa-chart-column', 'salesReport', 'Penjualan bersih per periode, customer & produk; umur piutang'),
+    ],
+  },
+  {
+    group: 'POS', aliases: [], icon: 'fa-solid fa-store', order: 6,
+    children: [
+      leaf('/pos', 'Cashier', 'fa-solid fa-cash-register', 'pos', 'Layar kasir: scan barang, bayar, cetak struk'),
+      leaf('/pos-shift', 'POS Shift', 'fa-solid fa-clock', 'posShift', 'Shift kasir: modal, penjualan, kas & selisih'),
     ],
   },
   {

@@ -45,6 +45,7 @@ const ENTITIES = {
       sku: { label: 'SKU Code' },
       variantValues: { label: 'Variant', format: 'variantValues' },
       hargaJual: { label: 'Selling Price', format: 'money' },
+      barcode: { label: 'Barcode' },
       isActive: { label: 'Active', format: 'bool' },
     },
     label: (doc) => doc.sku,
@@ -80,6 +81,7 @@ const ENTITIES = {
       isActive: { label: 'Active', format: 'bool' },
       allGudang: { label: 'All Warehouses', format: 'bool' },
       gudangs: { label: 'Warehouses', ref: ['Gudang', 'code'] },
+      outlets: { label: 'POS Outlets', ref: ['Outlet', 'code'] },
       password: { label: 'Password', secret: true },
     },
     label: (doc) => `${doc.name} (${doc.email})`,
@@ -197,6 +199,42 @@ const ENTITIES = {
     },
     label: (doc) => doc.no,
   },
+  outlet: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      phone: { label: 'Phone' },
+      alamat: { label: 'Address' },
+      provinsi: { label: 'Province' },
+      kota: { label: 'City / Regency' },
+      kecamatan: { label: 'District' },
+      kodePos: { label: 'Postal Code' },
+      latitude: { label: 'Latitude', format: 'coord' },
+      longitude: { label: 'Longitude', format: 'coord' },
+      priceIncludesTax: { label: 'Price incl. PPN', format: 'bool' },
+      receiptHeader: { label: 'Receipt Header' },
+      receiptFooter: { label: 'Receipt Footer' },
+      receiptWidth: { label: 'Receipt Width (mm)', format: 'number' },
+      deskripsi: { label: 'Description' },
+      isActive: { label: 'Active', format: 'bool' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  posShift: {
+    fields: {
+      outlet: { label: 'Outlet', ref: ['Outlet', 'code'] },
+      cashier: { label: 'Cashier', ref: ['User', 'name'] },
+      status: { label: 'Status' },
+      openingCash: { label: 'Opening Cash', format: 'money' },
+      cashMoves: { label: 'Cash In / Out', format: 'cashMoves' },
+      closingCash: { label: 'Counted Cash', format: 'money' },
+      expectedCash: { label: 'Expected Cash', format: 'money' },
+      difference: { label: 'Difference', format: 'money' },
+      closeNote: { label: 'Close Note' },
+    },
+    label: (doc) => doc.no,
+  },
   priceList: {
     fields: {
       code: { label: 'Code' },
@@ -212,7 +250,7 @@ const ENTITIES = {
       type: { label: 'Type', labels: { PAYMENT: 'Payment', REFUND: 'Refund' } },
       salesInvoice: { label: 'Sales Invoice', ref: ['SalesInvoice', 'no'] },
       date: { label: 'Date', format: 'date' },
-      method: { label: 'Method', labels: { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' } },
+      method: { label: 'Method', labels: { CASH: 'Cash', CARD: 'Debit / Card', QRIS: 'QRIS', TRANSFER: 'Transfer', OTHER: 'Other' } },
       amount: { label: 'Amount', format: 'money' },
       reference: { label: 'Reference' },
       note: { label: 'Note' },
@@ -391,6 +429,11 @@ const normalizeValue = (def, value, texts) => {
       return `${sku}: ${num(l.qty)}${recv}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
+  if (def.format === 'cashMoves') {
+    // mis. "OUT 50,000 · beli galon"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((m) => `${m.type} ${num(m.amount)} · ${m.reason}`);
+  }
   if (def.format === 'priceLines') {
     // mis. "KAOS-M: 75,000"
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -452,7 +495,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines'];
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines', 'cashMoves'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

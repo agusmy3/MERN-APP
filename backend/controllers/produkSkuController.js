@@ -140,7 +140,7 @@ exports.generateSku = async (req, res) => {
 
 /**
  * PUT /api/produk/:id/sku — simpan banyak SKU sekaligus (tabel yang bisa diedit)
- * body: { skus: [{ _id, sku, hargaJual, isActive }] }
+ * body: { skus: [{ _id, sku, hargaJual, barcode, isActive }] }  (barcode kosong = dihapus; unik antar SKU)
  * Stok TIDAK bisa diubah di sini (field stok diabaikan): hanya lewat dokumen Stock Adjustment.
  */
 exports.bulkUpdateSku = async (req, res) => {
@@ -152,6 +152,7 @@ exports.bulkUpdateSku = async (req, res) => {
 
     // validasi input dulu (di luar transaksi)
     const codes = new Set();
+    const barcodes = new Set();
     for (const item of items) {
       const code = String(item.sku || '').trim().toUpperCase();
       if (!mongoose.isValidObjectId(item._id)) return errorResponse(res, 'Invalid SKU id', 400);
@@ -160,6 +161,12 @@ exports.bulkUpdateSku = async (req, res) => {
       codes.add(code);
       const priceError = checkAmount(item.hargaJual, `Selling price of ${code}`);
       if (priceError) return errorResponse(res, priceError, 400);
+      if (item.barcode !== undefined && item.barcode !== null) {
+        const bc = String(item.barcode).trim();
+        if (bc.length > 64 || /\s/.test(bc)) return errorResponse(res, `Barcode of ${code} must be at most 64 characters without spaces`, 400);
+        if (bc && barcodes.has(bc)) return errorResponse(res, `Barcode ${bc} is duplicated`, 400);
+        if (bc) barcodes.add(bc);
+      }
     }
 
     await runInTransaction(async () => {
@@ -168,6 +175,10 @@ exports.bulkUpdateSku = async (req, res) => {
       const current = await ProdukSku.find({ _id: { $in: ids }, produk: req.params.id }).lean();
       if (current.length !== items.length) throw new HttpError('Some SKUs do not belong to this product', 400);
       const before = await audit.snap('produkSku', current);
+      if (barcodes.size) {
+        const taken = await ProdukSku.findOne({ barcode: { $in: [...barcodes] }, _id: { $nin: ids } }).select('sku barcode').lean();
+        if (taken) throw new HttpError(`Barcode ${taken.barcode} is already used by ${taken.sku}`, 400);
+      }
 
       await ProdukSku.bulkWrite(items.map((item) => ({
         updateOne: {
@@ -179,7 +190,11 @@ exports.bulkUpdateSku = async (req, res) => {
               isActive: item.isActive !== false,
               updatedDate: new Date(),
               updatedBy: req.user._id,
-            }
+              ...(item.barcode !== undefined && item.barcode !== null && String(item.barcode).trim()
+                ? { barcode: String(item.barcode).trim() } : {}),
+            },
+            ...(item.barcode !== undefined && (item.barcode === null || !String(item.barcode).trim())
+              ? { $unset: { barcode: '' } } : {}),
           },
         }
       })));
