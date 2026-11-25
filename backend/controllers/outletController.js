@@ -24,6 +24,7 @@ const parsePos = (body) => {
   if (body.priceIncludesTax !== undefined) out.priceIncludesTax = body.priceIncludesTax !== false;
   if (body.receiptHeader !== undefined) out.receiptHeader = String(body.receiptHeader || '').slice(0, 500);
   if (body.receiptFooter !== undefined) out.receiptFooter = String(body.receiptFooter || '').slice(0, 500);
+  if (body.autoPrint !== undefined) out.autoPrint = body.autoPrint === true;
   if (body.receiptWidth !== undefined) {
     const w = Number(body.receiptWidth);
     if (![58, 80].includes(w)) throw new HttpError('Receipt width must be 58 or 80 mm', 400);

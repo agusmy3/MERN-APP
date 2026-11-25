@@ -54,14 +54,58 @@ export const receiptHtml = (r) => {
   </body></html>`;
 };
 
-export const printReceipt = (receipt) => {
+/**
+ * Ringkasan shift untuk printer struk: X = di tengah shift (belum ditutup), Z = setelah tutup shift.
+ * shift = data shift (+ outlet, cashier) ; summary = shiftSummary dari backend.
+ */
+export const shiftReportHtml = (shift, summary) => {
+  const closed = shift.status === 'CLOSED';
+  const width = shift.outlet?.receiptWidth === 80 ? 80 : 58;
+  const row = (l, r, cls = '') => `<div class="row ${cls}"><span>${l}</span><span>${r}</span></div>`;
+  const s = summary || {};
+  const methods = Object.entries(s.byMethod || {}).map(([m, v]) => row(`  ${esc(PAYMENT_METHODS[m] || m)}`, money(v))).join('');
+  const expected = closed ? shift.expectedCash : s.expectedCash;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${closed ? 'Z' : 'X'} ${esc(shift.no)}</title><style>
+    @page { size: ${width}mm auto; margin: 0; }
+    body { margin: 0; padding: 3mm; width: ${width}mm; font: ${width === 80 ? 12 : 10.5}px/1.35 'Courier New', monospace; color: #000; }
+    .c { text-align: center; } .b { font-weight: bold; }
+    .row { display: flex; justify-content: space-between; gap: 4px; }
+    hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
+  </style></head><body>
+    <div class="c b">${closed ? 'LAPORAN Z (TUTUP SHIFT)' : 'LAPORAN X (SEMENTARA)'}</div>
+    <div class="c">${esc(shift.outlet?.name)}</div>
+    <hr>
+    ${row('Shift', esc(shift.no))}
+    ${row('Kasir', esc(shift.cashier?.name || '-'))}
+    ${row('Buka', dayjs(shift.openedAt).format('DD/MM/YY HH:mm'))}
+    ${row(closed ? 'Tutup' : 'Cetak', dayjs(closed ? shift.closedAt : new Date()).format('DD/MM/YY HH:mm'))}
+    <hr>
+    ${row('Transaksi', qtyFmt(s.salesCount))}
+    ${row('Penjualan', money(s.salesTotal), 'b')}
+    ${s.voidCount ? row(`Void (${qtyFmt(s.voidCount)})`, money(s.voidTotal)) : ''}
+    ${s.returnCount ? row(`Retur (${qtyFmt(s.returnCount)})`, money(s.returnTotal)) : ''}
+    <div>Pembayaran bersih:</div>
+    ${methods || row('  -', '0')}
+    <hr>
+    ${row('Modal awal', money(shift.openingCash))}
+    ${row('+ Tunai bersih', money(s.byMethod?.CASH || 0))}
+    ${s.cashIn ? row('+ Kas masuk', money(s.cashIn)) : ''}
+    ${s.cashOut ? row('- Kas keluar', money(s.cashOut)) : ''}
+    ${row('Kas seharusnya', money(expected), 'b')}
+    ${closed ? row('Kas dihitung', money(shift.closingCash)) + row('Selisih', money(shift.difference), 'b') : ''}
+    ${closed && shift.closeNote ? `<div>Catatan: ${esc(shift.closeNote)}</div>` : ''}
+    <hr><div class="c">${dayjs().format('DD/MM/YY HH:mm')}</div>
+  </body></html>`;
+};
+
+const printHtml = (html) => {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
   document.body.appendChild(frame);
   const doc = frame.contentWindow.document;
   doc.open();
-  doc.write(receiptHtml(receipt));
+  doc.write(html);
   doc.close();
   const done = () => setTimeout(() => frame.remove(), 1000);
   frame.contentWindow.onafterprint = done;
@@ -71,3 +115,7 @@ export const printReceipt = (receipt) => {
     done();
   }, 100);
 };
+
+export const printShiftReport = (shift, summary) => printHtml(shiftReportHtml(shift, summary));
+
+export const printReceipt = (receipt) => printHtml(receiptHtml(receipt));

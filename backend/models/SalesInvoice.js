@@ -31,6 +31,7 @@ const salesInvoiceSchema = new mongoose.Schema({
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null },  // POS
   cashTendered: { type: Number, default: null },  // POS: uang tunai diterima
   change: { type: Number, default: null },        // POS: kembalian
+  voidApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // POS: void disetujui supervisor
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   date: { type: Date, required: true },

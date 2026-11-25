@@ -27,6 +27,7 @@ const trimText = (v, max = 500) => (v === undefined || v === null ? '' : String(
 const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const canSeeCostOf = (req) => hasPermission(req.user, 'vendorPrice', 'view');
 const returnable = (l) => Math.max(round2(l.qty - (l.qtyReturned || 0)), 0);
+exports.returnable = returnable;
 
 /** Validasi body (murni): { salesInvoice, date, reason, lines: [{ sku, qty, note }] } */
 const parseReturn = (body) => {
@@ -323,6 +324,69 @@ exports.deleteReturn = async (req, res) => {
 // ---------------------------------------------------------------- post / batal (izin 'post')
 
 /**
+ * Inti posting retur (di dalam transaksi; invoice `inv` sudah dikunci & divalidasi pemanggil):
+ * validasi ulang qty, movement SALE_RETURN (HPP saat dijual), qty & nilai retur di invoice, audit.
+ * Dipakai POST /:id/post dan retur di kasir POS (posController).
+ */
+const postCore = async (req, doc, inv) => {
+  await lock(ref('gudang', doc.gudang));
+  if (!(await Gudang.exists({ _id: doc.gudang }))) throw new HttpError('Warehouse no longer exists', 400);
+  const lines = doc.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, note: l.note }));
+  await fillLines(inv, lines); // validasi ulang qty (retur lain bisa sudah diposting)
+
+  const before = await audit.snap('salesReturn', [doc]);
+  const invBefore = await audit.snap('salesInvoice', [inv]);
+  await applyMovements(req, lines.map((l) => ({
+    sku: l.sku,
+    gudang: doc.gudang,
+    qty: l.qty,
+    unitCost: l.unitCost,
+    type: 'SALE_RETURN',
+    note: l.note || doc.reason,
+  })), { refType: 'SalesReturn', refId: doc._id, refNo: doc.no });
+
+  const qtyOf = new Map(lines.map((l) => [l.sku, l.qty]));
+  inv.lines.forEach((l) => { l.qtyReturned = round2((l.qtyReturned || 0) + (qtyOf.get(String(l.sku)) || 0)); });
+  const totals = sumTotals(lines);
+  if (inv.lines.every((l) => l.qtyReturned >= l.qty)) {
+    // retur terakhir: pakai sisa nilai invoice supaya total retur = total invoice persis
+    const prev = await SalesReturn.aggregate([
+      { $match: { salesInvoice: inv._id, status: 'POSTED' } },
+      { $group: { _id: null, total: { $sum: '$total' }, dpp: { $sum: '$dpp' } } },
+    ]);
+    totals.total = round2(inv.total - (prev[0]?.total || 0));
+    totals.dpp = round2(inv.dpp - (prev[0]?.dpp || 0));
+    totals.taxAmount = round2(totals.total - totals.dpp);
+  }
+  Object.assign(doc, { lines, ...totals });
+  doc.cogs = round2(lines.reduce((s, l) => s + l.qty * (l.unitCost || 0), 0));
+  doc.status = 'POSTED';
+  doc.postedBy = req.user._id;
+  doc.postedDate = new Date();
+  await doc.save();
+
+  inv.returnedAmount = round2((inv.returnedAmount || 0) + doc.total);
+  inv.paymentStatus = invoiceBalance(inv).paymentStatus;
+  await inv.save();
+  await audit.logUpdate(req, 'salesReturn', before, [doc]);
+  await audit.logUpdate(req, 'salesInvoice', invBefore, [inv]);
+};
+
+/**
+ * Buat retur langsung POSTED (retur di kasir POS). extra = field tambahan (shift, outlet, approvedBy).
+ */
+exports.createPostedReturn = async (req, inv, { date = new Date(), reason, lines, extra = {} }) => {
+  const doc = await SalesReturn.create({
+    no: await nextDocNo('RTN'), salesInvoice: inv._id, customer: inv.customer, gudang: inv.gudang,
+    date, reason, status: 'DRAFT', lines: lines.map((l) => ({ ...l, produk: inv.lines.find((x) => String(x.sku) === String(l.sku))?.produk })),
+    ...extra, createdBy: req.user._id,
+  });
+  await audit.logCreate(req, 'salesReturn', [doc]);
+  await postCore(req, doc, inv);
+  return doc;
+};
+
+/**
  * POST /api/sales-return/:id/post — stok masuk kembali (SALE_RETURN, HPP saat dijual), qty & nilai
  * retur dicatat di invoice (tagihan berkurang). Retur yang menghabiskan seluruh invoice memakai sisa
  * nilai invoice (tanpa selisih pembulatan).
@@ -332,47 +396,7 @@ exports.postReturn = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await loadDraft(req, req.params.id);
       const inv = await loadInvoiceFor(req, doc.salesInvoice);
-      await lock(ref('gudang', doc.gudang));
-      if (!(await Gudang.exists({ _id: doc.gudang }))) throw new HttpError('Warehouse no longer exists', 400);
-      const lines = doc.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, note: l.note }));
-      await fillLines(inv, lines); // validasi ulang qty (retur lain bisa sudah diposting)
-
-      const before = await audit.snap('salesReturn', [doc]);
-      const invBefore = await audit.snap('salesInvoice', [inv]);
-      await applyMovements(req, lines.map((l) => ({
-        sku: l.sku,
-        gudang: doc.gudang,
-        qty: l.qty,
-        unitCost: l.unitCost,
-        type: 'SALE_RETURN',
-        note: l.note || doc.reason,
-      })), { refType: 'SalesReturn', refId: doc._id, refNo: doc.no });
-
-      const qtyOf = new Map(lines.map((l) => [l.sku, l.qty]));
-      inv.lines.forEach((l) => { l.qtyReturned = round2((l.qtyReturned || 0) + (qtyOf.get(String(l.sku)) || 0)); });
-      const totals = sumTotals(lines);
-      if (inv.lines.every((l) => l.qtyReturned >= l.qty)) {
-        // retur terakhir: pakai sisa nilai invoice supaya total retur = total invoice persis
-        const prev = await SalesReturn.aggregate([
-          { $match: { salesInvoice: inv._id, status: 'POSTED' } },
-          { $group: { _id: null, total: { $sum: '$total' }, dpp: { $sum: '$dpp' } } },
-        ]);
-        totals.total = round2(inv.total - (prev[0]?.total || 0));
-        totals.dpp = round2(inv.dpp - (prev[0]?.dpp || 0));
-        totals.taxAmount = round2(totals.total - totals.dpp);
-      }
-      Object.assign(doc, { lines, ...totals });
-      doc.cogs = round2(lines.reduce((s, l) => s + l.qty * (l.unitCost || 0), 0));
-      doc.status = 'POSTED';
-      doc.postedBy = req.user._id;
-      doc.postedDate = new Date();
-      await doc.save();
-
-      inv.returnedAmount = round2((inv.returnedAmount || 0) + doc.total);
-      inv.paymentStatus = invoiceBalance(inv).paymentStatus;
-      await inv.save();
-      await audit.logUpdate(req, 'salesReturn', before, [doc]);
-      await audit.logUpdate(req, 'salesInvoice', invBefore, [inv]);
+      await postCore(req, doc, inv);
       return doc;
     });
     return successResponse(res, doc, `${doc.no} posted`);

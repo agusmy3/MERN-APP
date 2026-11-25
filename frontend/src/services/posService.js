@@ -35,3 +35,21 @@ export const getShifts = async (token, params) => (await axios.get(SHIFT, { ...g
 export const getShift = async (id, token) => (await axios.get(`${SHIFT}/${id}`, getHeaders(token))).data.data;
 export const forceCloseShift = (id, data, token) => axios.post(`${SHIFT}/${id}/close`, data, getHeaders(token));
 export const getPosPrices = async (token, customer, skus) => (await axios.post(`${POS}/prices`, { customer, skus }, getHeaders(token))).data.data;
+
+// ---------- POS fase 2 ----------
+/** supervisor yang bisa menyetujui (PIN) di outlet shift ini: [{ _id, name }] */
+export const getApprovers = async (token) => (await axios.get(`${POS}/approvers`, getHeaders(token))).data.data;
+export const getHolds = async (token) => (await axios.get(`${POS}/holds`, getHeaders(token))).data.data;
+/** { customer, lines: [{ sku, qty, diskonPersen }], discountAmount, note } */
+export const createHold = (data, token) => axios.post(`${POS}/holds`, data, getHeaders(token));
+/** -> { customer, discountAmount, note, lines (siap keranjang), skipped } ; hold dihapus */
+export const resumeHold = async (id, token) => (await axios.post(`${POS}/holds/${id}/resume`, {}, getHeaders(token))).data.data;
+export const deleteHold = (id, token) => axios.delete(`${POS}/holds/${id}`, getHeaders(token));
+/** transaksi POS di outlet shift ini: + lines (returnable, unitAmount), payments, canVoid, canReturn */
+export const lookupPosSale = async (no, token) => (await axios.get(`${POS}/sales/lookup`, { ...getHeaders(token), params: { no } })).data.data;
+/** { reason, approver, pin } */
+export const voidPosSale = (id, data, token) => axios.post(`${POS}/sales/${id}/void`, data, getHeaders(token));
+/** { salesInvoice, lines: [{ sku, qty }], reason, refundMethod, reference, approver, pin } */
+export const createPosReturn = (data, token) => axios.post(`${POS}/returns`, data, getHeaders(token));
+/** params { from, to, outlet, cashier } -> { rows, totals } */
+export const getCashierReport = async (token, params) => (await axios.get(`${SHIFT}/report`, { ...getHeaders(token), params })).data.data;

@@ -97,3 +97,17 @@ test('POS receipt html: escapes text, shows totals, change and paper width', asy
   assert.ok(html.includes('7.800'));
   assert.ok(html.includes('Terima kasih'));
 });
+
+test('POS shift report: X while open, Z with counted cash & difference after close', async () => {
+  const { shiftReportHtml } = await import('../src/utils/receiptPrint.js');
+  const base = { no: 'SHF-1', outlet: { name: 'Toko' }, cashier: { name: 'Kasir' }, openedAt: '2026-11-25T01:00:00Z', openingCash: 100000 };
+  const summary = { salesCount: 2, salesTotal: 50000, byMethod: { CASH: 30000, QRIS: 20000 }, voidCount: 1, voidTotal: 5000, returnCount: 0, returnTotal: 0, cashIn: 0, cashOut: 0, expectedCash: 130000 };
+  const x = shiftReportHtml({ ...base, status: 'OPEN' }, summary);
+  assert.ok(x.includes('LAPORAN X'));
+  assert.ok(x.includes('130.000'));
+  assert.ok(x.includes('Void (1)'));
+  const z = shiftReportHtml({ ...base, status: 'CLOSED', closedAt: '2026-11-25T09:00:00Z', expectedCash: 130000, closingCash: 129500, difference: -500 }, summary);
+  assert.ok(z.includes('LAPORAN Z'));
+  assert.ok(z.includes('129.500'));
+  assert.ok(z.includes('-500'));
+});

@@ -32,15 +32,25 @@ const posRouter = express.Router();
 posRouter.get('/context', protect, authorize('pos', 'view'), pos.getContext);
 posRouter.get('/skus', protect, authorize('pos', 'view'), pos.searchSkus);
 posRouter.post('/prices', protect, authorize('pos', 'view'), pos.prices);
+posRouter.get('/sales/lookup', protect, authorize('pos', 'view'), pos.lookupSale);
 posRouter.get('/sales/:id/receipt', protect, authorize('pos', 'view'), pos.getReceipt);
 posRouter.post('/shift/open', protect, authorize('pos', 'create'), pos.openShift);
 posRouter.post('/shift/cash', protect, authorize('pos', 'create'), pos.cashMove);
 posRouter.post('/shift/close', protect, authorize('pos', 'create'), pos.closeShift);
 posRouter.post('/sales', protect, authorize('pos', 'create'), pos.createSale);
+posRouter.get('/approvers', protect, authorize('pos', 'view'), pos.getApprovers);
+posRouter.get('/holds', protect, authorize('pos', 'view'), pos.getHolds);
+posRouter.post('/holds', protect, authorize('pos', 'create'), pos.createHold);
+posRouter.post('/holds/:id/resume', protect, authorize('pos', 'create'), pos.resumeHold);
+posRouter.delete('/holds/:id', protect, authorize('pos', 'create'), pos.deleteHold);
+// void & retur: dikerjakan kasir (pos:create), disetujui supervisor lewat PIN (pos:post) di body
+posRouter.post('/sales/:id/void', protect, authorize('pos', 'create'), pos.voidSale);
+posRouter.post('/returns', protect, authorize('pos', 'create'), pos.createReturn);
 
 /** Daftar shift (/api/pos-shift): view = semua shift & ringkasannya; update = tutup shift kasir lain */
 const posShift = express.Router();
 posShift.get('/', protect, authorize('posShift', 'view'), pos.getShifts);
+posShift.get('/report', protect, authorize('posShift', 'view'), pos.getCashierReport);
 posShift.get('/:id', protect, authorize('posShift', 'view'), pos.getShift);
 posShift.post('/:id/close', protect, authorize('posShift', 'update'), pos.forceCloseShift);
 

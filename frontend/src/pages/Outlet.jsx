@@ -22,6 +22,7 @@ const EMPTY_FORM = {
   receiptHeader: '',
   receiptFooter: 'Terima kasih atas kunjungan Anda',
   receiptWidth: 58,
+  autoPrint: false,
   alamat: '',
   provinsi: '',
   kota: '',
@@ -72,6 +73,7 @@ export default function Outlet() {
       receiptHeader: row.receiptHeader || '',
       receiptFooter: row.receiptFooter || '',
       receiptWidth: row.receiptWidth || 58,
+      autoPrint: row.autoPrint === true,
       alamat: row.alamat || '',
       provinsi: row.provinsi || '',
       kota: row.kota || '',
@@ -282,6 +284,14 @@ export default function Outlet() {
             <span>
               <span className="font-medium text-fg">Price includes PPN</span>
               <span className="block text-xs text-muted">Umum di retail: PPN dihitung dari dalam harga.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={form.autoPrint}
+              onChange={(e) => crud.setForm((prev) => ({ ...prev, autoPrint: e.target.checked }))} className="mt-0.5 w-4 h-4 accent-primary" />
+            <span>
+              <span className="font-medium text-fg">Auto print receipt</span>
+              <span className="block text-xs text-muted">Struk langsung dicetak setelah pembayaran.</span>
             </span>
           </label>
           <FormField label="Receipt header" htmlFor="outlet-rh" hint="Mis. nama usaha, NPWP. Nama, alamat & telepon outlet sudah otomatis tercetak.">

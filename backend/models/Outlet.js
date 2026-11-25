@@ -23,6 +23,7 @@ const outletSchema = new mongoose.Schema({
   receiptHeader: { type: String, default: '' },               // teks di atas struk (mis. nama usaha, NPWP)
   receiptFooter: { type: String, default: '' },               // mis. "Terima kasih"
   receiptWidth: { type: Number, enum: [58, 80], default: 58 }, // lebar kertas struk (mm)
+  autoPrint: { type: Boolean, default: false },               // cetak struk otomatis setelah bayar
   deskripsi: { type: String },
   isActive: { type: Boolean, default: true },
   createdDate: { type: Date, default: Date.now },

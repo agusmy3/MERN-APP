@@ -14,6 +14,12 @@ const userSchema = new mongoose.Schema({
   // outlet POS tempat user boleh berjualan (kasir). Super Admin = semua outlet.
   outlets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Outlet' }],
   gudangs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Gudang' }],
+  // PIN persetujuan POS (void / retur di kasir) untuk user ber-izin pos:post. Hash bcrypt, tidak pernah
+  // dikirim ke client (select: false); hasPosPin untuk tampilan. 5x salah -> terkunci 15 menit.
+  posPinHash: { type: String, select: false },
+  hasPosPin: { type: Boolean, default: false },
+  posPinFailed: { type: Number, default: 0, select: false },
+  posPinLockedUntil: { type: Date, default: null, select: false },
   createdDate: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   updatedDate: { type: Date, default: null },

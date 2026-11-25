@@ -2,8 +2,8 @@
  * DEMO — data contoh lengkap untuk mencoba aplikasi. Jalankan SETELAH `npm run init`, di database
  * yang belum berisi data (ditolak jika sudah ada gudang / produk / transaksi).
  *
- *   cd backend && npm run demo -- --password=DemoPass123
- *   (password semua user demo; atau DEMO_PASSWORD di .env)
+ *   cd backend && npm run demo -- --password=DemoPass123 [--pin=1234]
+ *   (password semua user demo, atau DEMO_PASSWORD di .env; --pin = PIN POS untuk Store Supervisor demo)
  *
  * Isi (nama perusahaan & orang fiktif):
  * - 2 gudang (MAIN Jakarta, SBY Surabaya) & 2 outlet (TOKO-JKT -> MAIN, TOKO-SBY -> SBY), lokasi lengkap
@@ -71,6 +71,9 @@ const DEMO_USERS = [
 async function main() {
   const password = String(arg('password') || process.env.DEMO_PASSWORD || '');
   if (password.length < 8) throw new Error('Password user demo minimal 8 karakter. Pakai --password=<password> (atau DEMO_PASSWORD di .env)');
+  const pin = arg('pin');
+  if (pin !== undefined && !/^\d{4,8}$/.test(pin)) throw new Error('--pin harus 4-8 digit');
+  const pinHash = pin ? await require('bcryptjs').hash(pin, 10) : null;
   if (!process.env.MONGO_URI) throw new Error('MONGO_URI belum diisi di backend/.env');
 
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 });
@@ -276,6 +279,7 @@ async function main() {
         role: roleByName.get(template.name)._id,
         ...(u.gudangs ? { allGudang: false, gudangs: u.gudangs.map((c) => gudangByCode[c]) } : {}),
         outlets: (u.outlets || []).map((c) => outletByCode[c]),
+        ...(pinHash && u.role === 'storeSupervisor' ? { posPinHash: pinHash, hasPosPin: true } : {}),
         ...by,
       }));
     }
@@ -390,6 +394,7 @@ async function main() {
     const scope = [u.gudangs ? `gudang ${u.gudangs.join(', ')}` : '', u.outlets ? `outlet ${u.outlets.join(', ')}` : ''].filter(Boolean).join('; ');
     console.log(`    ${u.email.padEnd(24)} ${t.name}${scope ? ` (${scope})` : ''}`);
   }
+  if (pin) console.log('[+] PIN POS untuk Store Supervisor (spv.toko@demo.local) diambil dari --pin');
   console.log('\nSelesai.');
 }
 

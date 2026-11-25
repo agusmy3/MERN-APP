@@ -29,6 +29,10 @@ const salesReturnSchema = new mongoose.Schema({
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   date: { type: Date, required: true },
   reason: { type: String, required: true },
+  // retur di kasir POS: shift & outlet tempat refund diberikan, supervisor yang menyetujui
+  shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null },
+  outlet: { type: mongoose.Schema.Types.ObjectId, ref: 'Outlet', default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   status: { type: String, required: true, enum: ['DRAFT', 'POSTED', 'CANCELLED'], default: 'DRAFT' },
   lines: { type: [lineSchema], default: [] },
   subtotal: { type: Number, default: 0 },
@@ -49,6 +53,7 @@ const salesReturnSchema = new mongoose.Schema({
 
 salesReturnSchema.index({ status: 1, date: -1 });
 salesReturnSchema.index({ salesInvoice: 1 });
+salesReturnSchema.index({ shift: 1 });
 salesReturnSchema.index({ gudang: 1, status: 1 });
 salesReturnSchema.index({ 'lines.sku': 1 });
 

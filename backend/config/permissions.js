@@ -56,7 +56,8 @@ const RESOURCES = [
   { key: 'salesReport', label: 'Sales Report', group: 'Sales', actions: ['view'] },
   // layar kasir: view = buka layar; create = buka/tutup shift sendiri, kas masuk/keluar, transaksi
   // (outlet harus ditugaskan ke user lewat User.outlets)
-  { key: 'pos', label: 'POS Cashier', group: 'POS', actions: ['view', 'create'] },
+  // post = menyetujui void / retur di layar kasir dengan PIN (supervisor toko; PIN diatur di form User)
+  { key: 'pos', label: 'POS Cashier', group: 'POS', actions: ['view', 'create', 'post'] },
   // semua shift kasir: view = daftar & ringkasan; update = tutup shift kasir lain
   { key: 'posShift', label: 'POS Shift', group: 'POS', actions: ['view', 'update'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },

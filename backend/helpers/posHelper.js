@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const SalesInvoice = require('../models/SalesInvoice');
 const SalesPayment = require('../models/SalesPayment');
+const SalesReturn = require('../models/SalesReturn');
 const { HttpError } = require('./transaction');
 const { round2 } = require('./number');
 
@@ -21,7 +22,7 @@ const assertOutlet = (req, outletId) => {
  */
 const shiftSummary = async (shift) => {
   const id = new mongoose.Types.ObjectId(String(shift._id));
-  const [sales, pays] = await Promise.all([
+  const [sales, pays, voids, returns] = await Promise.all([
     SalesInvoice.aggregate([
       { $match: { shift: id, status: 'POSTED' } },
       { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$total' }, dpp: { $sum: '$dpp' } } },
@@ -29,6 +30,14 @@ const shiftSummary = async (shift) => {
     SalesPayment.aggregate([
       { $match: { shift: id, status: 'POSTED' } },
       { $group: { _id: '$method', net: { $sum: { $cond: [{ $eq: ['$type', 'REFUND'] }, { $multiply: ['$amount', -1] }, '$amount'] } } } },
+    ]),
+    SalesInvoice.aggregate([
+      { $match: { shift: id, status: 'CANCELLED', voidApprovedBy: { $ne: null } } },
+      { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$total' } } },
+    ]),
+    SalesReturn.aggregate([
+      { $match: { shift: id, status: 'POSTED' } },
+      { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$total' } } },
     ]),
   ]);
   const byMethod = Object.fromEntries(pays.map((p) => [p._id, round2(p.net)]));
@@ -40,6 +49,10 @@ const shiftSummary = async (shift) => {
     salesTotal: round2(sales[0]?.total || 0),
     netSales: round2(sales[0]?.dpp || 0),
     byMethod,
+    voidCount: voids[0]?.count || 0,
+    voidTotal: round2(voids[0]?.total || 0),
+    returnCount: returns[0]?.count || 0,
+    returnTotal: round2(returns[0]?.total || 0),
     cashIn,
     cashOut,
     expectedCash: round2((shift.openingCash || 0) + cash + cashIn - cashOut),

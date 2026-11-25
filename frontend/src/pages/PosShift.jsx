@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { getShifts, getShift, forceCloseShift, getOutletDropdown } from '../services/posService';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getShifts, getShift, forceCloseShift, getOutletDropdown, getCashierReport } from '../services/posService';
+import { printShiftReport } from '../utils/receiptPrint';
+import { downloadCsv } from '../utils/csvExport';
+import { toDateInput } from '../utils/dateHelper';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import useToast from '../hooks/useToast';
@@ -61,7 +64,13 @@ function ShiftDetail({ id, token, onClose, onChanged }) {
             {s.closedAt && <><dt className="text-muted">Ditutup</dt><dd className="text-right">{formatDate2(s.closedAt)}</dd></>}
             <dt className="text-muted">Transaksi</dt><dd className="text-right tabular-nums">{s.summary.salesCount}</dd>
             <dt className="text-muted">Total penjualan</dt><dd className="text-right tabular-nums">{formatRupiah(s.summary.salesTotal)}</dd>
+            <dt className="text-muted">Void</dt><dd className="text-right tabular-nums">{s.summary.voidCount} · {formatRupiah(s.summary.voidTotal)}</dd>
+            <dt className="text-muted">Retur</dt><dd className="text-right tabular-nums">{s.summary.returnCount} · {formatRupiah(s.summary.returnTotal)}</dd>
           </dl>
+          <button type="button" onClick={() => printShiftReport(s, s.summary)}
+            className="px-3 py-1.5 rounded text-sm border border-line hover:bg-subtle cursor-pointer">
+            <i className="fa fa-print"></i> Cetak laporan {s.status === 'CLOSED' ? 'Z' : 'X'}
+          </button>
           <div>
             <h4 className="font-semibold mb-1">Pembayaran</h4>
             <dl className="grid grid-cols-2 gap-y-1">
@@ -130,9 +139,79 @@ function ShiftDetail({ id, token, onClose, onChanged }) {
   );
 }
 
-/** Daftar shift kasir POS (izin posShift:view) */
+/** Laporan per kasir: shift dibuka pada periode, penjualan, metode bayar, void, retur, selisih kas */
+function CashierReport({ token, outlets }) {
+  const toast = useToast();
+  const [q, setQ] = useState({ from: toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: toDateInput(), outlet: '' });
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    const params = {};
+    Object.entries(q).forEach(([k, v]) => { if (v) params[k] = v; });
+    getCashierReport(token, params).then(setData).catch((err) => toast.error(err.response?.data?.message || 'Failed to load report'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, q]);
+  const methods = data ? Object.keys(PAYMENT_METHODS).filter((m) => data.totals.byMethod[m] !== undefined) : [];
+  const set = (k, v) => setQ((p) => ({ ...p, [k]: v }));
+  const exportCsv = () => {
+    const header = ['Cashier', 'Shifts', 'Transactions', 'Sales', 'Avg ticket', ...methods.map((m) => PAYMENT_METHODS[m]), 'Voids', 'Void value', 'Returns', 'Return value', 'Cash difference'];
+    const row = (r, name) => [name, r.shifts, r.salesCount, r.salesTotal, r.avgTicket, ...methods.map((m) => r.byMethod[m] || 0), r.voidCount, r.voidTotal, r.returnCount, r.returnTotal, r.cashDifference];
+    downloadCsv(`cashier-report-${q.from}_${q.to}.csv`, [header, ...data.rows.map((r) => row(r, r.cashier.name)), row(data.totals, 'TOTAL')]);
+  };
+  const th = 'px-3 py-2 border-b border-line font-semibold text-right';
+  const td = 'px-3 py-1.5 border-t border-line-soft text-right tabular-nums';
+  return (
+    <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <input type="date" aria-label="From date" value={q.from} onChange={(e) => set('from', e.target.value)} className={selectClass} />
+        <span className="text-muted text-sm">–</span>
+        <input type="date" aria-label="To date" value={q.to} onChange={(e) => set('to', e.target.value)} className={selectClass} />
+        <select aria-label="Outlet" value={q.outlet} onChange={(e) => set('outlet', e.target.value)} className={selectClass}>
+          <option value="">All outlets</option>
+          {outlets.map((o) => <option key={o._id} value={o._id}>{o.name}</option>)}
+        </select>
+        <span className="text-xs text-muted">Menurut tanggal shift dibuka.</span>
+        <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className="ml-auto px-4 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer disabled:opacity-50">
+          <i className="fa fa-file-csv"></i> Export CSV
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 900 }}>
+          <thead className="bg-head text-head-fg sticky top-0">
+            <tr>
+              <th className={`${th} text-left`}>Cashier</th>
+              <th className={th}>Shifts</th><th className={th}>Trx</th><th className={th}>Sales</th><th className={th}>Avg</th>
+              {methods.map((m) => <th key={m} className={th}>{PAYMENT_METHODS[m]}</th>)}
+              <th className={th}>Void</th><th className={th}>Retur</th><th className={th}>Selisih kas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!data && <tr><td colSpan={12} className="text-center py-8 text-muted">Loading...</td></tr>}
+            {data?.rows.length === 0 && <tr><td colSpan={12} className="text-center py-8 text-muted">Tidak ada shift pada periode ini.</td></tr>}
+            {data && [...data.rows, ...(data.rows.length ? [{ ...data.totals, cashier: { name: 'TOTAL' }, total: true }] : [])].map((r) => (
+              <tr key={r.cashier._id || 'total'} className={r.total ? 'font-semibold' : 'hover:bg-subtle'}>
+                <td className={`${td} text-left`}>{r.cashier.name}{r.openShifts ? <span className="ml-1.5 text-[10px] px-1 rounded bg-warning-soft text-warning-fg">{r.openShifts} open</span> : null}</td>
+                <td className={td}>{r.shifts}</td>
+                <td className={td}>{r.salesCount}</td>
+                <td className={td}>{formatRupiah(r.salesTotal)}</td>
+                <td className={td}>{formatRupiah(r.avgTicket)}</td>
+                {methods.map((m) => <td key={m} className={td}>{formatRupiah(r.byMethod[m] || 0)}</td>)}
+                <td className={td}>{r.voidCount ? `${r.voidCount} · ${formatRupiah(r.voidTotal)}` : '-'}</td>
+                <td className={td}>{r.returnCount ? `${r.returnCount} · ${formatRupiah(r.returnTotal)}` : '-'}</td>
+                <td className={td}>{diffCell(r.cashDifference)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Daftar shift kasir POS (izin posShift:view); ?tab=report = laporan per kasir */
 export default function PosShift() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'report' ? 'report' : 'shifts';
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [outlets, setOutlets] = useState([]);
   const [openId, setOpenId] = useState(null);
@@ -172,6 +251,15 @@ export default function PosShift() {
   return (
     <div className="h-full p-4 flex flex-col">
       <PageHeader fallbackTitle="POS Shift" />
+      <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
+        {[['shifts', 'Shifts', 'fa-clock'], ['report', 'Cashier report', 'fa-chart-column']].map(([k, l, icon]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setSearchParams(k === 'shifts' ? {} : { tab: k }, { replace: true })}
+            className={`px-4 py-2 text-sm border-b-2 cursor-pointer ${tab === k ? 'border-primary text-primary font-medium' : 'border-transparent text-muted hover:text-fg'}`}>
+            <i className={`fa ${icon} mr-1.5`}></i>{l}
+          </button>
+        ))}
+      </div>
+      {tab === 'report' ? <CashierReport token={user.token} outlets={outlets} /> : (
       <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <input type="search" placeholder="Search shift no..." aria-label="Search shift" value={table.searchInput}
@@ -195,6 +283,7 @@ export default function PosShift() {
         <Pagination currentPage={table.currentPage} totalItems={table.totalItems} pageSize={table.pageSize}
           onPageChange={table.setCurrentPage} onPageSizeChange={table.setPageSize} />
       </div>
+      )}
       {openId && <ShiftDetail id={openId} token={user.token} onClose={() => setOpenId(null)} onChanged={table.reload} />}
     </div>
   );

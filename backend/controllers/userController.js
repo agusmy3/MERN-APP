@@ -50,6 +50,22 @@ const parseGudangAccess = async (body) => {
   return { allGudang: false, gudangs: ids };
 };
 
+/** PIN supervisor POS dari body.posPin: undefined = tidak diubah, kosong = dihapus, 4-8 digit = di-hash */
+const applyPosPin = async (user, body) => {
+  if (body.posPin === undefined) return;
+  const pin = body.posPin === null ? '' : String(body.posPin).trim();
+  if (!pin) {
+    user.posPinHash = undefined;
+    user.hasPosPin = false;
+  } else {
+    if (!/^\d{4,8}$/.test(pin)) throw new HttpError('POS PIN must be 4-8 digits', 400);
+    user.posPinHash = await require('bcryptjs').hash(pin, 10);
+    user.hasPosPin = true;
+  }
+  user.posPinFailed = 0;
+  user.posPinLockedUntil = null;
+};
+
 /** Outlet POS dari body.outlets (di dalam transaksi, outlet dikunci); undefined = tidak diubah */
 const parseOutlets = async (body) => {
   if (body.outlets === undefined) return undefined;
@@ -143,7 +159,10 @@ exports.createUser = async (req, res) => {
 
       const access = (await parseGudangAccess(req.body)) || { allGudang: true, gudangs: [] };
       const outlets = (await parseOutlets(req.body)) || [];
+      const pinHolder = {};
+      await applyPosPin(pinHolder, req.body);
       const user = await User.create({
+        ...pinHolder,
         outlets,
         name,
         email,
@@ -204,6 +223,7 @@ exports.updateUser = async (req, res) => {
       const access = await parseGudangAccess(req.body);
       const outlets = await parseOutlets(req.body);
       const before = await audit.snap('user', [user]);
+      await applyPosPin(user, req.body);
       if (access) Object.assign(user, access);
       if (outlets) user.outlets = outlets;
       if (password) user.password = password; // di-hash oleh pre('save')

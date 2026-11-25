@@ -78,8 +78,9 @@ test('init: guards, wipe, menus, roles, super admin, walk-in customer', async ()
 test('demo: master, stock, users per role with scoped access, sample transactions', async () => {
   let r = run('demo.js', ['--password=x']);
   assert.notEqual(r.code, 0); // password terlalu pendek
-  r = run('demo.js', [`--password=${DEMO_PASSWORD}`]);
+  r = run('demo.js', [`--password=${DEMO_PASSWORD}`, '--pin=1234']);
   assert.equal(r.code, 0, r.out);
+  assert.equal((await t.model('User').findOne({ email: 'spv.toko@demo.local' }).lean()).hasPosPin, true);
   r = run('demo.js', [`--password=${DEMO_PASSWORD}`]);
   assert.notEqual(r.code, 0); // ditolak: sudah ada data
   assert.match(r.out, /sudah berisi data/);

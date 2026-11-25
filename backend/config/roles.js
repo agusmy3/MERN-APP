@@ -105,9 +105,9 @@ const ROLE_TEMPLATES = [
   {
     key: 'storeSupervisor',
     name: 'Store Supervisor',
-    deskripsi: 'Cashier + shift kasir (lihat & tutup), retur penjualan, laporan penjualan',
+    deskripsi: 'Cashier + menyetujui void & retur di kasir (PIN), shift kasir (lihat & tutup), retur penjualan, laporan',
     permissions: {
-      pos: ['view', 'create'],
+      pos: ['view', 'create', 'post'],
       posShift: ['view', 'update'],
       customer: ['view', 'create', 'update'],
       salesInvoice: ['view'],

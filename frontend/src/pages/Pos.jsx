@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getPosContext, searchPosSkus, getPosPrices, openShift, cashMove, closeShift, createPosSale, getPosReceipt,
+  getApprovers, getHolds, createHold, resumeHold, deleteHold, lookupPosSale, voidPosSale, createPosReturn,
 } from '../services/posService';
 import { getCustomerDropdown } from '../services/salesService';
 import { useAuth } from '../context/AuthContext';
@@ -10,7 +11,7 @@ import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, round2 } from '../utils/formatHelper';
 import { formatDate2 } from '../utils/dateHelper';
 import { PAYMENT_METHODS, salesLineSubtotal, salesTotals } from '../utils/salesMeta';
-import { printReceipt } from '../utils/receiptPrint';
+import { printReceipt, printShiftReport } from '../utils/receiptPrint';
 
 const btn = 'px-4 py-2 rounded text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 const btnGhost = `${btn} border border-line hover:bg-subtle`;
@@ -99,6 +100,8 @@ function ShiftSummary({ shift }) {
         <FragmentRow key={m} label={`· ${PAYMENT_METHODS[m] || m}`} value={formatRupiah(v)} />
       ))}
       <dt className="text-muted pt-2 border-t border-line-soft">Modal awal</dt><dd className="text-right tabular-nums pt-2 border-t border-line-soft">{formatRupiah(shift.openingCash)}</dd>
+      {s.voidCount > 0 && <FragmentRow label={`Void (${s.voidCount})`} value={formatRupiah(s.voidTotal)} />}
+      {s.returnCount > 0 && <FragmentRow label={`Retur (${s.returnCount})`} value={formatRupiah(s.returnTotal)} />}
       {s.cashIn > 0 && <FragmentRow label="Kas masuk" value={`+${formatRupiah(s.cashIn)}`} />}
       {s.cashOut > 0 && <FragmentRow label="Kas keluar" value={`−${formatRupiah(s.cashOut)}`} />}
       <dt className="font-semibold">Kas seharusnya</dt><dd className="text-right tabular-nums font-semibold">{formatRupiah(s.expectedCash)}</dd>
@@ -241,6 +244,7 @@ export default function Pos() {
       if (modal) return;
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'F9' && cart.length) { e.preventDefault(); setModal('pay'); }
+      if (e.key === 'F8' && cart.length) { e.preventDefault(); setModal('hold'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -258,7 +262,12 @@ export default function Pos() {
         <span className="font-semibold"><i className="fa fa-store mr-1.5 text-muted"></i>{outlet?.name}</span>
         <span className="text-muted">{shift.no} · {shift.cashier?.name} · buka {formatDate2(shift.openedAt)}</span>
         <span className="text-muted">{shift.summary.salesCount} trx · {formatRupiah(shift.summary.salesTotal)}</span>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button type="button" onClick={() => setModal('held')} className={btnGhost}>
+            <i className="fa fa-pause"></i> Ditahan{shift.holdCount ? ` (${shift.holdCount})` : ''}
+          </button>
+          <button type="button" onClick={() => setModal({ lookup: '' })} className={btnGhost}><i className="fa fa-rotate-left"></i> Void / Retur</button>
+          <button type="button" onClick={() => printShiftReport(shift, shift.summary)} className={btnGhost} title="Cetak ringkasan shift sementara (laporan X)"><i className="fa fa-print"></i> X</button>
           <button type="button" onClick={() => setModal('cash')} className={btnGhost}><i className="fa fa-money-bill-transfer"></i> Kas masuk/keluar</button>
           <button type="button" onClick={() => setModal('close')} className={btnGhost}><i className="fa fa-lock"></i> Tutup shift</button>
         </div>
@@ -377,7 +386,12 @@ export default function Pos() {
           <button type="button" disabled={!cart.length || busy || !perm.canCreate} onClick={() => setModal('pay')} className={`${btnPrimary} py-3 text-base`}>
             <i className="fa fa-money-bill-wave"></i> Bayar (F9)
           </button>
-          {cart.length > 0 && <button type="button" onClick={resetSale} className={btnGhost}><i className="fa fa-trash"></i> Kosongkan</button>}
+          {cart.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setModal('hold')} className={btnGhost}><i className="fa fa-pause"></i> Tahan (F8)</button>
+              <button type="button" onClick={resetSale} className={btnGhost}><i className="fa fa-trash"></i> Kosongkan</button>
+            </div>
+          )}
 
           {shift.recent?.length > 0 && (
             <div className="mt-auto pt-3 border-t border-line-soft">
@@ -387,8 +401,12 @@ export default function Pos() {
                   <li key={r._id} className="flex items-center justify-between gap-2">
                     <span className="font-mono">{r.no}</span>
                     <span className="tabular-nums">{formatRupiah(r.total)}</span>
-                    <button type="button" title="Cetak ulang struk" onClick={async () => printReceipt(await getPosReceipt(r._id, user.token))}
-                      className="text-muted hover:text-primary cursor-pointer"><i className="fa fa-print"></i></button>
+                    <span className="flex gap-2">
+                      <button type="button" title="Cetak ulang struk" onClick={async () => printReceipt(await getPosReceipt(r._id, user.token))}
+                        className="text-muted hover:text-primary cursor-pointer"><i className="fa fa-print"></i></button>
+                      <button type="button" title="Void / retur" onClick={() => setModal({ lookup: r.no })}
+                        className="text-muted hover:text-danger cursor-pointer"><i className="fa fa-rotate-left"></i></button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -412,6 +430,7 @@ export default function Pos() {
                 payments,
               }, user.token);
               const receipt = await getPosReceipt(res.data.data._id, user.token);
+              if (outlet?.autoPrint) printReceipt(receipt);
               setModal({ done: receipt });
               setCart([]);
               setDiscountAmount('');
@@ -438,8 +457,56 @@ export default function Pos() {
           </div>
         </Modal>
       )}
+      {modal === 'hold' && (
+        <HoldDialog onClose={() => { setModal(null); focusSearch(); }} onSave={async (note) => {
+          try {
+            await createHold({
+              customer, note, discountAmount: Number(discountAmount) || 0,
+              lines: cart.map((l) => ({ sku: l.sku, qty: l.qty, diskonPersen: l.diskonPersen || 0 })),
+            }, user.token);
+            toast.success('Transaksi ditahan');
+            setModal(null);
+            resetSale();
+            load();
+          } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to hold');
+          }
+        }} />
+      )}
+      {modal === 'held' && (
+        <HeldDialog token={user.token} cartEmpty={!cart.length} onClose={() => { setModal(null); focusSearch(); }} onChanged={load}
+          onResume={(data) => {
+            setCart(data.lines);
+            setDiscountAmount(data.discountAmount || '');
+            setCustomer(data.customer || ctx.walkIn?._id || '');
+            if (data.skipped) toast.warning(`${data.skipped} barang dilewati (sudah tidak aktif).`);
+            setModal(null);
+            load();
+            focusSearch();
+          }} />
+      )}
+      {modal?.lookup !== undefined && (
+        <VoidReturnDialog token={user.token} initialNo={modal.lookup} onClose={() => { setModal(null); focusSearch(); }} onDone={load} />
+      )}
+      {modal?.closed && (
+        <Modal title={`Shift ${modal.closed.no} ditutup`} onClose={() => { setModal(null); load(); }}>
+          <div className="text-center space-y-2">
+            <i className="fa fa-lock text-3xl text-muted"></i>
+            <div className={`text-lg font-semibold ${modal.closed.difference ? 'text-danger' : 'text-success-fg'}`}>
+              {modal.closed.difference ? `Selisih ${formatRupiah(modal.closed.difference)}` : 'Kas pas'}
+            </div>
+          </div>
+          <div className="mt-6 flex gap-2">
+            <button type="button" onClick={() => printShiftReport(modal.closed, modal.summary)} className={`${btnGhost} flex-1`}><i className="fa fa-print"></i> Cetak laporan Z</button>
+            <button type="button" autoFocus onClick={() => { setModal(null); load(); }} className={`${btnPrimary} flex-1`}>Selesai</button>
+          </div>
+        </Modal>
+      )}
       {modal === 'cash' && <CashDialog token={user.token} expected={shift.summary.expectedCash} onClose={() => { setModal(null); focusSearch(); }} onDone={load} />}
-      {modal === 'close' && <CloseDialog token={user.token} shift={shift} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+      {modal === 'close' && (
+        <CloseDialog token={user.token} shift={shift} onClose={() => setModal(null)}
+          onDone={(closed) => setModal({ closed: { ...shift, ...closed, outlet: shift.outlet, cashier: shift.cashier }, summary: shift.summary })} />
+      )}
     </div>
   );
 }
@@ -544,7 +611,7 @@ function CloseDialog({ token, shift, onClose, onDone }) {
     try {
       const res = await closeShift({ closingCash: Number(counted), note }, token);
       toast.success(res.data.message);
-      onDone();
+      onDone(res.data.data);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to close shift');
     } finally {
@@ -555,6 +622,9 @@ function CloseDialog({ token, shift, onClose, onDone }) {
     <Modal title={`Tutup shift ${shift.no}`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4 text-sm">
         <ShiftSummary shift={shift} />
+        {shift.holdCount > 0 && (
+          <p className="rounded p-2 bg-warning-soft text-warning-fg text-xs"><i className="fa fa-triangle-exclamation mr-1"></i>{shift.holdCount} transaksi ditahan akan dibuang saat shift ditutup.</p>
+        )}
         <label className="block">Uang fisik di laci (Rp)
           <input type="number" min="0" step="0.01" autoFocus value={counted} onChange={(e) => setCounted(e.target.value)} className={`${inputClass} mt-1 text-right tabular-nums text-lg`} />
         </label>
@@ -568,6 +638,219 @@ function CloseDialog({ token, shift, onClose, onDone }) {
         </label>
         <button type="submit" disabled={busy} className={`${btnPrimary} w-full`}><i className="fa fa-lock"></i> Tutup shift</button>
       </form>
+    </Modal>
+  );
+}
+
+/** Tahan transaksi: catatan singkat untuk mengenali pelanggan */
+function HoldDialog({ onClose, onSave }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title="Tahan transaksi" onClose={onClose}>
+      <form onSubmit={async (e) => { e.preventDefault(); setBusy(true); await onSave(note.trim()); setBusy(false); }} className="space-y-3 text-sm">
+        <p className="text-muted">Keranjang disimpan dan bisa dilanjutkan nanti (stok belum berkurang). Maks. 10 per shift.</p>
+        <input autoFocus value={note} maxLength={100} onChange={(e) => setNote(e.target.value)} placeholder="Catatan, mis. Ibu baju merah" aria-label="Note" className={inputClass} />
+        <button type="submit" disabled={busy} className={`${btnPrimary} w-full`}><i className="fa fa-pause"></i> Tahan</button>
+      </form>
+    </Modal>
+  );
+}
+
+/** Daftar transaksi ditahan: lanjutkan (keranjang harus kosong) atau buang */
+function HeldDialog({ token, cartEmpty, onClose, onResume, onChanged }) {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const reload = useCallback(() => getHolds(token).then(setList).catch(console.error), [token]);
+  useEffect(() => { reload(); }, [reload]);
+  const resume = async (id) => {
+    if (!cartEmpty) return toast.warning('Selesaikan, tahan, atau kosongkan keranjang saat ini dulu.');
+    try {
+      onResume(await resumeHold(id, token));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resume');
+    }
+  };
+  const discard = async (id) => {
+    try {
+      await deleteHold(id, token);
+      reload();
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to discard');
+    }
+  };
+  return (
+    <Modal title="Transaksi ditahan" onClose={onClose} width="max-w-lg">
+      {!list ? <p className="text-muted text-sm">Loading...</p> : list.length === 0 ? <p className="text-muted text-sm">Tidak ada transaksi ditahan.</p> : (
+        <ul className="divide-y divide-line-soft text-sm">
+          {list.map((h) => (
+            <li key={h._id} className="flex items-center gap-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{h.note || '(tanpa catatan)'}</div>
+                <div className="text-xs text-muted">{formatDate2(h.createdDate)} · {h.itemCount} barang · {formatNumber(h.qty)} qty{h.customer ? ` · ${h.customer.name}` : ''}</div>
+              </div>
+              <button type="button" onClick={() => resume(h._id)} className={`${btnPrimary} py-1`}>Lanjutkan</button>
+              <button type="button" onClick={() => discard(h._id)} title="Buang" aria-label="Discard" className="w-8 h-8 rounded text-muted hover:text-danger hover:bg-danger-soft cursor-pointer"><i className="fa fa-trash"></i></button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Void / retur: cari struk (outlet ini), lalu
+ * - void (transaksi di shift ini, belum ada retur): batal seluruhnya
+ * - retur: pilih qty per barang + metode refund
+ * keduanya disetujui supervisor dengan PIN.
+ */
+function VoidReturnDialog({ token, initialNo, onClose, onDone }) {
+  const toast = useToast();
+  const [no, setNo] = useState(initialNo || '');
+  const [sale, setSale] = useState(null);
+  const [mode, setMode] = useState('return');
+  const [qty, setQty] = useState({});
+  const [reason, setReason] = useState('');
+  const [refundMethod, setRefundMethod] = useState('CASH');
+  const [reference, setReference] = useState('');
+  const [approvers, setApprovers] = useState([]);
+  const [approver, setApprover] = useState('');
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    getApprovers(token).then((a) => { setApprovers(a); if (a.length === 1) setApprover(a[0]._id); }).catch(console.error);
+  }, [token]);
+
+  const find = useCallback(async (value) => {
+    const q = String(value || '').trim();
+    if (!q) return;
+    try {
+      const s = await lookupPosSale(q, token);
+      setSale(s);
+      setQty({});
+      setMode(s.canVoid ? 'void' : 'return');
+      const cash = s.payments.some((p) => p.method === 'CASH');
+      setRefundMethod(cash || !s.payments.length ? 'CASH' : s.payments[0].method);
+    } catch (err) {
+      setSale(null);
+      toast.error(err.response?.data?.message || 'Receipt not found');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+  useEffect(() => { if (initialNo) find(initialNo); }, [initialNo, find]);
+
+  const returnValue = sale ? round2(sale.lines.reduce((s, l) => s + (Number(qty[l.sku._id]) || 0) * l.unitAmount, 0)) : 0;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!reason.trim()) return toast.warning('Isi alasan.');
+    if (!approver || !pin) return toast.warning('Pilih supervisor & masukkan PIN.');
+    setBusy(true);
+    try {
+      if (mode === 'void') {
+        const res = await voidPosSale(sale._id, { reason, approver, pin }, token);
+        setResult({ text: `${res.data.data.no} dibatalkan. Kembalikan ${formatRupiah(res.data.data.total)} ke pelanggan.` });
+      } else {
+        const lines = sale.lines.map((l) => ({ sku: l.sku._id, qty: Number(qty[l.sku._id]) || 0 })).filter((l) => l.qty > 0);
+        if (!lines.length) { setBusy(false); return toast.warning('Isi qty barang yang dikembalikan.'); }
+        const res = await createPosReturn({ salesInvoice: sale._id, lines, reason, refundMethod, reference, approver, pin }, token);
+        const r = res.data.data;
+        setResult({ text: `${r.returnNo} tercatat.${r.refund ? ` Refund ${PAYMENT_METHODS[r.refund.method]} ${formatRupiah(r.refund.amount)}.` : ''}` });
+      }
+      onDone();
+    } catch (err) {
+      setPin('');
+      toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Void / Retur" onClose={onClose} width="max-w-2xl">
+      {result ? (
+        <div className="text-center space-y-4">
+          <i className="fa fa-circle-check text-4xl text-success-fg"></i>
+          <p>{result.text}</p>
+          <button type="button" autoFocus onClick={onClose} className={`${btnPrimary} w-full`}>Selesai</button>
+        </div>
+      ) : (
+        <div className="space-y-4 text-sm">
+          <form onSubmit={(e) => { e.preventDefault(); find(no); }} className="flex gap-2">
+            <input autoFocus value={no} onChange={(e) => setNo(e.target.value)} placeholder="No. struk, mis. POS-202611-0001" aria-label="Receipt number" className={inputClass} />
+            <button type="submit" className={btnGhost}>Cari</button>
+          </form>
+          {sale && (
+            <form onSubmit={submit} className="space-y-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-mono font-semibold">{sale.no}</span>
+                <span className="text-muted">{formatDate2(sale.date)} · {sale.customer?.name} · {formatRupiah(sale.total)}</span>
+                {sale.status !== 'POSTED' && <span className="text-danger font-semibold">DIBATALKAN</span>}
+              </div>
+              {sale.status === 'POSTED' && (
+                <>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={!sale.canVoid} onClick={() => setMode('void')}
+                      title={sale.canVoid ? '' : 'Hanya transaksi di shift ini yang belum punya retur'}
+                      className={`${btn} flex-1 border ${mode === 'void' ? 'border-danger bg-danger-soft text-danger' : 'border-line'}`}>Void seluruh transaksi</button>
+                    <button type="button" disabled={!sale.canReturn} onClick={() => setMode('return')}
+                      className={`${btn} flex-1 border ${mode === 'return' ? 'border-primary bg-primary-soft text-primary-soft-fg' : 'border-line'}`}>Retur sebagian / semua</button>
+                  </div>
+                  {mode === 'return' && (
+                    <>
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-muted"><tr><th className="py-1">Barang</th><th className="py-1 text-right w-20">Dibeli</th><th className="py-1 text-right w-20">Bisa</th><th className="py-1 w-28 text-right">Retur</th></tr></thead>
+                        <tbody>
+                          {sale.lines.map((l) => (
+                            <tr key={l.sku._id} className="border-t border-line-soft">
+                              <td className="py-1">{l.produk?.name} <span className="text-muted">· {l.variant}</span><div className="text-xs text-muted">{formatRupiah(l.unitAmount)} / unit</div></td>
+                              <td className="py-1 text-right tabular-nums">{formatNumber(l.qty)}</td>
+                              <td className="py-1 text-right tabular-nums">{formatNumber(l.returnable)}</td>
+                              <td className="py-1 text-right">
+                                <input type="number" min="0" max={l.returnable} step="0.01" disabled={!l.returnable} value={qty[l.sku._id] ?? ''}
+                                  onChange={(e) => setQty((q) => ({ ...q, [l.sku._id]: e.target.value }))} aria-label={`Return ${l.sku.sku}`}
+                                  className={`${cellInput} text-right tabular-nums w-24`} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-muted">Refund</span>
+                        <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)} aria-label="Refund method" className={`${inputClass} w-40`}>
+                          {Object.entries(PAYMENT_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                        {refundMethod !== 'CASH' && <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ref" aria-label="Reference" className={`${inputClass} w-36`} />}
+                        <span className="ml-auto font-semibold">± {formatRupiah(returnValue)}</span>
+                      </div>
+                    </>
+                  )}
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} placeholder={mode === 'void' ? 'Alasan void, mis. salah input' : 'Alasan retur, mis. barang rusak'} aria-label="Reason" className={inputClass} />
+                  <div className="rounded border border-line p-3 space-y-2">
+                    <div className="font-medium"><i className="fa fa-user-shield mr-1.5 text-muted"></i>Persetujuan supervisor</div>
+                    {approvers.length === 0 ? <p className="text-xs text-danger">Belum ada supervisor ber-PIN untuk outlet ini (atur di menu User).</p> : (
+                      <div className="flex gap-2">
+                        <select value={approver} onChange={(e) => setApprover(e.target.value)} aria-label="Supervisor" className={inputClass}>
+                          <option value="">Pilih supervisor</option>
+                          {approvers.map((a) => <option key={a._id} value={a._id}>{a.name}</option>)}
+                        </select>
+                        <input type="password" inputMode="numeric" autoComplete="off" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} placeholder="PIN" aria-label="PIN" className={`${inputClass} w-28`} />
+                      </div>
+                    )}
+                  </div>
+                  <button type="submit" disabled={busy || !approvers.length} className={`${mode === 'void' ? `${btn} border border-danger-line text-danger hover:bg-danger-soft font-semibold` : btnPrimary} w-full`}>
+                    {mode === 'void' ? 'Void transaksi' : 'Proses retur'}
+                  </button>
+                </>
+              )}
+            </form>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

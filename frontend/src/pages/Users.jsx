@@ -31,6 +31,8 @@ const EMPTY_FORM = {
   allGudang: true,
   gudangs: [],
   outlets: [],
+  posPin: '',
+  removePosPin: false,
 };
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -76,6 +78,8 @@ export default function Users() {
       allGudang: row.allGudang !== false,
       gudangs: (row.gudangs || []).map((g) => g._id || g),
       outlets: (row.outlets || []).map((o) => o._id || o),
+      posPin: '',
+      removePosPin: false,
     }),
     getLabel: (row) => row.name,
     // password kosong saat edit = tidak diubah
@@ -83,6 +87,10 @@ export default function Users() {
       const payload = { ...form };
       if (!payload.password) delete payload.password;
       if (payload.allGudang) payload.gudangs = [];
+      // PIN: kosong = tidak diubah; centang hapus = dihapus
+      if (payload.removePosPin) payload.posPin = '';
+      else if (!payload.posPin) delete payload.posPin;
+      delete payload.removePosPin;
       return payload;
     },
     create: (payload) => createUser(payload, user.token),
@@ -292,6 +300,25 @@ export default function Users() {
               </label>
             ))}
             {outletList.length === 0 && <p className="px-3 py-2 text-sm text-muted">Belum ada outlet.</p>}
+          </div>
+        </FormField>
+
+        <FormField
+          label="POS supervisor PIN"
+          htmlFor="user-pos-pin"
+          hint={`4-8 digit, untuk menyetujui void & retur di layar kasir (butuh izin POS Cashier: post). ${editingRow?.hasPosPin ? 'PIN sudah diatur; isi untuk mengganti.' : 'Belum ada PIN.'}`}
+        >
+          <div className="flex items-center gap-3">
+            <input id="user-pos-pin" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8}
+              value={form.posPin} disabled={form.removePosPin}
+              onChange={(e) => crud.setForm((prev) => ({ ...prev, posPin: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
+              className={`${inputClass} w-40`} placeholder={editingRow?.hasPosPin ? '••••' : ''} />
+            {editingRow?.hasPosPin && (
+              <label className="inline-flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <input type="checkbox" checked={form.removePosPin} onChange={(e) => crud.setForm((prev) => ({ ...prev, removePosPin: e.target.checked, posPin: '' }))} className="w-4 h-4 accent-primary" />
+                Hapus PIN
+              </label>
+            )}
           </div>
         </FormField>
 

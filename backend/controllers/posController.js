@@ -17,6 +17,16 @@ const { checkAmount, round2 } = require('../helpers/number');
 const { salesLineSubtotal, salesTotals, invoiceBalance } = require('../helpers/salesHelper');
 const { resolvePrices } = require('../helpers/priceHelper');
 const { canUseOutlet, assertOutlet, shiftSummary } = require('../helpers/posHelper');
+const PosHold = require('../models/PosHold');
+const SalesReturn = require('../models/SalesReturn');
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const { createPostedReturn, returnable } = require('./salesReturnController');
+const { returnLineValues } = require('../helpers/salesHelper');
+
+const MAX_HOLDS = 10;
+const PIN_MAX_FAILED = 5;
+const PIN_LOCK_MINUTES = 15;
 const { MAX_LINES } = require('../config/stock');
 
 const METHODS = ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'];
@@ -33,7 +43,7 @@ const trimText = (v, max = 500) => (v === undefined || v === null ? '' : String(
 const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 const populateShift = (q) => q
-  .populate('outlet', 'code name gudang priceIncludesTax receiptHeader receiptFooter receiptWidth isActive')
+  .populate('outlet', 'code name gudang priceIncludesTax receiptHeader receiptFooter receiptWidth autoPrint alamat kota phone isActive')
   .populate('gudang', 'code name')
   .populate('cashier', 'name');
 
@@ -75,7 +85,7 @@ exports.getContext = async (req, res) => {
     const walkIn = await Customer.findOne({ isWalkIn: true }).select('code name').lean();
     return successResponse(res, {
       outlets,
-      shift: shift ? await shiftView(shift) : null,
+      shift: shift ? { ...(await shiftView(shift)), holdCount: await PosHold.countDocuments({ shift: shift._id }) } : null,
       walkIn,
       taxRate: settings['tax.isPKP'] !== false ? (settings['tax.ppnRate'] ?? 0) : 0,
     });
@@ -176,6 +186,7 @@ const closeShiftDoc = async (req, shift) => {
     updatedBy: req.user._id,
   });
   await shift.save();
+  await PosHold.deleteMany({ shift: shift._id }); // transaksi ditahan yang tersisa dibuang
   await audit.logUpdate(req, 'posShift', before, [shift]);
   return shift;
 };
@@ -421,6 +432,311 @@ exports.getReceipt = async (req, res) => {
   }
 };
 
+// ---------------------------------------------------------------- persetujuan supervisor (PIN)
+
+/**
+ * Verifikasi PIN supervisor (di LUAR transaksi supaya hitungan salah PIN tidak ikut di-rollback).
+ * Syarat: user aktif, izin pos:post, punya PIN, ditugaskan di outlet (Super Admin semua).
+ * 5x salah berturut-turut -> PIN terkunci 15 menit.
+ */
+const verifyApprover = async (approverId, pin, outletId) => {
+  if (!mongoose.isValidObjectId(approverId)) throw new HttpError('Choose the approving supervisor', 400);
+  if (!pin) throw new HttpError('Supervisor PIN is required', 400);
+  const u = await User.findById(approverId).select('+posPinHash +posPinFailed +posPinLockedUntil').populate('role');
+  if (!u || u.isActive === false || !u.posPinHash || !hasPermission(u, 'pos', 'post')) {
+    throw new HttpError('This user cannot approve POS actions', 403);
+  }
+  if (!u.role?.isSystem && !(u.outlets || []).some((id) => String(id) === String(outletId))) {
+    throw new HttpError('Supervisor is not assigned to this outlet', 403);
+  }
+  const now = new Date();
+  if (u.posPinLockedUntil && u.posPinLockedUntil > now) {
+    const mins = Math.ceil((u.posPinLockedUntil - now) / 60000);
+    throw new HttpError(`PIN locked after too many attempts. Try again in ${mins} minute(s).`, 429);
+  }
+  if (!(await bcrypt.compare(String(pin), u.posPinHash))) {
+    const failed = (u.posPinFailed || 0) + 1;
+    await User.updateOne({ _id: u._id }, failed >= PIN_MAX_FAILED
+      ? { posPinFailed: 0, posPinLockedUntil: new Date(now.getTime() + PIN_LOCK_MINUTES * 60000) }
+      : { posPinFailed: failed });
+    throw new HttpError(failed >= PIN_MAX_FAILED ? `Wrong PIN. PIN locked for ${PIN_LOCK_MINUTES} minutes.` : 'Wrong PIN', 403);
+  }
+  if (u.posPinFailed || u.posPinLockedUntil) await User.updateOne({ _id: u._id }, { posPinFailed: 0, posPinLockedUntil: null });
+  return { _id: u._id, name: u.name };
+};
+
+/** GET /api/pos/approvers — supervisor yang bisa menyetujui di outlet shift ini (izin pos:post + PIN) */
+exports.getApprovers = async (req, res) => {
+  try {
+    const shift = await myOpenShift(req).lean();
+    if (!shift) return errorResponse(res, 'Open a shift first', 400);
+    const users = await User.find({ isActive: { $ne: false }, hasPosPin: true }).select('name outlets').populate('role').lean();
+    return successResponse(res, users
+      .filter((u) => hasPermission(u, 'pos', 'post') && (u.role?.isSystem || (u.outlets || []).some((id) => String(id) === String(shift.outlet))))
+      .map((u) => ({ _id: u._id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)));
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// ---------------------------------------------------------------- hold / park
+
+/** GET /api/pos/holds — transaksi ditahan di shift sendiri */
+exports.getHolds = async (req, res) => {
+  try {
+    const shift = await myOpenShift(req).lean();
+    if (!shift) return successResponse(res, []);
+    const holds = await PosHold.find({ shift: shift._id }).populate('customer', 'name').sort({ createdDate: 1 }).lean();
+    return successResponse(res, holds.map((h) => ({
+      _id: h._id, note: h.note, customer: h.customer, createdDate: h.createdDate,
+      itemCount: h.lines.length, qty: round2(h.lines.reduce((s, l) => s + l.qty, 0)),
+    })));
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/** POST /api/pos/holds { customer, lines: [{ sku, qty, diskonPersen }], discountAmount, note } — maks. 10 per shift */
+exports.createHold = async (req, res) => {
+  try {
+    const input = Array.isArray(req.body.lines) ? req.body.lines : [];
+    if (!input.length) return errorResponse(res, 'Cart is empty', 400);
+    const lines = [];
+    for (const l of input) {
+      if (!mongoose.isValidObjectId(l?.sku)) return errorResponse(res, 'Invalid SKU', 400);
+      const e = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true }) || checkAmount(l.diskonPersen ?? 0, 'Discount');
+      if (e) return errorResponse(res, e, 400);
+      lines.push({ sku: l.sku, qty: round2(l.qty), diskonPersen: Math.min(round2(l.diskonPersen ?? 0), 100) });
+    }
+    const hold = await runInTransaction(async () => {
+      const shift = await requireMyShift(req);
+      if ((await PosHold.countDocuments({ shift: shift._id })) >= MAX_HOLDS) throw new HttpError(`At most ${MAX_HOLDS} held transactions per shift`, 400);
+      return PosHold.create({
+        shift: shift._id, outlet: shift.outlet, cashier: req.user._id,
+        customer: mongoose.isValidObjectId(req.body.customer) ? req.body.customer : null,
+        note: trimText(req.body.note, 100), lines,
+        discountAmount: round2(Number(req.body.discountAmount) || 0),
+      });
+    });
+    return successResponse(res, hold, 'Transaction held', 201);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * POST /api/pos/holds/:id/resume — isi keranjang (harga & stok terbaru) lalu hold dihapus.
+ * SKU yang sudah tidak ada / nonaktif dilewati (dilaporkan di `skipped`).
+ */
+exports.resumeHold = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return errorResponse(res, 'Held transaction not found', 404);
+    const result = await runInTransaction(async () => {
+      const shift = await requireMyShift(req);
+      const hold = await PosHold.findOne({ _id: req.params.id, shift: shift._id });
+      if (!hold) throw new HttpError('Held transaction not found', 404);
+      const skus = await ProdukSku.find({ _id: { $in: hold.lines.map((l) => l.sku) }, isActive: true })
+        .select('sku produk variantValues hargaJual')
+        .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+        .lean();
+      const skuMap = new Map(skus.map((s) => [String(s._id), s]));
+      const ids = skus.map((s) => s._id);
+      const [balances, prices] = await Promise.all([getBalances(shift.gudang, ids), resolvePrices(hold.customer, ids)]);
+      const lines = [];
+      let skipped = 0;
+      for (const l of hold.lines) {
+        const s = skuMap.get(String(l.sku));
+        if (!s) { skipped++; continue; }
+        lines.push({
+          sku: s._id, code: s.sku, name: s.produk?.name || '', uom: s.produk?.uom?.code || '',
+          variant: (s.variantValues || []).map((v) => v.value).join(' / ') || 'Default',
+          stock: balances.get(String(s._id)) || 0,
+          hargaJual: prices.get(String(s._id))?.price ?? s.hargaJual ?? 0,
+          priceSource: prices.get(String(s._id))?.source || 'default',
+          qty: l.qty, diskonPersen: l.diskonPersen || 0,
+        });
+      }
+      await hold.deleteOne();
+      return { customer: hold.customer, discountAmount: hold.discountAmount, note: hold.note, lines, skipped };
+    });
+    return successResponse(res, result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/** DELETE /api/pos/holds/:id — buang transaksi ditahan (kasir sendiri, tanpa persetujuan) */
+exports.deleteHold = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return errorResponse(res, 'Held transaction not found', 404);
+    const shift = await myOpenShift(req).lean();
+    if (!shift) return errorResponse(res, 'Open a shift first', 400);
+    const r = await PosHold.deleteOne({ _id: req.params.id, shift: shift._id });
+    if (!r.deletedCount) return errorResponse(res, 'Held transaction not found', 404);
+    return successResponse(res, null, 'Held transaction discarded');
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+// ---------------------------------------------------------------- cari transaksi, void, retur
+
+/**
+ * GET /api/pos/sales/lookup?no= — transaksi POS di outlet shift ini (untuk void / retur):
+ * baris + qty yang masih bisa diretur & nilai per unit, pembayaran, canVoid / canReturn.
+ */
+exports.lookupSale = async (req, res) => {
+  try {
+    const shift = await myOpenShift(req).lean();
+    if (!shift) return errorResponse(res, 'Open a shift first', 400);
+    const no = String(req.query.no || '').trim().toUpperCase();
+    if (!no) return errorResponse(res, 'Enter the receipt number', 400);
+    const inv = await SalesInvoice.findOne({ no, source: 'POS' })
+      .select('no date status outlet shift customer lines subtotal dpp total paidAmount returnedAmount')
+      .populate('customer', 'name')
+      .populate('lines.sku', 'sku variantValues')
+      .populate('lines.produk', 'name')
+      .lean();
+    if (!inv) return errorResponse(res, `Receipt ${no} not found`, 404);
+    if (String(inv.outlet) !== String(shift.outlet)) return errorResponse(res, 'This receipt is from another outlet. Returns are only accepted at the outlet where it was bought.', 400);
+    const returns = await SalesReturn.countDocuments({ salesInvoice: inv._id, status: { $in: ['DRAFT', 'POSTED'] } });
+    inv.lines.forEach((l) => {
+      l.returnable = returnable(l);
+      l.unitAmount = returnLineValues(l, 1, inv).amount;
+      l.variant = (l.sku?.variantValues || []).map((v) => v.value).join(' / ') || 'Default';
+      delete l.unitCost;
+    });
+    inv.payments = await SalesPayment.find({ salesInvoice: inv._id, status: 'POSTED' }).select('method amount type').lean();
+    inv.isCurrentShift = String(inv.shift) === String(shift._id);
+    inv.canVoid = inv.status === 'POSTED' && inv.isCurrentShift && !returns;
+    inv.canReturn = inv.status === 'POSTED' && inv.lines.some((l) => l.returnable > 0);
+    return successResponse(res, inv);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * POST /api/pos/sales/:id/void { reason, approver, pin } — batalkan transaksi di shift sendiri yang masih
+ * terbuka, disetujui supervisor (PIN): stok kembali (pembalik SALE), pembayaran dibatalkan (kas seharusnya
+ * berkurang). Transaksi yang sudah punya retur / dari shift lain -> pakai retur.
+ */
+exports.voidSale = async (req, res) => {
+  try {
+    const reason = trimText(req.body.reason);
+    if (!reason) return errorResponse(res, 'Void reason is required', 400);
+    if (!mongoose.isValidObjectId(req.params.id)) return errorResponse(res, 'Sale not found', 404);
+    const mine = await myOpenShift(req).lean();
+    if (!mine) return errorResponse(res, 'Open a shift first', 400);
+    const approver = await verifyApprover(req.body.approver, req.body.pin, mine.outlet);
+
+    const doc = await runInTransaction(async () => {
+      const shift = await requireMyShift(req);
+      await lock(ref('salesInvoice', req.params.id), ref('gudang', shift.gudang));
+      const inv = await SalesInvoice.findById(req.params.id);
+      if (!inv || inv.source !== 'POS') throw new HttpError('Sale not found', 404);
+      if (inv.status !== 'POSTED') throw new HttpError('Sale is already cancelled', 400);
+      if (String(inv.shift) !== String(shift._id)) throw new HttpError('Only sales in your open shift can be voided. Use a return instead.', 400);
+      if (await SalesReturn.exists({ salesInvoice: inv._id, status: { $in: ['DRAFT', 'POSTED'] } })) {
+        throw new HttpError('This sale already has a return. Use a return for the remaining items.', 400);
+      }
+      const note = `VOID: ${reason} (approved by ${approver.name})`;
+      const before = await audit.snap('salesInvoice', [inv]);
+      await applyMovements(req, inv.lines.map((l) => ({
+        sku: l.sku, gudang: inv.gudang, qty: l.qty, unitCost: l.unitCost, type: 'SALE', note,
+      })), { refType: 'SalesInvoice', refId: inv._id, refNo: inv.no, isReversal: true });
+
+      const pays = await SalesPayment.find({ salesInvoice: inv._id, status: 'POSTED' });
+      const payBefore = await audit.snap('salesPayment', pays);
+      for (const p of pays) Object.assign(p, { status: 'CANCELLED', cancelledBy: req.user._id, cancelledDate: new Date(), cancelReason: note });
+      for (const p of pays) await p.save();
+      Object.assign(inv, {
+        status: 'CANCELLED', paidAmount: 0, paymentStatus: null, cancelledBy: req.user._id, cancelledDate: new Date(),
+        cancelReason: note, voidApprovedBy: approver._id,
+      });
+      await inv.save();
+      await audit.logUpdate(req, 'salesPayment', payBefore, pays);
+      await audit.logUpdate(req, 'salesInvoice', before, [inv]);
+      return inv;
+    });
+    return successResponse(res, { _id: doc._id, no: doc.no, total: doc.total }, `${doc.no} voided`);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * POST /api/pos/returns { salesInvoice, lines: [{ sku, qty }], reason, refundMethod, reference, approver, pin }
+ * Retur di kasir (outlet yang sama dengan transaksi), disetujui supervisor (PIN): Sales Return POSTED
+ * (stok masuk dengan HPP saat dijual) + refund sebesar kelebihan bayar dari laci shift ini
+ * (tunai: tidak boleh melebihi kas di laci).
+ */
+exports.createReturn = async (req, res) => {
+  try {
+    const reason = trimText(req.body.reason);
+    if (!reason) return errorResponse(res, 'Return reason is required', 400);
+    if (!mongoose.isValidObjectId(req.body.salesInvoice)) return errorResponse(res, 'Sale not found', 404);
+    const refundMethod = req.body.refundMethod || 'CASH';
+    if (!METHODS.includes(refundMethod)) return errorResponse(res, 'Invalid refund method', 400);
+    const seen = new Set();
+    const lines = [];
+    for (const l of (Array.isArray(req.body.lines) ? req.body.lines : [])) {
+      if (!l || Number(l.qty) === 0 || l.qty === '' || l.qty === null || l.qty === undefined) continue;
+      if (!mongoose.isValidObjectId(l.sku) || seen.has(String(l.sku))) return errorResponse(res, 'Invalid return lines', 400);
+      seen.add(String(l.sku));
+      const e = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true });
+      if (e) return errorResponse(res, e, 400);
+      lines.push({ sku: String(l.sku), qty: round2(l.qty) });
+    }
+    if (!lines.length) return errorResponse(res, 'Fill in the returned quantity for at least one item', 400);
+    const mine = await myOpenShift(req).lean();
+    if (!mine) return errorResponse(res, 'Open a shift first', 400);
+    const approver = await verifyApprover(req.body.approver, req.body.pin, mine.outlet);
+
+    const result = await runInTransaction(async () => {
+      const shift = await requireMyShift(req);
+      await lock(ref('salesInvoice', req.body.salesInvoice));
+      const inv = await SalesInvoice.findById(req.body.salesInvoice);
+      if (!inv || inv.source !== 'POS') throw new HttpError('Sale not found', 404);
+      if (inv.status !== 'POSTED') throw new HttpError('Only completed sales can be returned', 400);
+      if (String(inv.outlet) !== String(shift.outlet)) throw new HttpError('Returns are only accepted at the outlet where the item was bought', 400);
+
+      const ret = await createPostedReturn(req, inv, {
+        reason: `${reason} (approved by ${approver.name})`,
+        lines,
+        extra: { shift: shift._id, outlet: shift.outlet, approvedBy: approver._id },
+      });
+
+      // refund = kelebihan bayar setelah retur
+      let refund = null;
+      const { balance } = invoiceBalance(inv);
+      if (balance < 0) {
+        const amount = round2(-balance);
+        if (refundMethod === 'CASH') {
+          const { expectedCash } = await shiftSummary(shift);
+          if (amount > expectedCash) throw new HttpError(`Cash in drawer (${fmt(expectedCash)}) is not enough for the refund ${fmt(amount)}`, 400);
+        }
+        const invBefore = await audit.snap('salesInvoice', [inv]);
+        refund = await SalesPayment.create({
+          no: await nextDocNo('RFD'), type: 'REFUND', salesInvoice: inv._id, customer: inv.customer, gudang: inv.gudang,
+          shift: shift._id, date: new Date(), method: refundMethod, amount,
+          reference: trimText(req.body.reference, 100), note: `Refund ${ret.no}`, createdBy: req.user._id,
+        });
+        inv.paidAmount = round2((inv.paidAmount || 0) - amount);
+        inv.paymentStatus = invoiceBalance(inv).paymentStatus;
+        await inv.save();
+        await audit.logCreate(req, 'salesPayment', [refund]);
+        await audit.logUpdate(req, 'salesInvoice', invBefore, [inv]);
+      }
+      return { returnNo: ret.no, returnId: ret._id, total: ret.total, refund: refund ? { no: refund.no, method: refund.method, amount: refund.amount } : null };
+    });
+    return successResponse(res, result, `${result.returnNo} posted`, 201);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
 // ---------------------------------------------------------------- daftar shift (supervisor)
 
 /** GET /api/pos-shift — filter outlet, cashier, status, from, to (tanggal buka) */
@@ -453,6 +769,77 @@ exports.getShifts = async (req, res) => {
       }
     }
     return successResponse(res, { dataPosShift: docs, totalData, currentPage: page, totalPages: Math.ceil(totalData / pageSize) });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * GET /api/pos-shift/report?from=&to=&outlet=&cashier= — ringkasan per kasir dari shift yang DIBUKA
+ * pada periode: shift, transaksi, penjualan, rata-rata, per metode bayar (bersih), void, retur, selisih kas.
+ */
+exports.getCashierReport = async (req, res) => {
+  try {
+    const now = new Date();
+    const from = req.query.from ? new Date(`${req.query.from}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : now;
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return errorResponse(res, 'Invalid date', 400);
+    const filter = { openedAt: { $gte: from, $lte: to } };
+    for (const key of ['outlet', 'cashier']) {
+      if (!req.query[key]) continue;
+      if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
+      filter[key] = req.query[key];
+    }
+    const shifts = await PosShift.find(filter).select('cashier outlet status difference').populate('cashier', 'name').lean();
+    const ids = shifts.map((s) => s._id);
+    const [sales, voids, pays, rets] = await Promise.all([
+      SalesInvoice.aggregate([{ $match: { shift: { $in: ids }, status: 'POSTED' } }, { $group: { _id: '$shift', count: { $sum: 1 }, total: { $sum: '$total' } } }]),
+      SalesInvoice.aggregate([{ $match: { shift: { $in: ids }, status: 'CANCELLED', voidApprovedBy: { $ne: null } } }, { $group: { _id: '$shift', count: { $sum: 1 }, total: { $sum: '$total' } } }]),
+      SalesPayment.aggregate([
+        { $match: { shift: { $in: ids }, status: 'POSTED' } },
+        { $group: { _id: { shift: '$shift', method: '$method' }, net: { $sum: { $cond: [{ $eq: ['$type', 'REFUND'] }, { $multiply: ['$amount', -1] }, '$amount'] } } } },
+      ]),
+      SalesReturn.aggregate([{ $match: { shift: { $in: ids }, status: 'POSTED' } }, { $group: { _id: '$shift', count: { $sum: 1 }, total: { $sum: '$total' } } }]),
+    ]);
+    const by = (list) => new Map(list.map((x) => [String(x._id), x]));
+    const salesMap = by(sales);
+    const voidMap = by(voids);
+    const retMap = by(rets);
+    const rows = new Map();
+    const blank = (cashier) => ({
+      cashier, shifts: 0, openShifts: 0, salesCount: 0, salesTotal: 0, byMethod: {},
+      voidCount: 0, voidTotal: 0, returnCount: 0, returnTotal: 0, cashDifference: 0,
+    });
+    const shiftCashier = new Map();
+    for (const s of shifts) {
+      const key = String(s.cashier?._id);
+      shiftCashier.set(String(s._id), key);
+      if (!rows.has(key)) rows.set(key, blank({ _id: s.cashier?._id, name: s.cashier?.name || '(deleted)' }));
+      const r = rows.get(key);
+      r.shifts++;
+      if (s.status === 'OPEN') r.openShifts++;
+      r.cashDifference = round2(r.cashDifference + (s.difference || 0));
+      const sl = salesMap.get(String(s._id));
+      if (sl) { r.salesCount += sl.count; r.salesTotal = round2(r.salesTotal + sl.total); }
+      const vd = voidMap.get(String(s._id));
+      if (vd) { r.voidCount += vd.count; r.voidTotal = round2(r.voidTotal + vd.total); }
+      const rt = retMap.get(String(s._id));
+      if (rt) { r.returnCount += rt.count; r.returnTotal = round2(r.returnTotal + rt.total); }
+    }
+    for (const p of pays) {
+      const r = rows.get(shiftCashier.get(String(p._id.shift)));
+      if (r) r.byMethod[p._id.method] = round2((r.byMethod[p._id.method] || 0) + p.net);
+    }
+    const list = [...rows.values()].map((r) => ({ ...r, avgTicket: r.salesCount ? round2(r.salesTotal / r.salesCount) : 0 }))
+      .sort((a, b) => b.salesTotal - a.salesTotal);
+    const sum = (f) => round2(list.reduce((s, r) => s + r[f], 0));
+    const totals = {
+      shifts: sum('shifts'), salesCount: sum('salesCount'), salesTotal: sum('salesTotal'), voidCount: sum('voidCount'), voidTotal: sum('voidTotal'),
+      returnCount: sum('returnCount'), returnTotal: sum('returnTotal'), cashDifference: sum('cashDifference'), byMethod: {},
+    };
+    list.forEach((r) => Object.entries(r.byMethod).forEach(([m, v]) => { totals.byMethod[m] = round2((totals.byMethod[m] || 0) + v); }));
+    totals.avgTicket = totals.salesCount ? round2(totals.salesTotal / totals.salesCount) : 0;
+    return successResponse(res, { from, to, rows: list, totals });
   } catch (error) {
     return handleError(res, error);
   }
