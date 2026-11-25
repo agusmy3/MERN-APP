@@ -283,6 +283,7 @@ exports.deleteProduk = async (req, res) => {
       await VendorPrice.deleteMany({ produk: produk._id });
       await ProdukSku.deleteMany({ produk: produk._id });
       await require('../models/ReorderRule').deleteMany({ produk: produk._id });
+      await require('../models/PriceList').updateMany({ 'items.produk': produk._id }, { $pull: { items: { produk: produk._id } } });
       await produk.deleteOne();
 
       const batchId = audit.newBatchId();

@@ -96,6 +96,12 @@ export default function Dashboard() {
                   sub={`${d.sales.month.count} invoice${d.sales.month.grossProfit !== undefined ? ` · GP ${formatRupiahCompact(d.sales.month.grossProfit)}` : ''}`} />
               </>
             )}
+            {d.receivables && (
+              <Kpi label="Receivables" icon="fa-hand-holding-dollar" value={formatRupiahCompact(d.receivables.outstanding)}
+                to={d.receivables.overdueCount ? '/sales-invoice?paymentStatus=OVERDUE' : '/sales-invoice?paymentStatus=OPEN'}
+                sub={`${d.receivables.count} invoice${d.receivables.overdueCount ? ` · ${formatRupiahCompact(d.receivables.overdue)} overdue (${d.receivables.overdueCount})` : ''}`}
+                tone={d.receivables.overdueCount ? 'border-danger-line bg-danger-soft' : ''} />
+            )}
             {d.inventoryValue !== undefined && (
               <Kpi label="Inventory value" icon="fa-sack-dollar" value={formatRupiahCompact(d.inventoryValue)} to="/stock-valuation"
                 sub={`${formatRupiah(d.inventoryValue)}${d.inTransit?.value ? ` · + ${formatRupiahCompact(d.inTransit.value)} in transit` : ''}`} />

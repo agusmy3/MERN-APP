@@ -8,7 +8,7 @@
  *   Master Data : Category, Product, Variant, Unit of Measure, Vendor, Customer, Warehouse
  *   Inventory   : Stock Adjustment, Stock Transfer, Stock Movement, Reorder, Stock Valuation, Cost Revaluation
  *   Purchasing  : Purchase Order, Goods Receipt
- *   Sales       : Sales Invoice
+ *   Sales       : Sales Invoice, Sales Return, Sales Payment, Price List, Sales Report
  *   Settings    : User, Role, Menu, System Settings, Audit Log
  *
  * - Menu dicocokkan lewat route (`component`); yang ada dipindah (parent & order), nama/ikon tidak diubah.
@@ -67,6 +67,10 @@ const TARGET = [
     group: 'Sales', aliases: [], icon: 'fa-solid fa-cash-register', order: 5,
     children: [
       leaf('/sales-invoice', 'Sales Invoice', 'fa-solid fa-file-invoice-dollar', 'salesInvoice', 'Penjualan langsung: stok keluar & laba kotor saat diposting'),
+      leaf('/sales-return', 'Sales Return', 'fa-solid fa-rotate-left', 'salesReturn', 'Retur atas invoice: stok masuk kembali, tagihan berkurang'),
+      leaf('/sales-payment', 'Sales Payment', 'fa-solid fa-money-bill-wave', 'salesPayment', 'Pembayaran & refund invoice penjualan'),
+      leaf('/price-list', 'Price List', 'fa-solid fa-tags', 'priceList', 'Harga jual khusus per customer'),
+      leaf('/sales-report', 'Sales Report', 'fa-solid fa-chart-column', 'salesReport', 'Penjualan bersih per periode, customer & produk; umur piutang'),
     ],
   },
   {

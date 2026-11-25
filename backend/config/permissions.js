@@ -44,6 +44,14 @@ const RESOURCES = [
   // penjualan langsung: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali).
   // HPP & laba kotor hanya untuk vendorPrice:view
   { key: 'salesInvoice', label: 'Sales Invoice', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // retur atas invoice: create/update/delete = draft; post = posting & pembatalan (stok masuk, tagihan berkurang)
+  { key: 'salesReturn', label: 'Sales Return', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // pembayaran / refund invoice: create = catat (langsung berlaku); update = batalkan
+  { key: 'salesPayment', label: 'Sales Payment', group: 'Sales', actions: ['view', 'create', 'update'] },
+  // harga jual khusus per customer
+  { key: 'priceList', label: 'Price List', group: 'Sales' },
+  // laporan penjualan & umur piutang (baca saja; HPP & laba hanya untuk vendorPrice:view)
+  { key: 'salesReport', label: 'Sales Report', group: 'Sales', actions: ['view'] },
   { key: 'menu', label: 'Menu', group: 'Settings' },
   { key: 'role', label: 'Role', group: 'Settings' },
   { key: 'user', label: 'User', group: 'Settings' },

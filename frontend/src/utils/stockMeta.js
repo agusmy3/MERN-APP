@@ -43,6 +43,7 @@ export const MOVEMENT_TYPES = {
   TRANSFER_OUT: 'Transfer Out',
   TRANSFER_IN: 'Transfer In',
   SALE: 'Sale',
+  SALE_RETURN: 'Sales Return',
 };
 
 // Stock Transfer: DRAFT -> IN_TRANSIT (dikirim) -> RECEIVED; IN_TRANSIT -> CANCELLED

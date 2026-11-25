@@ -12,6 +12,8 @@ const customerSchema = new mongoose.Schema({
   address: { type: String, trim: true, default: '' },
   npwp: { type: String, trim: true, default: '' },
   deskripsi: { type: String, default: '' },
+  termDays: { type: Number, default: 0, min: 0, max: 365 }, // termin bayar default (0 = tunai) -> jatuh tempo invoice
+  priceList: { type: mongoose.Schema.Types.ObjectId, ref: 'PriceList', default: null }, // harga khusus (null = harga jual default)
   isActive: { type: Boolean, default: true },
   isWalkIn: { type: Boolean, default: false },
   createdDate: { type: Date, default: Date.now },

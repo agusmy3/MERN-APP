@@ -44,10 +44,18 @@ const ROUTE_RESOURCE = {
   '/settings': 'setting',
   '/customer': 'customer',
   '/sales-invoice': 'salesInvoice',
+  '/sales-return': 'salesReturn',
+  '/sales-payment': 'salesPayment',
+  '/price-list': 'priceList',
+  '/sales-report': 'salesReport',
 };
 
 const SALES_MENUS = [
   { menu: 'Sales Invoice', component: '/sales-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'salesInvoice', deskripsi: 'Penjualan langsung: stok keluar & laba kotor saat diposting' },
+  { menu: 'Sales Return', component: '/sales-return', icon: 'fa-solid fa-rotate-left', resource: 'salesReturn', deskripsi: 'Retur atas invoice: stok masuk kembali, tagihan berkurang' },
+  { menu: 'Sales Payment', component: '/sales-payment', icon: 'fa-solid fa-money-bill-wave', resource: 'salesPayment', deskripsi: 'Pembayaran & refund invoice penjualan' },
+  { menu: 'Price List', component: '/price-list', icon: 'fa-solid fa-tags', resource: 'priceList', deskripsi: 'Harga jual khusus per customer' },
+  { menu: 'Sales Report', component: '/sales-report', icon: 'fa-solid fa-chart-column', resource: 'salesReport', deskripsi: 'Penjualan bersih per periode, customer & produk; umur piutang' },
 ];
 
 const PURCHASING_MENUS = [

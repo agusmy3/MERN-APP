@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer } from '../services/salesService';
+import { useCallback, useEffect, useState } from 'react';
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getPriceListDropdown } from '../services/salesService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -19,12 +19,18 @@ const EMPTY_FORM = {
   address: '',
   npwp: '',
   deskripsi: '',
+  termDays: 0,
+  priceList: '',
   isActive: true,
 };
 
 /** Master Customer. Customer "Umum / Walk-in" bawaan tidak bisa dihapus / dinonaktifkan. */
 export default function Customer() {
   const { user } = useAuth();
+  const [priceLists, setPriceLists] = useState([]);
+  useEffect(() => {
+    getPriceListDropdown(user.token).then(setPriceLists).catch(console.error);
+  }, [user.token]);
 
   const fetchCustomers = useCallback(async (params) => {
     const data = await getCustomers(user.token, params);
@@ -45,6 +51,8 @@ export default function Customer() {
       address: row.address || '',
       npwp: row.npwp || '',
       deskripsi: row.deskripsi || '',
+      termDays: row.termDays ?? 0,
+      priceList: row.priceList?._id || '',
       isActive: row.isActive !== false,
     }),
     getLabel: (row) => row.name,
@@ -75,6 +83,8 @@ export default function Customer() {
     },
     { key: 'phone', header: 'Phone', sortField: 'phone', width: 140 },
     { key: 'email', header: 'Email', width: 200 },
+    { key: 'priceList', header: 'Price List', width: 140, render: (row) => row.priceList?.name || <span className="text-muted">Default</span> },
+    { key: 'termDays', header: 'Term', width: 90, className: 'text-right tabular-nums', render: (row) => (row.termDays ? `${row.termDays} d` : 'Cash') },
     { key: 'address', header: 'Address', width: 260 },
     {
       key: 'isActive',
@@ -125,6 +135,19 @@ export default function Customer() {
 
         <FormField label="Address" htmlFor="cust-address">
           <textarea id="cust-address" name="address" rows={3} value={form.address} onChange={crud.handleChange} className={inputClass} />
+        </FormField>
+
+        <FormField label="Payment term (days)" htmlFor="cust-term" hint="Jatuh tempo invoice = tanggal invoice + termin. 0 = tunai.">
+          <input id="cust-term" name="termDays" type="number" min="0" max="365" step="1" value={form.termDays} onChange={crud.handleChange} className={inputClass} />
+        </FormField>
+
+        <FormField label="Price list" htmlFor="cust-pl" hint="Kosong = harga jual default SKU.">
+          <select id="cust-pl" name="priceList" value={form.priceList} onChange={crud.handleChange} className={`${inputClass} text-fg`}>
+            <option value="">Default price</option>
+            {priceLists.filter((p) => p.isActive !== false || p._id === form.priceList).map((p) => (
+              <option key={p._id} value={p._id}>{p.name} ({p.code}){p.isActive === false ? ' – inactive' : ''}</option>
+            ))}
+          </select>
         </FormField>
 
         <FormField label="NPWP" htmlFor="cust-npwp" hint="Opsional, untuk faktur pajak.">

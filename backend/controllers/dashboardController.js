@@ -14,6 +14,7 @@ const { gudangFilter, gudangScope } = require('../helpers/gudangAccess');
 const StockTransfer = require('../models/StockTransfer');
 const { inTransitSummary } = require('./stockTransferController');
 const SalesInvoice = require('../models/SalesInvoice');
+const SalesReturn = require('../models/SalesReturn');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -77,15 +78,16 @@ const inventoryWidgets = async (g) => {
 };
 
 /**
- * Penjualan (invoice POSTED, menurut tanggal invoice): hari ini, bulan ini, per bulan (6 bulan) &
- * produk terlaris 30 hari. Penjualan = dpp (bersih, tanpa PPN). Laba kotor (dpp - HPP) hanya jika withCost.
+ * Penjualan (invoice POSTED menurut tanggal invoice, dikurangi retur POSTED menurut tanggal retur):
+ * hari ini, bulan ini, per bulan (6 bulan) & produk terlaris 30 hari. Penjualan = dpp (bersih, tanpa PPN).
+ * Laba kotor (dpp - HPP) hanya jika withCost.
  */
 const salesWidgets = async (tz, withCost, g) => {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - 6, 1); // longgar, dipotong per kunci bulan
   const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   const monthKey = dayKey.slice(0, 7);
-  const rows = await SalesInvoice.aggregate([
+  const pipeline = [
     { $match: { status: 'POSTED', date: { $gte: from }, ...g } },
     {
       $project: {
@@ -96,15 +98,24 @@ const salesWidgets = async (tz, withCost, g) => {
       }
     },
     { $group: { _id: { month: '$month', today: { $eq: ['$day', dayKey] } }, value: { $sum: '$dpp' }, profit: { $sum: '$profit' }, count: { $sum: 1 } } },
-  ]);
+  ];
+  const [rows, returnRows] = await Promise.all([SalesInvoice.aggregate(pipeline), SalesReturn.aggregate(pipeline)]);
   const byMonth = new Map();
   const today = { value: 0, profit: 0, count: 0 };
-  for (const r of rows) {
+  const add = (r, sign) => {
     const m = byMonth.get(r._id.month) || { value: 0, profit: 0, count: 0 };
-    m.value += r.value; m.profit += r.profit; m.count += r.count;
+    m.value += sign * r.value;
+    m.profit += sign * r.profit;
+    if (sign > 0) m.count += r.count; // jumlah invoice (retur tidak dihitung)
     byMonth.set(r._id.month, m);
-    if (r._id.today) Object.assign(today, { value: r.value, profit: r.profit, count: r.count });
-  }
+    if (r._id.today) {
+      today.value += sign * r.value;
+      today.profit += sign * r.profit;
+      if (sign > 0) today.count += r.count;
+    }
+  };
+  rows.forEach((r) => add(r, 1));
+  returnRows.forEach((r) => add(r, -1));
   const pick = (m) => ({ value: round2(m?.value || 0), count: m?.count || 0, ...(withCost ? { grossProfit: round2(m?.profit || 0) } : {}) });
   const salesByMonth = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
@@ -119,7 +130,19 @@ const salesWidgets = async (tz, withCost, g) => {
     { $match: { status: 'POSTED', date: { $gte: since }, ...g } },
     { $project: { lines: 1, ratio: { $cond: [{ $gt: ['$subtotal', 0] }, { $divide: ['$dpp', '$subtotal'] }, 0] } } },
     { $unwind: '$lines' },
-    { $group: { _id: '$lines.sku', qty: { $sum: '$lines.qty' }, value: { $sum: { $multiply: ['$lines.subtotal', '$ratio'] } } } },
+    { $project: { sku: '$lines.sku', qty: '$lines.qty', value: { $multiply: ['$lines.subtotal', '$ratio'] } } },
+    {
+      $unionWith: {
+        coll: 'salesreturns',
+        pipeline: [
+          { $match: { status: 'POSTED', date: { $gte: since }, ...g } },
+          { $unwind: '$lines' },
+          { $project: { sku: '$lines.sku', qty: { $multiply: ['$lines.qty', -1] }, value: { $multiply: ['$lines.netAmount', -1] } } },
+        ],
+      }
+    },
+    { $group: { _id: '$sku', qty: { $sum: '$qty' }, value: { $sum: '$value' } } },
+    { $match: { qty: { $gt: 0 } } },
     { $sort: { value: -1 } },
     { $limit: 8 },
     { $lookup: { from: 'produkskus', localField: '_id', foreignField: '_id', as: 's' } },
@@ -132,6 +155,27 @@ const salesWidgets = async (tz, withCost, g) => {
     salesByMonth,
     topProducts: top.map((r) => ({ id: r._id, produk: r.produk, label: r.label || '?', name: r.name, qty: round2(r.qty), value: round2(r.value) })),
   };
+};
+
+/** Piutang: sisa tagihan invoice POSTED yang belum lunas + yang lewat jatuh tempo */
+const receivablesWidget = async (g) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const rows = await SalesInvoice.aggregate([
+    { $match: { status: 'POSTED', paymentStatus: { $in: ['UNPAID', 'PARTIAL'] }, ...g } },
+    { $project: { balance: { $subtract: [{ $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] }, { $ifNull: ['$paidAmount', 0] }] }, overdue: { $lt: ['$dueDate', today] } } },
+    {
+      $group: {
+        _id: null,
+        outstanding: { $sum: '$balance' },
+        count: { $sum: 1 },
+        overdue: { $sum: { $cond: ['$overdue', '$balance', 0] } },
+        overdueCount: { $sum: { $cond: ['$overdue', 1, 0] } },
+      }
+    },
+  ]);
+  const r = rows[0] || {};
+  return { outstanding: round2(r.outstanding || 0), count: r.count || 0, overdue: round2(r.overdue || 0), overdueCount: r.overdueCount || 0 };
 };
 
 /** Nilai GR (pembelian) per bulan, 6 bulan terakhir termasuk bulan ini (net setelah pembatalan) */
@@ -263,6 +307,7 @@ exports.getDashboard = async (req, res) => {
     }
     if (can('purchaseOrder')) jobs.push(purchaseOrderWidgets(gAgg).then((w) => Object.assign(data, w)));
     if (can('salesInvoice')) jobs.push(salesWidgets(tz, canSeeCost, gAgg).then((w) => Object.assign(data, w)));
+    if (can('salesInvoice')) jobs.push(receivablesWidget(gAgg).then((w) => { data.receivables = w; }));
 
     // pekerjaan tertunda: draft yang menunggu diposting
     const pending = {};

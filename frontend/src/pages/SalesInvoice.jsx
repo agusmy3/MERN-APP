@@ -14,14 +14,15 @@ import { inputClass } from '../utils/formStyles';
 import { formatDay } from '../utils/dateHelper';
 import { formatRupiah } from '../utils/formatHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
-import { INVOICE_STATUS_META } from '../utils/salesMeta';
+import { INVOICE_STATUS_META, PAYMENT_STATUS_META } from '../utils/salesMeta';
 
-const EMPTY_FILTERS = { status: '', customer: '', gudang: '', from: '', to: '' };
+const EMPTY_FILTERS = { status: '', paymentStatus: '', customer: '', gudang: '', from: '', to: '' };
+const PAYMENT_FILTERS = { OPEN: 'Not fully paid', OVERDUE: 'Overdue', ...Object.fromEntries(Object.entries(PAYMENT_STATUS_META).map(([k, m]) => [k, m.label])) };
 const selectClass = `${inputClass} sm:w-auto`;
 
 /**
  * Daftar Sales Invoice (penjualan langsung). Laba kotor hanya untuk user yang boleh melihat biaya.
- * Query URL awal: ?status= (mis. dari dashboard).
+ * Query URL awal: ?status= / ?paymentStatus= (mis. dari dashboard).
  */
 export default function SalesInvoice() {
   const { user } = useAuth();
@@ -31,6 +32,7 @@ export default function SalesInvoice() {
   const [filters, setFilters] = useState(() => ({
     ...EMPTY_FILTERS,
     status: INVOICE_STATUS_META[searchParams.get('status')] ? searchParams.get('status') : '',
+    paymentStatus: PAYMENT_FILTERS[searchParams.get('paymentStatus')] ? searchParams.get('paymentStatus') : '',
   }));
   const [gudangList, setGudangList] = useState([]);
   const [customerList, setCustomerList] = useState([]);
@@ -81,6 +83,27 @@ export default function SalesInvoice() {
         : <span className={d.grossProfit < 0 ? 'text-danger' : ''}>{formatRupiah(d.grossProfit)}</span>),
     }] : []),
     { key: 'status', header: 'Status', width: 120, render: (d) => <StatusBadge status={d.status} meta={INVOICE_STATUS_META} /> },
+    {
+      key: 'paymentStatus',
+      header: 'Payment',
+      width: 150,
+      render: (d) => (d.paymentStatus ? <StatusBadge status={d.paymentStatus} meta={PAYMENT_STATUS_META} /> : ''),
+    },
+    {
+      key: 'balance',
+      header: 'Balance',
+      width: 140,
+      className: 'text-right tabular-nums',
+      render: (d) => (d.balance === undefined ? '' : <span className={d.balance < 0 ? 'text-danger' : ''}>{formatRupiah(d.balance)}</span>),
+    },
+    {
+      key: 'dueDate',
+      header: 'Due',
+      width: 120,
+      render: (d) => (d.status === 'POSTED' && d.dueDate
+        ? <span className={d.overdue ? 'text-danger font-semibold' : ''} title={d.overdue ? 'Lewat jatuh tempo' : undefined}>{formatDay(d.dueDate)}</span>
+        : ''),
+    },
     { key: 'note', header: 'Note', width: 200 },
     {
       key: 'audit',
@@ -138,6 +161,10 @@ export default function SalesInvoice() {
           <select aria-label="Status" value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className={selectClass}>
             <option value="">All status</option>
             {Object.entries(INVOICE_STATUS_META).map(([key, m]) => <option key={key} value={key}>{m.label}</option>)}
+          </select>
+          <select aria-label="Payment status" value={filters.paymentStatus} onChange={(e) => setFilter('paymentStatus', e.target.value)} className={selectClass}>
+            <option value="">All payments</option>
+            {Object.entries(PAYMENT_FILTERS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </select>
           <select aria-label="Customer" value={filters.customer} onChange={(e) => setFilter('customer', e.target.value)} className={selectClass}>
             <option value="">All customers</option>

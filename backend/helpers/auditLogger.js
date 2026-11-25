@@ -170,6 +170,8 @@ const ENTITIES = {
       email: { label: 'Email' },
       address: { label: 'Address' },
       npwp: { label: 'NPWP' },
+      termDays: { label: 'Payment Term (days)', format: 'number' },
+      priceList: { label: 'Price List', ref: ['PriceList', 'name'] },
       deskripsi: { label: 'Note' },
       isActive: { label: 'Active', format: 'bool' },
     },
@@ -185,11 +187,54 @@ const ENTITIES = {
       lines: { label: 'Items', format: 'salesLines' },
       discountAmount: { label: 'Document Discount', format: 'money' },
       total: { label: 'Total', format: 'money' },
+      dueDate: { label: 'Due Date', format: 'date' },
+      returnedAmount: { label: 'Returned', format: 'money' },
+      paidAmount: { label: 'Paid', format: 'money' },
+      paymentStatus: { label: 'Payment Status', labels: { UNPAID: 'Unpaid', PARTIAL: 'Partially paid', PAID: 'Paid', OVERPAID: 'Overpaid' } },
       status: { label: 'Status' },
       note: { label: 'Note' },
       cancelReason: { label: 'Cancel Reason' },
     },
     label: (doc) => doc.no,
+  },
+  priceList: {
+    fields: {
+      code: { label: 'Code' },
+      name: { label: 'Name' },
+      deskripsi: { label: 'Description' },
+      isActive: { label: 'Active', format: 'bool' },
+      items: { label: 'Prices', format: 'priceLines' },
+    },
+    label: (doc) => `${doc.code} — ${doc.name}`,
+  },
+  salesPayment: {
+    fields: {
+      type: { label: 'Type', labels: { PAYMENT: 'Payment', REFUND: 'Refund' } },
+      salesInvoice: { label: 'Sales Invoice', ref: ['SalesInvoice', 'no'] },
+      date: { label: 'Date', format: 'date' },
+      method: { label: 'Method', labels: { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' } },
+      amount: { label: 'Amount', format: 'money' },
+      reference: { label: 'Reference' },
+      note: { label: 'Note' },
+      status: { label: 'Status' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+    parent: (doc) => ({ entity: 'salesInvoice', id: doc.salesInvoice?._id ?? doc.salesInvoice }),
+  },
+  salesReturn: {
+    fields: {
+      salesInvoice: { label: 'Sales Invoice', ref: ['SalesInvoice', 'no'] },
+      date: { label: 'Date', format: 'date' },
+      reason: { label: 'Reason' },
+      lines: { label: 'Items', format: 'trfLines' },
+      total: { label: 'Total', format: 'money' },
+      status: { label: 'Status' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+    // histori invoice ikut memuat returnya
+    parent: (doc) => ({ entity: 'salesInvoice', id: doc.salesInvoice?._id ?? doc.salesInvoice }),
   },
   purchaseOrder: {
     fields: {
@@ -289,7 +334,7 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
-      if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines'].includes(def.format)) {
+      if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines'].includes(def.format)) {
         (doc[field] || []).forEach((l) => {
           add('ProdukSku', 'sku', idOf(l.sku));
           if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
@@ -345,6 +390,11 @@ const normalizeValue = (def, value, texts) => {
       const recv = l.qtyReceived === null || l.qtyReceived === undefined ? '' : ` -> received ${num(l.qtyReceived)}`;
       return `${sku}: ${num(l.qty)}${recv}${l.note ? ` · ${l.note}` : ''}`;
     });
+  }
+  if (def.format === 'priceLines') {
+    // mis. "KAOS-M: 75,000"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((l) => `${texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)'}: ${num(l.price)}`);
   }
   if (def.format === 'salesLines') {
     // mis. "KAOS-M: 2 x 75,000 -10%"
@@ -402,7 +452,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines'];
+const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

@@ -30,12 +30,15 @@ const ENTITY_RESOURCE = {
   costRevaluation: 'costRevaluation',
   customer: 'customer',
   salesInvoice: 'salesInvoice',
+  salesReturn: 'salesReturn',
+  salesPayment: 'salesPayment',
+  priceList: 'priceList',
   reorderRule: 'reorder',
   setting: 'setting',
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };
@@ -90,11 +93,11 @@ exports.getHistory = async (req, res) => {
       if (scope && PRODUK_SCOPES[scope]) {
         filter.entity = allowed.includes(PRODUK_SCOPES[scope]) ? PRODUK_SCOPES[scope] : '__none__';
       }
-    } else if (entity === 'purchaseOrder') {
-      // PO + penerimaan barangnya (GR hanya jika boleh goodsReceipt:view)
+    } else if (entity === 'purchaseOrder' || entity === 'salesInvoice') {
+      // PO + penerimaan barangnya / invoice + retur & pembayarannya (hanya entity yang boleh dilihat)
       filter = {
         entity: { $in: allowed },
-        $or: [{ entity: 'purchaseOrder', entityId: oid }, { 'parent.id': oid }],
+        $or: [{ entity, entityId: oid }, { 'parent.id': oid }],
       };
     } else if (entity === 'user') {
       filter = { entity: { $in: ['user', 'auth'] }, entityId: oid };

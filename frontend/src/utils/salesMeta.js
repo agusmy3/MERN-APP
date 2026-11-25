@@ -7,6 +7,20 @@ export const INVOICE_STATUS_META = {
   CANCELLED: { label: 'Cancelled', icon: 'fa-ban', tone: 'bg-danger-soft text-danger' },
 };
 
+// Sales Return: status sama dengan invoice
+export const RETURN_STATUS_META = INVOICE_STATUS_META;
+
+// status bayar invoice POSTED (sisa = total - retur - dibayar)
+export const PAYMENT_STATUS_META = {
+  UNPAID: { label: 'Unpaid', icon: 'fa-hourglass-half', tone: 'bg-warning-soft text-warning-fg' },
+  PARTIAL: { label: 'Partially paid', icon: 'fa-circle-half-stroke', tone: 'bg-primary-soft text-primary-soft-fg' },
+  PAID: { label: 'Paid', icon: 'fa-check-double', tone: 'bg-success-soft text-success-fg' },
+  OVERPAID: { label: 'Overpaid', icon: 'fa-arrow-rotate-left', tone: 'bg-danger-soft text-danger' },
+};
+
+export const PAYMENT_METHODS = { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' };
+export const PAYMENT_TYPES = { PAYMENT: 'Payment', REFUND: 'Refund' };
+
 /** Subtotal 1 baris: qty x harga x (1 - diskon%) (salinan backend/helpers/salesHelper.js) */
 export const salesLineSubtotal = ({ qty, hargaJual, diskonPersen = 0 }) => round2((Number(qty) || 0) * (Number(hargaJual) || 0) * (1 - (Number(diskonPersen) || 0) / 100));
 

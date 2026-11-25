@@ -11,7 +11,18 @@ const { runInTransaction, HttpError, lock, ref } = require('../helpers/transacti
 const { applyMovements, getBalances, nextDocNo } = require('../helpers/stockHelper');
 const { getSettings } = require('../helpers/settings');
 const { checkAmount, round2 } = require('../helpers/number');
-const { salesLineSubtotal, salesTotals, netLineRevenue } = require('../helpers/salesHelper');
+const { salesLineSubtotal, salesTotals, netLineRevenue, invoiceBalance } = require('../helpers/salesHelper');
+const SalesReturn = require('../models/SalesReturn');
+const SalesPayment = require('../models/SalesPayment');
+const { resolvePrices } = require('../helpers/priceHelper');
+
+const DAY = 24 * 60 * 60 * 1000;
+const PAYMENT_FILTERS = ['UNPAID', 'PARTIAL', 'PAID', 'OVERPAID', 'OPEN', 'OVERDUE'];
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 const { MAX_LINES } = require('../config/stock');
 
@@ -85,10 +96,20 @@ const parseInvoice = (body) => {
   const subtotal = round2(lines.reduce((s, l) => s + l.subtotal, 0));
   if (round2(discountAmount) > subtotal) throw new HttpError('Document discount cannot exceed the subtotal', 400);
 
+  let dueDate;
+  if (body.dueDate) {
+    dueDate = new Date(body.dueDate);
+    if (Number.isNaN(dueDate.getTime())) throw new HttpError('Invalid due date', 400);
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    if (dueDate < day) throw new HttpError('Due date cannot be before the invoice date', 400);
+  }
+
   return {
     customer: String(body.customer),
     gudang: String(body.gudang),
     date,
+    dueDate,
     taxRate,
     priceIncludesTax,
     discountAmount: round2(discountAmount),
@@ -108,7 +129,7 @@ const resolveRefs = async (parsed) => {
     ref('customer', parsed.customer), ref('gudang', parsed.gudang),
     [...new Set(owners.map((s) => String(s.produk)))].map((id) => ref('produk', id))
   );
-  const customer = await Customer.findById(parsed.customer).select('name isActive').lean();
+  const customer = await Customer.findById(parsed.customer).select('name isActive termDays').lean();
   if (!customer) throw new HttpError('Please select a valid customer', 400);
   if (customer.isActive === false) throw new HttpError(`Customer ${customer.name} is inactive`, 400);
   const gudang = await Gudang.findById(parsed.gudang).select('code isActive').lean();
@@ -121,13 +142,16 @@ const resolveRefs = async (parsed) => {
   if (inactive) throw new HttpError(`${inactive.sku} is inactive and cannot be sold`, 400);
   const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
   parsed.lines.forEach((l) => { l.produk = produkOf.get(l.sku); });
+  return { customer };
 };
 
 /** Isi dokumen + pajak (salinan setting bila tidak dikirim) + total */
-const fillInvoice = (doc, parsed, settings) => {
+const fillInvoice = (doc, parsed, settings, customer) => {
   doc.customer = parsed.customer;
   doc.gudang = parsed.gudang;
   doc.date = parsed.date;
+  // jatuh tempo: isian user, atau tanggal invoice + termin customer
+  doc.dueDate = parsed.dueDate || new Date(new Date(parsed.date).setHours(0, 0, 0, 0) + (customer?.termDays || 0) * DAY);
   doc.note = parsed.note;
   doc.lines = parsed.lines;
   doc.discountAmount = parsed.discountAmount;
@@ -183,6 +207,14 @@ exports.getInvoices = async (req, res) => {
       filter.$or = [{ no: rx }, { note: rx }, { customer: { $in: customers } }];
     }
     if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
+    // status bayar (hanya invoice POSTED): OPEN = belum lunas, OVERDUE = belum lunas & lewat jatuh tempo
+    const pay = req.query.paymentStatus;
+    if (PAYMENT_FILTERS.includes(pay)) {
+      filter.status = 'POSTED';
+      if (pay === 'OPEN' || pay === 'OVERDUE') filter.paymentStatus = { $in: ['UNPAID', 'PARTIAL'] };
+      else filter.paymentStatus = pay;
+      if (pay === 'OVERDUE') filter.dueDate = { $lt: startOfToday() };
+    }
     if (req.query.customer) {
       if (!mongoose.isValidObjectId(req.query.customer)) return errorResponse(res, 'Invalid customer', 400);
       filter.customer = req.query.customer;
@@ -218,6 +250,10 @@ exports.getInvoices = async (req, res) => {
     const canSeeCost = canSeeCostOf(req);
     docs.forEach((d) => {
       d.lineCount = countMap.get(String(d._id)) || 0;
+      if (d.status === 'POSTED') {
+        d.balance = invoiceBalance(d).balance;
+        d.overdue = d.balance > 0 && d.dueDate && new Date(d.dueDate) < startOfToday();
+      }
       if (canSeeCost && d.cogs !== null && d.cogs !== undefined) d.grossProfit = round2(d.dpp - d.cogs);
       else delete d.cogs;
     });
@@ -244,6 +280,19 @@ exports.getInvoice = async (req, res) => {
     if (doc.status === 'DRAFT' && doc.gudang) {
       const balances = await getBalances(doc.gudang._id, skuIds);
       doc.lines.forEach((l) => { l.currentQty = l.sku ? (balances.get(String(l.sku._id)) || 0) : null; });
+    }
+
+    if (doc.status !== 'DRAFT') {
+      doc.returns = await SalesReturn.find({ salesInvoice: doc._id })
+        .select('no date status total').sort({ date: 1, _id: 1 }).lean();
+      doc.payments = await SalesPayment.find({ salesInvoice: doc._id })
+        .select('no type date method amount reference note status cancelReason createdBy')
+        .populate('createdBy', 'name')
+        .sort({ date: 1, _id: 1 }).lean();
+      if (doc.status === 'POSTED') {
+        doc.balance = invoiceBalance(doc).balance;
+        doc.overdue = doc.balance > 0 && doc.dueDate && new Date(doc.dueDate) < startOfToday();
+      }
     }
 
     doc.canSeeCost = canSeeCostOf(req);
@@ -281,8 +330,9 @@ exports.getInvoice = async (req, res) => {
 };
 
 /**
- * GET /api/sales-invoice/skus?gudang=&search= — cari SKU aktif untuk baris penjualan:
- * + qty (saldo gudang), uom, hargaJual; + avgCost untuk vendorPrice:view. Maks. 20 hasil.
+ * GET /api/sales-invoice/skus?gudang=&search=&customer= — cari SKU aktif untuk baris penjualan:
+ * + qty (saldo gudang), uom, hargaJual (price list customer atau harga default) & priceSource;
+ * + avgCost untuk vendorPrice:view. Maks. 20 hasil.
  */
 exports.searchSkus = async (req, res) => {
   try {
@@ -299,6 +349,7 @@ exports.searchSkus = async (req, res) => {
       .limit(20)
       .lean();
     const balances = gudang && mongoose.isValidObjectId(gudang) ? await getBalances(gudang, skus.map((s) => s._id)) : new Map();
+    const prices = await resolvePrices(req.query.customer, skus.map((s) => s._id));
     const canSeeCost = canSeeCostOf(req);
     return successResponse(res, skus.map((s) => ({
       _id: s._id,
@@ -308,9 +359,25 @@ exports.searchSkus = async (req, res) => {
       produk: s.produk ? { _id: s.produk._id, name: s.produk.name } : null,
       uom: s.produk?.uom?.code || '',
       qty: balances.get(String(s._id)) || 0,
-      hargaJual: s.hargaJual ?? 0,
+      hargaJual: prices.get(String(s._id))?.price ?? s.hargaJual ?? 0,
+      priceSource: prices.get(String(s._id))?.source || 'default',
       ...(canSeeCost ? { avgCost: s.avgCost ?? null } : {}),
     })));
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * POST /api/sales-invoice/skus/prices  body: { customer, skus: [id] } -> { skuId: { price, source } }
+ * Harga jual untuk customer (dipakai saat customer draft diganti).
+ */
+exports.skuPrices = async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.skus) ? req.body.skus : []).filter((id) => mongoose.isValidObjectId(id));
+    if (ids.length > MAX_LINES) return errorResponse(res, `At most ${MAX_LINES} SKUs`, 400);
+    const prices = await resolvePrices(req.body.customer, ids);
+    return successResponse(res, Object.fromEntries([...prices.entries()].map(([id, p]) => [id, { price: p.price, source: p.source }])));
   } catch (error) {
     return handleError(res, error);
   }
@@ -324,10 +391,10 @@ exports.createInvoice = async (req, res) => {
     const parsed = parseInvoice(req.body);
     assertGudang(req, parsed.gudang);
     const doc = await runInTransaction(async () => {
-      await resolveRefs(parsed);
+      const { customer } = await resolveRefs(parsed);
       const settings = await getSettings();
       const doc = new SalesInvoice({ no: await nextDocNo('INV'), status: 'DRAFT', createdBy: req.user._id });
-      fillInvoice(doc, parsed, settings);
+      fillInvoice(doc, parsed, settings, customer);
       await doc.save();
       await audit.logCreate(req, 'salesInvoice', [doc]);
       return doc;
@@ -345,9 +412,9 @@ exports.updateInvoice = async (req, res) => {
       const doc = await loadDraft(req, req.params.id);
       const parsed = parseInvoice(req.body);
       assertGudang(req, parsed.gudang);
-      await resolveRefs(parsed);
+      const { customer } = await resolveRefs(parsed);
       const before = await audit.snap('salesInvoice', [doc]);
-      fillInvoice(doc, parsed, await getSettings());
+      fillInvoice(doc, parsed, await getSettings(), customer);
       doc.updatedDate = new Date();
       doc.updatedBy = req.user._id;
       await doc.save();
@@ -412,6 +479,10 @@ exports.postInvoice = async (req, res) => {
         cogs += l.qty * (l.unitCost || 0);
       });
       doc.cogs = round2(cogs);
+      if (!doc.dueDate) doc.dueDate = new Date(new Date(doc.date).setHours(0, 0, 0, 0));
+      doc.returnedAmount = 0;
+      doc.paidAmount = 0;
+      doc.paymentStatus = invoiceBalance(doc).paymentStatus;
       doc.status = 'POSTED';
       doc.postedBy = req.user._id;
       doc.postedDate = new Date();
@@ -440,7 +511,11 @@ exports.cancelInvoice = async (req, res) => {
       if (doc.status !== 'POSTED') {
         throw new HttpError(doc.status === 'DRAFT' ? 'Draft invoices are deleted, not cancelled' : 'Invoice is already cancelled', 400);
       }
-      await lock(ref('gudang', doc.gudang));
+      await lock(ref('salesInvoice', doc._id), ref('gudang', doc.gudang));
+      const returns = await SalesReturn.countDocuments({ salesInvoice: doc._id, status: { $in: ['DRAFT', 'POSTED'] } });
+      if (returns) throw new HttpError(`Invoice has ${returns} sales return(s). Cancel or delete them first.`, 400);
+      const payments = await SalesPayment.countDocuments({ salesInvoice: doc._id, status: 'POSTED' });
+      if (payments) throw new HttpError(`Invoice has ${payments} payment(s). Cancel them first.`, 400);
 
       const before = await audit.snap('salesInvoice', [doc]);
       await applyMovements(req, doc.lines.map((l) => ({
@@ -453,6 +528,7 @@ exports.cancelInvoice = async (req, res) => {
       })), { refType: 'SalesInvoice', refId: doc._id, refNo: doc.no, isReversal: true });
 
       doc.status = 'CANCELLED';
+      doc.paymentStatus = null;
       doc.cancelledBy = req.user._id;
       doc.cancelledDate = new Date();
       doc.cancelReason = cancelReason;

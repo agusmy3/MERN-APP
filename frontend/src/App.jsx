@@ -9,6 +9,12 @@ import Vendor from './pages/Vendor';
 import Customer from './pages/Customer';
 import SalesInvoice from './pages/SalesInvoice';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail';
+import SalesReturn from './pages/SalesReturn';
+import SalesReturnDetail from './pages/SalesReturnDetail';
+import SalesPayment from './pages/SalesPayment';
+import PriceList from './pages/PriceList';
+import PriceListDetail from './pages/PriceListDetail';
+import SalesReport from './pages/SalesReport';
 import Uom from './pages/Uom';
 import Variant from './pages/Variant';
 import Users from './pages/Users';
@@ -81,6 +87,13 @@ function App() {
         <Route path="/sales-invoice" element={guard('salesInvoice', <SalesInvoice />)} />
         {/* :id = 'new' atau id dokumen */}
         <Route path="/sales-invoice/:id" element={guard('salesInvoice', <SalesInvoiceDetail />)} />
+        <Route path="/sales-return" element={guard('salesReturn', <SalesReturn />)} />
+        {/* :id = 'new' (?invoice=) atau id dokumen */}
+        <Route path="/sales-return/:id" element={guard('salesReturn', <SalesReturnDetail />)} />
+        <Route path="/sales-payment" element={guard('salesPayment', <SalesPayment />)} />
+        <Route path="/price-list" element={guard('priceList', <PriceList />)} />
+        <Route path="/price-list/:id" element={guard('priceList', <PriceListDetail />)} />
+        <Route path="/sales-report" element={guard('salesReport', <SalesReport />)} />
         <Route path="/settings" element={guard('setting', <Settings />)} />
         <Route path="/menu" element={guard('menu', <Menu />)} />
         <Route path="/users" element={guard('user', <Users />)} />

@@ -24,7 +24,7 @@ const connectDB = async () => {
     }
 
     // koleksi dibuat di luar transaksi (pembuatan koleksi bersamaan di dalam transaksi bisa bentrok)
-    for (const name of ['TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment', 'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule', 'StockTransfer', 'Customer', 'SalesInvoice']) {
+    for (const name of ['TxLock', 'Counter', 'Gudang', 'StockBalance', 'StockMovement', 'StockAdjustment', 'PurchaseOrder', 'GoodsReceipt', 'Setting', 'CostRevaluation', 'ReorderRule', 'StockTransfer', 'Customer', 'SalesInvoice', 'SalesReturn', 'SalesPayment', 'PriceList']) {
       await require(`../models/${name}`).createCollection().catch(() => {});
     }
 

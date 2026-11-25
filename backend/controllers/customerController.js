@@ -14,6 +14,16 @@ const handleError = (res, error) => {
   return errorResponse(res, error.message, 500);
 };
 
+/** priceList dari body (di dalam transaksi): undefined = tidak diubah, kosong = lepas, id = harus ada (dikunci) */
+const parsePriceList = async (body) => {
+  if (body.priceList === undefined) return {};
+  if (!body.priceList) return { priceList: null };
+  if (!require('mongoose').isValidObjectId(body.priceList)) throw new HttpError('Invalid price list', 400);
+  await lock(ref('priceList', body.priceList)); // bentrok dengan hapus price list
+  if (!(await require('../models/PriceList').exists({ _id: body.priceList }))) throw new HttpError('Price list not found', 400);
+  return { priceList: String(body.priceList) };
+};
+
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Field teks dari body (hanya yang dikirim -> update parsial) */
@@ -23,6 +33,11 @@ const parseFields = (body) => {
     if (body[f] !== undefined) out[f] = body[f] === null ? '' : String(body[f]).trim().slice(0, max);
   }
   if (out.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email)) throw new HttpError('Invalid email address', 400);
+  if (body.termDays !== undefined && body.termDays !== null && body.termDays !== '') {
+    const n = Number(body.termDays);
+    if (!Number.isInteger(n) || n < 0 || n > 365) throw new HttpError('Payment term must be a whole number of days (0 - 365)', 400);
+    out.termDays = n;
+  }
   return out;
 };
 
@@ -50,6 +65,7 @@ exports.getCustomers = async (req, res) => {
     const [totalData, dataCustomer] = await Promise.all([
       Customer.countDocuments(filter),
       Customer.find(filter)
+        .populate('priceList', 'code name isActive')
         .populate('createdBy', 'name')
         .populate('updatedBy', 'name')
         .collation({ locale: 'en', strength: 2 })
@@ -66,7 +82,7 @@ exports.getCustomers = async (req, res) => {
 // GET /api/customer/:id
 exports.getCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id).populate('createdBy', 'name').populate('updatedBy', 'name');
+    const customer = await Customer.findById(req.params.id).populate('priceList', 'code name isActive').populate('createdBy', 'name').populate('updatedBy', 'name');
     if (!customer) return errorResponse(res, 'Customer not found', 404);
     return successResponse(res, customer);
   } catch (error) {
@@ -83,6 +99,7 @@ exports.createCustomer = async (req, res) => {
       const code = String(req.body.code || '').trim() || await nextCustomerCode();
       const customer = await Customer.create({
         ...fields,
+        ...(await parsePriceList(req.body)),
         code,
         isActive: req.body.isActive !== false,
         createdBy: req.user._id,
@@ -107,7 +124,7 @@ exports.updateCustomer = async (req, res) => {
       if (customer.isWalkIn && req.body.isActive === false) throw new HttpError('The walk-in customer cannot be deactivated', 400);
 
       const before = await audit.snap('customer', [customer]);
-      Object.assign(customer, fields);
+      Object.assign(customer, fields, await parsePriceList(req.body));
       if (req.body.code) customer.code = String(req.body.code).trim();
       if (req.body.isActive !== undefined) customer.isActive = req.body.isActive !== false;
       customer.updatedDate = new Date();

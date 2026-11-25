@@ -9,6 +9,7 @@ import {
   cancelSalesInvoice,
   searchSalesSkus,
   getSalesSkuBalances,
+  getSalesSkuPrices,
   getCustomerDropdown,
 } from '../services/salesService';
 import { getGudangDropdown } from '../services/gudangService';
@@ -23,11 +24,12 @@ import SkuPicker from '../components/stock/SkuPicker';
 import StatusBadge from '../components/stock/StatusBadge';
 import ReasonPanel from '../components/stock/ReasonPanel';
 import AuditTimeline from '../components/audit/AuditTimeline';
+import InvoicePayments from '../components/sales/InvoicePayments';
 import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, round2, variantLabel } from '../utils/formatHelper';
-import { formatDate2, toDateInput } from '../utils/dateHelper';
-import { INVOICE_STATUS_META, salesLineSubtotal, salesTotals } from '../utils/salesMeta';
+import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
+import { INVOICE_STATUS_META, RETURN_STATUS_META, PAYMENT_STATUS_META, salesLineSubtotal, salesTotals } from '../utils/salesMeta';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -54,6 +56,7 @@ const lineFromDoc = (l) => ({
   note: l.note || '',
   currentQty: l.currentQty ?? null,
   unitCost: l.unitCost ?? null,
+  qtyReturned: l.qtyReturned || 0,
 });
 
 const lineFromSearch = (s) => ({
@@ -64,12 +67,14 @@ const lineFromSearch = (s) => ({
   note: '',
   currentQty: s.qty,
   unitCost: s.avgCost ?? null,
+  priceSource: s.priceSource || 'default',
 });
 
 const toPayload = (form, lines) => ({
   customer: form.customer,
   gudang: form.gudang,
   date: form.date,
+  dueDate: form.dueDate || null,
   note: form.note,
   taxRate: form.taxRate,
   priceIncludesTax: form.priceIncludesTax,
@@ -90,6 +95,7 @@ export default function SalesInvoiceDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const perm = usePermission('salesInvoice');
+  const returnPerm = usePermission('salesReturn');
   const movementPerm = usePermission('stockMovement');
   const canSeeCost = usePermission('vendorPrice').canView;
   const toast = useToast();
@@ -116,6 +122,8 @@ export default function SalesInvoiceDetail() {
       customer: d.customer?._id || '',
       gudang: d.gudang?._id || '',
       date: toDateInput(d.date),
+      dueDate: d.dueDate ? toDateInput(d.dueDate) : '',
+      dueTouched: true,
       note: d.note || '',
       taxRate: d.taxRate ?? 0,
       priceIncludesTax: !!d.priceIncludesTax,
@@ -148,7 +156,7 @@ export default function SalesInvoiceDetail() {
     setDoc(null);
     setLines([]);
     setSavedPayload(null);
-    setForm({ customer: '', gudang: '', date: toDateInput(), note: '', taxRate: 0, priceIncludesTax: false, discountAmount: 0 });
+    setForm({ customer: '', gudang: '', date: toDateInput(), dueDate: '', dueTouched: false, note: '', taxRate: 0, priceIncludesTax: false, discountAmount: 0 });
     getSettings(user.token)
       .then(({ values }) => setForm((f) => ({
         ...f,
@@ -175,6 +183,16 @@ export default function SalesInvoiceDetail() {
     if (Object.keys(patch).length) setForm((f) => ({ ...f, ...patch }));
   }, [isNew, form, customerList, gudangList]);
 
+  // jatuh tempo otomatis = tanggal + termin customer, selama belum diubah manual
+  const termOf = (cid) => customerList.find((c) => c._id === cid)?.termDays || 0;
+  const autoDue = (date, cid) => (date ? toDateInput(new Date(new Date(`${date}T00:00:00`).getTime() + termOf(cid) * 86400000)) : '');
+  useEffect(() => {
+    if (!form || form.dueTouched) return;
+    const due = autoDue(form.date, form.customer);
+    if (due !== form.dueDate) setForm((f) => ({ ...f, dueDate: due }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.date, form?.customer, form?.dueTouched, customerList]);
+
   const status = isNew ? 'DRAFT' : doc?.status;
   const isDraft = status === 'DRAFT';
   const editable = isNew ? perm.canCreate : isDraft && perm.canUpdate;
@@ -191,6 +209,31 @@ export default function SalesInvoiceDetail() {
   };
   const setLine = (skuId, field, value) => setLines((prev) => prev.map((l) => (l.sku._id === skuId ? { ...l, [field]: value } : l)));
   const removeLine = (skuId) => setLines((prev) => prev.filter((l) => l.sku._id !== skuId));
+
+  // cari SKU dengan harga untuk customer terpilih (price list)
+  const searchWithPrice = useCallback(
+    (token, params) => searchSalesSkus(token, { ...params, customer: form?.customer || undefined }),
+    [form?.customer],
+  );
+
+  // ganti customer: harga baris mengikuti price list customer baru
+  const changeCustomer = async (customer) => {
+    setForm((f) => ({ ...f, customer }));
+    if (!customer || !lines.length) return;
+    try {
+      const prices = await getSalesSkuPrices(user.token, customer, lines.map((l) => l.sku._id));
+      let changed = 0;
+      setLines((prev) => prev.map((l) => {
+        const p = prices[l.sku._id];
+        if (!p) return l;
+        if (Number(l.hargaJual) !== p.price) changed++;
+        return { ...l, hargaJual: p.price, priceSource: p.source };
+      }));
+      if (changed) toast.info('Harga baris diperbarui sesuai price list customer.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load prices');
+    }
+  };
 
   const changeGudang = async (gudang) => {
     setForm((f) => ({ ...f, gudang }));
@@ -363,6 +406,11 @@ export default function SalesInvoiceDetail() {
                 <i className="fa fa-check"></i> {dirty || isNew ? 'Save & Post' : 'Post'}
               </button>
             )}
+            {status === 'POSTED' && returnPerm.canCreate && lines.some((l) => Number(l.qty) > (l.qtyReturned || 0)) && (
+              <button type="button" onClick={() => navigate(`/sales-return/new?invoice=${doc._id}`)} disabled={busy} className={btnGhost}>
+                <i className="fa fa-rotate-left"></i> Return
+              </button>
+            )}
             {status === 'POSTED' && perm.canPost && (
               <button type="button" onClick={() => setCancelOpen((o) => !o)} disabled={busy} className={btnDanger}>
                 <i className="fa fa-ban"></i> Cancel invoice
@@ -395,7 +443,7 @@ export default function SalesInvoiceDetail() {
           <section className="rounded-lg border border-line bg-surface p-4">
             <fieldset disabled={!editable || busy} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <FormField label="Customer" htmlFor="inv-customer" required>
-                <select id="inv-customer" value={form.customer} onChange={(e) => setForm((f) => ({ ...f, customer: e.target.value }))} className={inputClass}>
+                <select id="inv-customer" value={form.customer} onChange={(e) => changeCustomer(e.target.value)} className={inputClass}>
                   <option value="">— choose —</option>
                   {customerOptions.map((c) => (
                     <option key={c._id} value={c._id}>{c.name}{c.isActive === false ? ' (inactive)' : ''}</option>
@@ -413,6 +461,10 @@ export default function SalesInvoiceDetail() {
               <FormField label="Date" htmlFor="inv-date" required>
                 <input id="inv-date" type="date" max={toDateInput()} value={form.date}
                   onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className={inputClass} />
+              </FormField>
+              <FormField label="Due date" htmlFor="inv-due" hint={form.dueTouched ? undefined : `Termin customer ${termOf(form.customer)} hari`}>
+                <input id="inv-due" type="date" min={form.date} value={form.dueDate}
+                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value, dueTouched: true }))} className={inputClass} />
               </FormField>
               <FormField label="Note" htmlFor="inv-note">
                 <input id="inv-note" value={form.note} placeholder="Optional"
@@ -432,7 +484,7 @@ export default function SalesInvoiceDetail() {
             {editable && (
               <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-line-soft bg-subtle">
                 {form.gudang
-                  ? <SkuPicker token={user.token} gudang={form.gudang} existing={existing} onAdd={addLines} searchFn={searchSalesSkus} />
+                  ? <SkuPicker token={user.token} gudang={form.gudang} existing={existing} onAdd={addLines} searchFn={searchWithPrice} />
                   : <span className="text-sm text-muted">Pilih gudang dulu untuk menambah SKU.</span>}
               </div>
             )}
@@ -486,12 +538,14 @@ export default function SalesInvoiceDetail() {
                             <input aria-label={`Qty ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.qty} disabled={busy}
                               onChange={(e) => setLine(l.sku._id, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{formatNumber(l.qty)}</span>}
+                          {l.qtyReturned > 0 && <div className="text-[10px] text-danger mt-0.5">returned {formatNumber(l.qtyReturned)}</div>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
                             <input aria-label={`Price ${l.sku.sku}`} type="number" min="0" step="0.01" value={l.hargaJual} disabled={busy}
                               onChange={(e) => setLine(l.sku._id, 'hargaJual', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{formatRupiah(l.hargaJual)}</span>}
+                          {editable && l.priceSource === 'list' && <div className="text-[10px] text-primary mt-0.5">price list</div>}
                           {canSeeCost && isDraft && below && <div className="text-[10px] text-warning-fg mt-0.5">di bawah HPP</div>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
@@ -605,12 +659,44 @@ export default function SalesInvoiceDetail() {
                 {doc.cancelledDate && (<><dt className="text-muted">Cancelled</dt><dd>{formatDate2(doc.cancelledDate)} · {doc.cancelledBy?.name || '-'}</dd></>)}
                 {doc.cancelReason && (<><dt className="text-muted">Reason</dt><dd className="break-words">{doc.cancelReason}</dd></>)}
               </dl>
+              {doc.status === 'POSTED' && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 pt-2 border-t border-line-soft">
+                  <dt className="text-muted">Payment</dt>
+                  <dd>{doc.paymentStatus && <StatusBadge status={doc.paymentStatus} meta={PAYMENT_STATUS_META} />}</dd>
+                  <dt className="text-muted">Due date</dt>
+                  <dd className={`text-right ${doc.overdue ? 'text-danger font-semibold' : ''}`}>
+                    {doc.dueDate ? formatDay(doc.dueDate) : '-'}{doc.overdue ? ' · overdue' : ''}
+                  </dd>
+                  <dt className="text-muted">Total</dt><dd className="text-right tabular-nums">{formatRupiah(doc.total)}</dd>
+                  {doc.returnedAmount > 0 && (<><dt className="text-muted">Returned</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.returnedAmount)}</dd></>)}
+                  {doc.paidAmount !== 0 && (<><dt className="text-muted">Paid</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.paidAmount)}</dd></>)}
+                  <dt className="font-semibold">Balance</dt>
+                  <dd className={`text-right tabular-nums font-semibold ${doc.balance < 0 ? 'text-danger' : ''}`}>{formatRupiah(doc.balance)}</dd>
+                </dl>
+              )}
+              {doc.returns?.length > 0 && (
+                <div className="pt-2 border-t border-line-soft">
+                  <div className="text-xs font-semibold text-muted mb-1">Returns</div>
+                  <ul className="space-y-1">
+                    {doc.returns.map((r) => (
+                      <li key={r._id} className="flex items-center justify-between gap-2">
+                        {returnPerm.canView
+                          ? <Link to={`/sales-return/${r._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{r.no}</Link>
+                          : <span className="font-mono text-xs">{r.no}</span>}
+                        <span className="text-xs tabular-nums">{formatRupiah(r.total)}</span>
+                        <StatusBadge status={r.status} meta={RETURN_STATUS_META} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {doc.status !== 'DRAFT' && movementPerm.canView && (
                 <Link to={`/stock-movement?search=${encodeURIComponent(doc.no)}`} className="inline-block text-primary hover:underline">
                   <i className="fa fa-right-left mr-1"></i> View stock movements
                 </Link>
               )}
             </section>
+            {doc.status === 'POSTED' && <InvoicePayments doc={doc} token={user.token} onChanged={load} />}
             <AuditDetail data={doc} />
             <section className="rounded-lg border border-line bg-surface p-4">
               <h3 className="font-semibold text-fg mb-2">History</h3>

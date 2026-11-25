@@ -20,6 +20,7 @@ const lineSchema = new mongoose.Schema({
   diskonPersen: { type: Number, default: 0 },
   subtotal: { type: Number, required: true },         // qty x harga x (1 - diskon%)
   unitCost: { type: Number, default: null },          // HPP saat post (data biaya)
+  qtyReturned: { type: Number, default: 0 },          // total retur POSTED (Sales Return)
   note: { type: String },
 }, { _id: false });
 
@@ -38,6 +39,11 @@ const salesInvoiceSchema = new mongoose.Schema({
   taxAmount: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
   cogs: { type: Number, default: null },               // HPP penjualan, diisi saat post (data biaya)
+  // piutang (helpers/salesHelper.js invoiceBalance): sisa = total - returnedAmount - paidAmount
+  dueDate: { type: Date, default: null },
+  returnedAmount: { type: Number, default: 0 },        // nilai retur POSTED (termasuk PPN)
+  paidAmount: { type: Number, default: 0 },            // pembayaran POSTED dikurangi refund
+  paymentStatus: { type: String, enum: ['UNPAID', 'PARTIAL', 'PAID', 'OVERPAID', null], default: null }, // null = belum diposting
   note: { type: String },
   postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   postedDate: { type: Date, default: null },
@@ -53,6 +59,7 @@ const salesInvoiceSchema = new mongoose.Schema({
 salesInvoiceSchema.index({ status: 1, date: -1 });
 salesInvoiceSchema.index({ gudang: 1, status: 1 });
 salesInvoiceSchema.index({ customer: 1 });
+salesInvoiceSchema.index({ status: 1, paymentStatus: 1, dueDate: 1 });
 salesInvoiceSchema.index({ 'lines.sku': 1 });
 
 module.exports = mongoose.model('SalesInvoice', salesInvoiceSchema);
