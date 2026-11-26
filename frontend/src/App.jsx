@@ -10,6 +10,10 @@ import Customer from './pages/Customer';
 import SalesInvoice from './pages/SalesInvoice';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail';
 import SalesReturn from './pages/SalesReturn';
+import SalesOrder from './pages/SalesOrder';
+import SalesOrderDetail from './pages/SalesOrderDetail';
+import DeliveryOrder from './pages/DeliveryOrder';
+import DeliveryOrderDetail from './pages/DeliveryOrderDetail';
 import SalesReturnDetail from './pages/SalesReturnDetail';
 import SalesPayment from './pages/SalesPayment';
 import PriceList from './pages/PriceList';
@@ -87,6 +91,12 @@ function App() {
         <Route path="/goods-receipt" element={guard('goodsReceipt', <GoodsReceipt />)} />
         {/* :id = 'new' (?po=<poId>) atau id dokumen */}
         <Route path="/goods-receipt/:id" element={guard('goodsReceipt', <GoodsReceiptDetail />)} />
+        <Route path="/sales-order" element={guard('salesOrder', <SalesOrder />)} />
+        {/* :id = 'new' atau id dokumen */}
+        <Route path="/sales-order/:id" element={guard('salesOrder', <SalesOrderDetail />)} />
+        <Route path="/delivery-order" element={guard('deliveryOrder', <DeliveryOrder />)} />
+        {/* :id = 'new' (?so=<soId>) atau id dokumen */}
+        <Route path="/delivery-order/:id" element={guard('deliveryOrder', <DeliveryOrderDetail />)} />
         <Route path="/sales-invoice" element={guard('salesInvoice', <SalesInvoice />)} />
         {/* :id = 'new' atau id dokumen */}
         <Route path="/sales-invoice/:id" element={guard('salesInvoice', <SalesInvoiceDetail />)} />

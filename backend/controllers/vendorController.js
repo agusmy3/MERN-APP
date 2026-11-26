@@ -6,6 +6,7 @@ const {
 } = require("../helpers/responseHelper");
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+const { parseRegion } = require('../helpers/locationHelper');
 
 const handleError = (res, error) => {
   if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
@@ -119,12 +120,14 @@ exports.getSingleVendor = async (req, res) => {
 // POST tambah vendor
 exports.createVendor = async (req, res) => {
   try {
+    const region = parseRegion(req.body);
     const vendor = await runInTransaction(async () => {
       const vendor = await Vendor.create({
         companyName: req.body.companyName,
         picName: req.body.picName,
         picContact: req.body.picContact,
         companyAddress: req.body.companyAddress,
+        ...region,
         createdDate: new Date(),
         createdBy: req.user._id,
         updatedDate: null,
@@ -143,11 +146,13 @@ exports.createVendor = async (req, res) => {
 // PUT update vendor
 exports.updateVendor = async (req, res) => {
   try {
+    const region = parseRegion(req.body);
     const vendor = await runInTransaction(async () => {
       const vendor = await Vendor.findById(req.params.id);
       if (!vendor) throw new HttpError('Vendor not found', 404);
 
       const before = await audit.snap('vendor', [vendor]);
+      Object.assign(vendor, region);
       vendor.companyName = req.body.companyName || vendor.companyName;
       vendor.picName = req.body.picName || vendor.picName;
       vendor.picContact = req.body.picContact || vendor.picContact;

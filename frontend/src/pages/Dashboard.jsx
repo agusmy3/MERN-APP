@@ -71,6 +71,10 @@ export default function Dashboard() {
     ['goodsReceipt', 'Goods receipt drafts', '/goods-receipt', 'fa-truck-ramp-box'],
     ['costRevaluation', 'Cost revaluation drafts', '/cost-revaluation', 'fa-scale-balanced'],
     ['salesInvoice', 'Sales invoice drafts', '/sales-invoice?status=DRAFT', 'fa-file-invoice-dollar'],
+    ['salesOrder', 'Sales order drafts', '/sales-order?status=DRAFT', 'fa-file-signature'],
+    ['soToDeliver', 'Sales orders to deliver', '/sales-order?status=ACTIVE', 'fa-truck-fast'],
+    ['deliveryOrder', 'Delivery order drafts', '/delivery-order?status=DRAFT', 'fa-truck-ramp-box'],
+    ['doToInvoice', 'Deliveries to invoice', '/delivery-order?invoiced=false', 'fa-file-invoice-dollar'],
   ].filter(([k]) => d?.pending?.[k] !== undefined).map(([k, label, to, icon]) => ({ key: k, label, to, icon, count: d.pending[k] })) : [];
   if (d?.poDrafts !== undefined) pendingItems.push({ key: 'poDrafts', label: 'Purchase order drafts', to: '/purchase-order', icon: 'fa-file-invoice', count: d.poDrafts });
 

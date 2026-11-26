@@ -78,9 +78,14 @@ test('sales totals match backend (PPN exclusive / inclusive, document discount)'
   const lines = [{ qty: 2, hargaJual: 100000, diskonPersen: 10 }, { qty: '1', hargaJual: '50000' }];
   assert.equal(salesLineSubtotal(lines[0]), 180000);
   assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11 }),
-    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 22000, total: 222000 });
+    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 22000, total: 222000, shippingCharge: 0, shippingDpp: 0, shippingTotal: 0 });
   assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: '11', priceIncludesTax: true }),
-    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000 });
+    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000, shippingCharge: 0, shippingDpp: 0, shippingTotal: 0 });
+  // ongkir (sama dengan backend test/api/sales.test.js)
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11, shippingCharge: '10000' }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 23100, total: 233100, shippingCharge: 10000, shippingDpp: 10000, shippingTotal: 11100 });
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11, priceIncludesTax: true, shippingCharge: 11100 }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 20919.82, total: 211100, shippingCharge: 11100, shippingDpp: 10000, shippingTotal: 11100 });
 });
 
 test('POS receipt html: escapes text, shows totals, change and paper width', async () => {
@@ -110,4 +115,36 @@ test('POS shift report: X while open, Z with counted cash & difference after clo
   assert.ok(z.includes('LAPORAN Z'));
   assert.ok(z.includes('129.500'));
   assert.ok(z.includes('-500'));
+});
+
+test('region helpers: postal code & coordinate pairs, address line', async () => {
+  const { regionError, regionFrom } = await import('../src/utils/regionMeta.js');
+  const { addressLine } = await import('../src/utils/salesMeta.js');
+  assert.equal(regionError({ kodePos: '1234', latitude: '', longitude: '' }), 'Kode pos harus 5 digit.');
+  assert.match(regionError({ kodePos: '', latitude: '-6.2', longitude: '' }), /latitude dan longitude/);
+  assert.equal(regionError({ kodePos: '10310', latitude: '-6.2', longitude: '106.8' }), null);
+  assert.deepEqual(regionFrom({ kota: 'Bandung', latitude: 0, longitude: null }),
+    { provinsi: '', kota: 'Bandung', kecamatan: '', kodePos: '', latitude: '0', longitude: '' });
+  assert.equal(addressLine({ alamat: 'Jl. Mawar 1', kecamatan: 'Menteng', kota: 'Jakarta Pusat', provinsi: 'DKI Jakarta', kodePos: '10310' }),
+    'Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310');
+  assert.equal(addressLine({ address: 'Jl. A' }), 'Jl. A');
+});
+
+test('delivery note html: no prices, escapes text, pickup vs delivery', async () => {
+  const { deliveryNoteHtml } = await import('../src/utils/documentPrint.js');
+  const base = {
+    no: 'DO-202611-0001', date: '2026-11-25', status: 'POSTED', salesOrder: { no: 'SO-202611-0001', customerPoNo: 'PO<9>' },
+    customer: { name: 'PT <Maju>' }, gudang: { code: 'MAIN', name: 'Gudang' },
+    lines: [{ qty: 3, sku: { sku: 'KAOS-M' }, produk: { name: 'Kaos', uom: { code: 'PCS' } }, unitCost: 60000 }],
+  };
+  const html = deliveryNoteHtml({ ...base, deliveryMethod: 'DELIVERY', shipTo: { alamat: 'Jl. Mawar 1', kota: 'Bekasi' }, vehicleNo: 'B 1 CD' });
+  assert.match(html, /SURAT JALAN/);
+  assert.match(html, /PT &lt;Maju&gt;/);
+  assert.match(html, /PO&lt;9&gt;/);
+  assert.match(html, /Jl\. Mawar 1, Bekasi/);
+  assert.match(html, /B 1 CD/);
+  assert.doesNotMatch(html, /60[.,]?000/); // tanpa harga / HPP
+  const pick = deliveryNoteHtml({ ...base, deliveryMethod: 'PICKUP', pickedUpBy: 'Andi' });
+  assert.match(pick, /Diambil oleh/);
+  assert.doesNotMatch(pick, /Kirim ke/);
 });

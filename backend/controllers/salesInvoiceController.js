@@ -14,6 +14,7 @@ const { checkAmount, round2 } = require('../helpers/number');
 const { salesLineSubtotal, salesTotals, netLineRevenue, invoiceBalance } = require('../helpers/salesHelper');
 const SalesReturn = require('../models/SalesReturn');
 const SalesPayment = require('../models/SalesPayment');
+const DeliveryOrder = require('../models/DeliveryOrder');
 const { resolvePrices } = require('../helpers/priceHelper');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -175,6 +176,8 @@ const fillInvoice = (doc, parsed, settings, customer) => {
 const populateDoc = (query) => query
   .populate('customer', 'code name phone address npwp isWalkIn isActive')
   .populate('gudang', 'code name isActive')
+  .populate('salesOrder', 'no customerPoNo deliveryMethod')
+  .populate('deliveryOrder', 'no date')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
   .populate('createdBy', 'name')
@@ -244,6 +247,7 @@ exports.getInvoices = async (req, res) => {
       SalesInvoice.find(filter)
         .select('-lines')
         .populate('customer', 'code name isWalkIn')
+        .populate('salesOrder', 'no')
         .populate('gudang', 'code name')
         .populate('createdBy', 'name')
         .populate('updatedBy', 'name')
@@ -510,7 +514,8 @@ exports.postInvoice = async (req, res) => {
 
 /**
  * POST /api/sales-invoice/:id/cancel  body: { reason } — hanya POSTED: movement pembalik,
- * barang kembali ke gudang dengan HPP saat dijual.
+ * barang kembali ke gudang dengan HPP saat dijual. Invoice atas Delivery Order (source SALES_ORDER):
+ * stok tidak berubah, DO kembali "belum ditagih".
  */
 exports.cancelInvoice = async (req, res) => {
   try {
@@ -530,14 +535,27 @@ exports.cancelInvoice = async (req, res) => {
       if (payments) throw new HttpError(`Invoice has ${payments} payment(s). Cancel them first.`, 400);
 
       const before = await audit.snap('salesInvoice', [doc]);
-      await applyMovements(req, doc.lines.map((l) => ({
-        sku: l.sku,
-        gudang: doc.gudang,
-        qty: l.qty,
-        unitCost: l.unitCost,
-        type: 'SALE',
-        note: `Cancelled: ${cancelReason}`,
-      })), { refType: 'SalesInvoice', refId: doc._id, refNo: doc.no, isReversal: true });
+      const batchId = audit.newBatchId();
+      if (doc.source === 'SALES_ORDER') {
+        // tagihan atas Delivery Order: stok tidak berubah (barang tetap terkirim), DO bisa ditagih ulang
+        await lock(ref('deliveryOrder', doc.deliveryOrder));
+        const dlv = await DeliveryOrder.findById(doc.deliveryOrder);
+        if (dlv && String(dlv.invoice) === String(doc._id)) {
+          const dlvBefore = await audit.snap('deliveryOrder', [dlv]);
+          dlv.invoice = null;
+          await dlv.save();
+          await audit.logUpdate(req, 'deliveryOrder', dlvBefore, [dlv], { batchId });
+        }
+      } else {
+        await applyMovements(req, doc.lines.map((l) => ({
+          sku: l.sku,
+          gudang: doc.gudang,
+          qty: l.qty,
+          unitCost: l.unitCost,
+          type: 'SALE',
+          note: `Cancelled: ${cancelReason}`,
+        })), { refType: 'SalesInvoice', refId: doc._id, refNo: doc.no, isReversal: true });
+      }
 
       doc.status = 'CANCELLED';
       doc.paymentStatus = null;
@@ -545,7 +563,7 @@ exports.cancelInvoice = async (req, res) => {
       doc.cancelledDate = new Date();
       doc.cancelReason = cancelReason;
       await doc.save();
-      await audit.logUpdate(req, 'salesInvoice', before, [doc]);
+      await audit.logUpdate(req, 'salesInvoice', before, [doc], { batchId });
       return doc;
     });
     return successResponse(res, doc, `${doc.no} cancelled`);

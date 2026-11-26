@@ -25,18 +25,61 @@ export const PAYMENT_TYPES = { PAYMENT: 'Payment', REFUND: 'Refund' };
 export const salesLineSubtotal = ({ qty, hargaJual, diskonPersen = 0 }) => round2((Number(qty) || 0) * (Number(hargaJual) || 0) * (1 - (Number(diskonPersen) || 0) / 100));
 
 /**
- * Total dokumen. priceIncludesTax: PPN dihitung dari dalam (total = subtotal - diskon),
- * selain itu PPN ditambahkan di atas. -> { subtotal, discountAmount, dpp, taxAmount, total }
+ * Total dokumen (salinan backend/helpers/salesHelper.js). priceIncludesTax: PPN dihitung dari dalam
+ * (total = subtotal - diskon), selain itu PPN ditambahkan di atas. Ongkir mengikuti mode pajak yang sama;
+ * dpp = barang saja, taxAmount & total termasuk ongkir.
+ * -> { subtotal, discountAmount, dpp, taxAmount, total, shippingCharge, shippingDpp, shippingTotal }
  */
-export const salesTotals = (lines, { discountAmount = 0, taxRate = 0, priceIncludesTax = false } = {}) => {
+export const salesTotals = (lines, { discountAmount = 0, taxRate = 0, priceIncludesTax = false, shippingCharge = 0 } = {}) => {
   const subtotal = round2(lines.reduce((sum, l) => sum + salesLineSubtotal(l), 0));
   const discount = round2(Math.min(Math.max(Number(discountAmount) || 0, 0), subtotal));
   const base = round2(subtotal - discount);
   const rate = Number(taxRate) || 0;
+  const ship = round2(Math.max(Number(shippingCharge) || 0, 0));
+  let goods;
+  let shipping;
   if (priceIncludesTax) {
     const taxAmount = round2(base * rate / (100 + rate));
-    return { subtotal, discountAmount: discount, dpp: round2(base - taxAmount), taxAmount, total: base };
+    goods = { dpp: round2(base - taxAmount), taxAmount, total: base };
+    const shipTax = round2(ship * rate / (100 + rate));
+    shipping = { shippingDpp: round2(ship - shipTax), shipTax, shippingTotal: ship };
+  } else {
+    const taxAmount = round2(base * rate / 100);
+    goods = { dpp: base, taxAmount, total: round2(base + taxAmount) };
+    const shipTax = round2(ship * rate / 100);
+    shipping = { shippingDpp: ship, shipTax, shippingTotal: round2(ship + shipTax) };
   }
-  const taxAmount = round2(base * rate / 100);
-  return { subtotal, discountAmount: discount, dpp: base, taxAmount, total: round2(base + taxAmount) };
+  return {
+    subtotal,
+    discountAmount: discount,
+    dpp: goods.dpp,
+    taxAmount: round2(goods.taxAmount + shipping.shipTax),
+    total: round2(goods.total + shipping.shippingTotal),
+    shippingCharge: ship,
+    shippingDpp: shipping.shippingDpp,
+    shippingTotal: shipping.shippingTotal,
+  };
 };
+
+// Sales Order: DRAFT -> OPEN -> PARTIAL -> DELIVERED; CLOSED (sisa tidak dikirim), CANCELLED
+export const SO_STATUS_META = {
+  DRAFT: { label: 'Draft', icon: 'fa-pen-ruler', tone: 'bg-warning-soft text-warning-fg' },
+  OPEN: { label: 'Open', icon: 'fa-file-signature', tone: 'bg-primary-soft text-primary-soft-fg' },
+  PARTIAL: { label: 'Partially delivered', icon: 'fa-truck-fast', tone: 'bg-primary-soft text-primary-soft-fg' },
+  DELIVERED: { label: 'Delivered', icon: 'fa-check-double', tone: 'bg-success-soft text-success-fg' },
+  CLOSED: { label: 'Closed', icon: 'fa-lock', tone: 'bg-subtle text-muted' },
+  CANCELLED: { label: 'Cancelled', icon: 'fa-ban', tone: 'bg-danger-soft text-danger' },
+};
+
+// Delivery Order: DRAFT -> POSTED -> CANCELLED
+export const DO_STATUS_META = INVOICE_STATUS_META;
+
+export const DELIVERY_METHODS = {
+  DELIVERY: { label: 'Dikirim', icon: 'fa-truck' },
+  PICKUP: { label: 'Diambil sendiri', icon: 'fa-person-walking-luggage' },
+};
+
+/** Alamat 1 baris: "Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310" */
+export const addressLine = (a) => (a
+  ? [[a.alamat ?? a.address, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
+  : '');

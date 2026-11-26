@@ -164,7 +164,9 @@ exports.getSalesReport = async (req, res) => {
 
     const sum = (f) => round2(rows.reduce((s, r) => s + (r[f] || 0), 0));
     const invoiceCount = (await SalesInvoice.distinct('_id', match)).length;
-    const totals = { sales: sum('sales'), returns: sum('returns'), net: sum('net'), invoiceCount };
+    // ongkir yang ditagih (tanpa PPN): pendapatan terpisah, tidak termasuk penjualan barang / laba kotor
+    const ship = await SalesInvoice.aggregate([{ $match: match }, { $group: { _id: null, v: { $sum: { $ifNull: ['$shippingDpp', 0] } } } }]);
+    const totals = { sales: sum('sales'), returns: sum('returns'), net: sum('net'), invoiceCount, shipping: round2(ship[0]?.v || 0) };
     if (canSeeCost) {
       totals.cogs = sum('cogs');
       totals.grossProfit = round2(totals.net - totals.cogs);

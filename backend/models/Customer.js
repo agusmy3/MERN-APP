@@ -9,7 +9,14 @@ const customerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, trim: true, default: '' },
   email: { type: String, trim: true, lowercase: true, default: '' },
-  address: { type: String, trim: true, default: '' },
+  address: { type: String, trim: true, default: '' },   // alamat jalan (default alamat kirim Sales Order)
+  // wilayah & koordinat (validasi bersama Gudang/Outlet: helpers/locationHelper.js)
+  provinsi: { type: String, trim: true, default: '' },
+  kota: { type: String, trim: true, default: '' },        // kota / kabupaten
+  kecamatan: { type: String, trim: true, default: '' },
+  kodePos: { type: String, trim: true, default: '' },     // 5 digit
+  latitude: { type: Number, default: null, min: -90, max: 90 },
+  longitude: { type: Number, default: null, min: -180, max: 180 },
   npwp: { type: String, trim: true, default: '' },
   deskripsi: { type: String, default: '' },
   termDays: { type: Number, default: 0, min: 0, max: 365 }, // termin bayar default (0 = tunai) -> jatuh tempo invoice

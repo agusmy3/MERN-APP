@@ -40,4 +40,17 @@ const parseLocation = (body) => {
   return out;
 };
 
-module.exports = { parseLocation, LOCATION_TEXT_FIELDS: TEXT_FIELDS };
+/**
+ * Wilayah + kode pos + koordinat saja (Customer & Vendor, yang alamat jalannya punya field sendiri).
+ * Hanya field yang dikirim yang dikembalikan.
+ */
+const REGION_FIELDS = ['provinsi', 'kota', 'kecamatan', 'kodePos', 'latitude', 'longitude'];
+const parseRegion = (body) => {
+  const picked = {};
+  REGION_FIELDS.forEach((f) => { if (body[f] !== undefined) picked[f] = body[f]; });
+  const out = parseLocation(picked);
+  ['provinsi', 'kota', 'kecamatan'].forEach((f) => { if (out[f] !== undefined) out[f] = out[f].slice(0, 120); });
+  return out;
+};
+
+module.exports = { parseLocation, parseRegion, REGION_FIELDS, LOCATION_TEXT_FIELDS: TEXT_FIELDS };

@@ -74,6 +74,44 @@ export const deletePriceList = (id, token) => axios.delete(`${PL}/${id}`, getHea
 /** harga jual untuk customer: { skuId: { price, source: list|default } } */
 export const getSalesSkuPrices = async (token, customer, skus) => (await axios.post(`${INV}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
 
+// ---------- Sales Order ----------
+
+const SO = '/api/sales-order';
+/** params { search, status (ACTIVE = OPEN+PARTIAL), customer, gudang, from, to, page, pageSize, sortField, sortOrder } */
+export const getSalesOrders = async (token, params) => (await axios.get(SO, { ...getHeaders(token), params })).data.data;
+export const getSalesOrder = async (id, token) => (await axios.get(`${SO}/${id}`, getHeaders(token))).data.data;
+/** SKU + qty / committed / available + hargaJual (price list customer) [+ avgCost] */
+export const searchSoSkus = async (token, params) => (await axios.get(`${SO}/skus`, { ...getHeaders(token), params })).data.data;
+/** { gudang, skus, exclude } -> { skuId: { qty, committed, available } } */
+export const getSoSkuAvailability = async (token, gudang, skus, exclude) => (await axios.post(`${SO}/skus/availability`, { gudang, skus, exclude }, getHeaders(token))).data.data;
+export const getSoSkuPrices = async (token, customer, skus) => (await axios.post(`${SO}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
+/** alamat kirim default customer -> { shipTo, termDays } */
+export const getSoCustomerShipTo = async (customerId, token) => (await axios.get(`${SO}/ship-to/${customerId}`, getHeaders(token))).data.data;
+export const createSalesOrder = (data, token) => axios.post(SO, data, getHeaders(token));
+export const updateSalesOrder = (id, data, token) => axios.put(`${SO}/${id}`, data, getHeaders(token));
+export const deleteSalesOrder = (id, token) => axios.delete(`${SO}/${id}`, getHeaders(token));
+export const confirmSalesOrder = (id, token) => axios.post(`${SO}/${id}/confirm`, {}, getHeaders(token));
+export const cancelSalesOrder = (id, reason, token) => axios.post(`${SO}/${id}/cancel`, { reason }, getHeaders(token));
+export const closeSalesOrder = (id, reason, token) => axios.post(`${SO}/${id}/close`, { reason }, getHeaders(token));
+
+// ---------- Delivery Order ----------
+
+const DLV = '/api/delivery-order';
+/** params { search, status, invoiced: true|false, customer, salesOrder, gudang, from, to, page, pageSize, sortField, sortOrder } */
+export const getDeliveryOrders = async (token, params) => (await axios.get(DLV, { ...getHeaders(token), params })).data.data;
+export const getDeliveryOrder = async (id, token) => (await axios.get(`${DLV}/${id}`, getHeaders(token))).data.data;
+/** SO OPEN / PARTIAL yang bisa dikirim */
+export const getDeliverySoOptions = async (token, search) => (await axios.get(`${DLV}/so-options`, { ...getHeaders(token), params: { search } })).data.data;
+/** SO + baris (outstanding, currentQty), tanpa harga */
+export const getSoForDelivery = async (soId, token) => (await axios.get(`${DLV}/from-so/${soId}`, getHeaders(token))).data.data;
+export const createDeliveryOrder = (data, token) => axios.post(DLV, data, getHeaders(token));
+export const updateDeliveryOrder = (id, data, token) => axios.put(`${DLV}/${id}`, data, getHeaders(token));
+export const deleteDeliveryOrder = (id, token) => axios.delete(`${DLV}/${id}`, getHeaders(token));
+export const postDeliveryOrder = (id, token) => axios.post(`${DLV}/${id}/post`, {}, getHeaders(token));
+export const cancelDeliveryOrder = (id, reason, token) => axios.post(`${DLV}/${id}/cancel`, { reason }, getHeaders(token));
+/** { date, dueDate, note } -> invoice POSTED */
+export const invoiceDeliveryOrder = (id, data, token) => axios.post(`${DLV}/${id}/invoice`, data, getHeaders(token));
+
 // ---------- Sales Report ----------
 
 /** params { from, to, groupBy: day|month|customer|produk|kategori|sku, gudang, customer, tz } -> { rows, totals, canSeeCost } */

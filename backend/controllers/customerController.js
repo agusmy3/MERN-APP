@@ -3,6 +3,7 @@ const Counter = require('../models/Counter');
 const { successResponse, errorResponse } = require('../helpers/responseHelper');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
+const { parseRegion } = require('../helpers/locationHelper');
 
 const SORTABLE_FIELDS = ['code', 'name', 'phone', 'createdDate', 'updatedDate'];
 const TEXT_FIELDS = { name: 120, phone: 40, email: 120, address: 500, npwp: 30, deskripsi: 1000 };
@@ -38,6 +39,7 @@ const parseFields = (body) => {
     if (!Number.isInteger(n) || n < 0 || n > 365) throw new HttpError('Payment term must be a whole number of days (0 - 365)', 400);
     out.termDays = n;
   }
+  Object.assign(out, parseRegion(body)); // provinsi, kota, kecamatan, kodePos, latitude, longitude
   return out;
 };
 
@@ -60,7 +62,7 @@ exports.getCustomers = async (req, res) => {
     const filter = {};
     if (req.query.search) {
       const rx = { $regex: escapeRegex(req.query.search), $options: 'i' };
-      filter.$or = ['code', 'name', 'phone', 'email', 'address', 'npwp'].map((f) => ({ [f]: rx }));
+      filter.$or = ['code', 'name', 'phone', 'email', 'address', 'kota', 'npwp'].map((f) => ({ [f]: rx }));
     }
     const [totalData, dataCustomer] = await Promise.all([
       Customer.countDocuments(filter),
@@ -149,6 +151,8 @@ exports.deleteCustomer = async (req, res) => {
       await lock(ref('customer', customer._id)); // bentrok dengan dokumen penjualan baru
       const used = await require('../models/SalesInvoice').countDocuments({ customer: customer._id });
       if (used) throw new HttpError(`Customer is used by ${used} sales invoice(s). Deactivate it instead.`, 400);
+      const orders = await require('../models/SalesOrder').countDocuments({ customer: customer._id });
+      if (orders) throw new HttpError(`Customer is used by ${orders} sales order(s). Deactivate it instead.`, 400);
       const before = await audit.snap('customer', [customer]);
       await customer.deleteOne();
       await audit.logDelete(req, 'customer', before);

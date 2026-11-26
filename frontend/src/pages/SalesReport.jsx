@@ -109,6 +109,11 @@ function SalesTab({ token, gudangs, customers }) {
               <div className="text-xs text-muted">{label}</div>
               <div className={`text-lg font-semibold tabular-nums ${v < 0 ? 'text-danger' : ''}`}>{formatRupiah(v)}</div>
               {label === 'Net sales' && <div className="text-xs text-muted">{data.totals.invoiceCount} invoice · tanpa PPN</div>}
+              {label === 'Net sales' && data.totals.shipping > 0 && (
+                <div className="text-xs text-muted" title="Ongkir yang ditagih ke customer (tanpa PPN); tidak termasuk penjualan barang & laba kotor">
+                  + ongkir ditagih {formatRupiah(data.totals.shipping)}
+                </div>
+              )}
               {label === 'Gross profit' && <div className="text-xs text-muted">Margin {pct(data.totals.margin)}</div>}
             </div>
           ))}

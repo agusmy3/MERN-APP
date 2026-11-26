@@ -98,7 +98,7 @@ export const shiftReportHtml = (shift, summary) => {
   </body></html>`;
 };
 
-const printHtml = (html) => {
+export const printHtml = (html) => {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });

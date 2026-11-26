@@ -321,6 +321,17 @@ exports.getDashboard = async (req, res) => {
       jobs.push(StockTransfer.countDocuments({ status: 'IN_TRANSIT', ...to }).then((n) => { pending.transferIncoming = n; }));
     }
     if (can('salesInvoice')) jobs.push(SalesInvoice.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.salesInvoice = n; }));
+    if (can('salesOrder')) {
+      const SalesOrder = require('../models/SalesOrder');
+      jobs.push(SalesOrder.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.salesOrder = n; }));
+      // SO terkonfirmasi yang belum selesai dikirim
+      jobs.push(SalesOrder.countDocuments({ status: { $in: ['OPEN', 'PARTIAL'] }, ...g }).then((n) => { pending.soToDeliver = n; }));
+    }
+    if (can('deliveryOrder')) {
+      const DeliveryOrder = require('../models/DeliveryOrder');
+      jobs.push(DeliveryOrder.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.deliveryOrder = n; }));
+      jobs.push(DeliveryOrder.countDocuments({ status: 'POSTED', invoice: null, ...g }).then((n) => { pending.doToInvoice = n; }));
+    }
     if (can('costRevaluation')) jobs.push(CostRevaluation.countDocuments({ status: 'DRAFT' }).then((n) => { pending.costRevaluation = n; }));
 
     if (can('goodsReceipt') && canSeeCost) jobs.push(purchasesByMonth(tz, gAgg).then((v) => { data.purchasesByMonth = v; }));

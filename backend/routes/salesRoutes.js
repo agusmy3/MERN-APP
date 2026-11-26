@@ -10,6 +10,43 @@ const pay = require('../controllers/salesPaymentController');
 const pl = require('../controllers/priceListController');
 const PriceList = require('../models/PriceList');
 const report = require('../controllers/salesReportController');
+const so = require('../controllers/salesOrderController');
+const dlv = require('../controllers/deliveryOrderController');
+
+/**
+ * Sales Order (/api/sales-order) — pesanan customer (tidak mengubah stok)
+ *   create = draft / langsung konfirmasi; update = ubah draft, konfirmasi, cancel, close; delete = hapus draft
+ */
+const salesOrder = express.Router();
+salesOrder.get('/skus', protect, authorize('salesOrder', 'view'), so.searchSkus);
+salesOrder.post('/skus/prices', protect, authorize('salesOrder', 'view'), inv.skuPrices);
+salesOrder.post('/skus/availability', protect, authorize('salesOrder', 'view'), so.skuAvailability);
+salesOrder.get('/ship-to/:customerId', protect, authorize('salesOrder', 'view'), so.getCustomerShipTo);
+salesOrder.get('/', protect, authorize('salesOrder', 'view'), so.getSalesOrders);
+salesOrder.get('/:id', protect, authorize('salesOrder', 'view'), so.getSalesOrder);
+salesOrder.post('/', protect, authorize('salesOrder', 'create'), so.createSalesOrder);
+salesOrder.put('/:id', protect, authorize('salesOrder', 'update'), so.updateSalesOrder);
+salesOrder.delete('/:id', protect, authorize('salesOrder', 'delete'), so.deleteSalesOrder);
+salesOrder.post('/:id/confirm', protect, authorize('salesOrder', 'update'), so.confirmSalesOrder);
+salesOrder.post('/:id/cancel', protect, authorize('salesOrder', 'update'), so.cancelSalesOrder);
+salesOrder.post('/:id/close', protect, authorize('salesOrder', 'update'), so.closeSalesOrder);
+
+/**
+ * Delivery Order (/api/delivery-order) — surat jalan atas SO
+ *   create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali)
+ *   POST /:id/invoice = buat invoice POSTED (dicek di handler: salesInvoice create + post)
+ */
+const deliveryOrder = express.Router();
+deliveryOrder.get('/so-options', protect, authorize('deliveryOrder', 'view'), dlv.getSoOptions);
+deliveryOrder.get('/from-so/:soId', protect, authorize('deliveryOrder', 'view'), dlv.getSoForDelivery);
+deliveryOrder.get('/', protect, authorize('deliveryOrder', 'view'), dlv.getDeliveryOrders);
+deliveryOrder.get('/:id', protect, authorize('deliveryOrder', 'view'), dlv.getDeliveryOrder);
+deliveryOrder.post('/', protect, authorize('deliveryOrder', 'create'), dlv.createDeliveryOrder);
+deliveryOrder.put('/:id', protect, authorize('deliveryOrder', 'update'), dlv.updateDeliveryOrder);
+deliveryOrder.delete('/:id', protect, authorize('deliveryOrder', 'delete'), dlv.deleteDeliveryOrder);
+deliveryOrder.post('/:id/post', protect, authorize('deliveryOrder', 'post'), dlv.postDeliveryOrder);
+deliveryOrder.post('/:id/cancel', protect, authorize('deliveryOrder', 'post'), dlv.cancelDeliveryOrder);
+deliveryOrder.post('/:id/invoice', protect, authorize('deliveryOrder', 'view'), dlv.createInvoice);
 
 /** Customer (/api/customer): master data standar; /dropdown cukup login (pilihan di dokumen penjualan) */
 const customer = express.Router();
@@ -76,4 +113,4 @@ const salesReport = express.Router();
 salesReport.get('/sales', protect, authorize('salesReport', 'view'), report.getSalesReport);
 salesReport.get('/aging', protect, authorize('salesReport', 'view'), report.getAgingReport);
 
-module.exports = { customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };
+module.exports = { salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };

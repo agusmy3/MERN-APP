@@ -10,7 +10,8 @@ const mongoose = require('mongoose');
  * Harga & qty dalam satuan dasar produk. Pajak (salinan System Settings saat dokumen dibuat):
  * - priceIncludesTax = false : dpp = subtotal - diskon dokumen, PPN = dpp x tarif, total = dpp + PPN
  * - priceIncludesTax = true  : total = subtotal - diskon dokumen, PPN = total x tarif / (100 + tarif), dpp = total - PPN
- * Pendapatan bersih = dpp (tanpa PPN); laba kotor = dpp - cogs. Lihat helpers/salesHelper.js.
+ * Pendapatan bersih = dpp (tanpa PPN, barang saja); laba kotor = dpp - cogs. Ongkir terpisah (shipping*).
+ * Lihat helpers/salesHelper.js.
  */
 const lineSchema = new mongoose.Schema({
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
@@ -26,7 +27,10 @@ const lineSchema = new mongoose.Schema({
 
 const salesInvoiceSchema = new mongoose.Schema({
   no: { type: String, required: true, unique: true },  // INV-202611-0001 (POS: POS-202611-0001)
-  source: { type: String, enum: ['BACKOFFICE', 'POS'], default: 'BACKOFFICE' },
+  // BACKOFFICE = invoice langsung; POS = kasir; SALES_ORDER = tagihan atas 1 Delivery Order (stok keluar di DO)
+  source: { type: String, enum: ['BACKOFFICE', 'POS', 'SALES_ORDER'], default: 'BACKOFFICE' },
+  salesOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder', default: null },       // SALES_ORDER
+  deliveryOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryOrder', default: null }, // SALES_ORDER
   outlet: { type: mongoose.Schema.Types.ObjectId, ref: 'Outlet', default: null },   // POS
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null },  // POS
   cashTendered: { type: Number, default: null },  // POS: uang tunai diterima
@@ -43,7 +47,11 @@ const salesInvoiceSchema = new mongoose.Schema({
   discountAmount: { type: Number, default: 0 },        // diskon dokumen (nominal)
   dpp: { type: Number, default: 0 },                   // dasar pengenaan pajak = pendapatan bersih
   taxAmount: { type: Number, default: 0 },
-  total: { type: Number, default: 0 },
+  total: { type: Number, default: 0 },                 // total barang + ongkir (termasuk PPN)
+  // ongkir yang ditagih ke customer (SALES_ORDER: invoice pertama dari SO); tidak termasuk penjualan barang
+  shippingCharge: { type: Number, default: 0 },        // nominal (mode pajak sama dengan harga)
+  shippingDpp: { type: Number, default: 0 },           // tanpa PPN
+  shippingTotal: { type: Number, default: 0 },         // termasuk PPN
   cogs: { type: Number, default: null },               // HPP penjualan, diisi saat post (data biaya)
   // piutang (helpers/salesHelper.js invoiceBalance): sisa = total - returnedAmount - paidAmount
   dueDate: { type: Date, default: null },
@@ -66,6 +74,8 @@ salesInvoiceSchema.index({ status: 1, date: -1 });
 salesInvoiceSchema.index({ gudang: 1, status: 1 });
 salesInvoiceSchema.index({ customer: 1 });
 salesInvoiceSchema.index({ shift: 1 });
+salesInvoiceSchema.index({ salesOrder: 1 });
+salesInvoiceSchema.index({ deliveryOrder: 1 });
 salesInvoiceSchema.index({ outlet: 1, date: -1 });
 salesInvoiceSchema.index({ status: 1, paymentStatus: 1, dueDate: 1 });
 salesInvoiceSchema.index({ 'lines.sku': 1 });

@@ -103,6 +103,12 @@ const ENTITIES = {
       picName: { label: 'PIC Name' },
       picContact: { label: 'PIC Contact' },
       companyAddress: { label: 'Company Address' },
+      provinsi: { label: 'Province' },
+      kota: { label: 'City / Regency' },
+      kecamatan: { label: 'District' },
+      kodePos: { label: 'Postal Code' },
+      latitude: { label: 'Latitude', format: 'coord' },
+      longitude: { label: 'Longitude', format: 'coord' },
     },
     label: (doc) => doc.companyName,
   },
@@ -173,6 +179,12 @@ const ENTITIES = {
       phone: { label: 'Phone' },
       email: { label: 'Email' },
       address: { label: 'Address' },
+      provinsi: { label: 'Province' },
+      kota: { label: 'City / Regency' },
+      kecamatan: { label: 'District' },
+      kodePos: { label: 'Postal Code' },
+      latitude: { label: 'Latitude', format: 'coord' },
+      longitude: { label: 'Longitude', format: 'coord' },
       npwp: { label: 'NPWP' },
       termDays: { label: 'Payment Term (days)', format: 'number' },
       priceList: { label: 'Price List', ref: ['PriceList', 'name'] },
@@ -190,6 +202,7 @@ const ENTITIES = {
       taxRate: { label: 'Tax Rate (%)', format: 'number' },
       lines: { label: 'Items', format: 'salesLines' },
       discountAmount: { label: 'Document Discount', format: 'money' },
+      shippingCharge: { label: 'Shipping Charge', format: 'money' },
       total: { label: 'Total', format: 'money' },
       dueDate: { label: 'Due Date', format: 'date' },
       returnedAmount: { label: 'Returned', format: 'money' },
@@ -200,6 +213,47 @@ const ENTITIES = {
       cancelReason: { label: 'Cancel Reason' },
     },
     label: (doc) => doc.no,
+  },
+  salesOrder: {
+    fields: {
+      customer: { label: 'Customer', ref: ['Customer', 'name'] },
+      gudang: { label: 'Warehouse', ref: ['Gudang', 'code'] },
+      date: { label: 'Date', format: 'date' },
+      requestedDate: { label: 'Requested Delivery', format: 'date' },
+      customerPoNo: { label: 'Customer PO No.' },
+      deliveryMethod: { label: 'Delivery Method', labels: { DELIVERY: 'Delivered', PICKUP: 'Picked up by customer' } },
+      shipTo: { label: 'Ship To', format: 'address' },
+      priceIncludesTax: { label: 'Price incl. PPN', format: 'bool' },
+      taxRate: { label: 'Tax Rate (%)', format: 'number' },
+      lines: { label: 'Items', format: 'salesLines' },
+      discountAmount: { label: 'Document Discount', format: 'money' },
+      shippingCharge: { label: 'Shipping Charge', format: 'money' },
+      total: { label: 'Total', format: 'money' },
+      status: { label: 'Status' },
+      note: { label: 'Note' },
+      closeReason: { label: 'Close Reason' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
+  deliveryOrder: {
+    fields: {
+      salesOrder: { label: 'Sales Order', ref: ['SalesOrder', 'no'] },
+      date: { label: 'Date', format: 'date' },
+      vehicleNo: { label: 'Vehicle No.' },
+      driverName: { label: 'Driver' },
+      courier: { label: 'Courier' },
+      trackingNo: { label: 'Tracking No.' },
+      pickedUpBy: { label: 'Picked Up By' },
+      lines: { label: 'Items', format: 'trfLines' },
+      invoice: { label: 'Invoice', ref: ['SalesInvoice', 'no'] },
+      status: { label: 'Status' },
+      note: { label: 'Note' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+    // histori SO ikut memuat pengirimannya
+    parent: (doc) => ({ entity: 'salesOrder', id: doc.salesOrder?._id ?? doc.salesOrder }),
   },
   outlet: {
     fields: {
@@ -431,6 +485,13 @@ const normalizeValue = (def, value, texts) => {
       const recv = l.qtyReceived === null || l.qtyReceived === undefined ? '' : ` -> received ${num(l.qtyReceived)}`;
       return `${sku}: ${num(l.qty)}${recv}${l.note ? ` · ${l.note}` : ''}`;
     });
+  }
+  if (def.format === 'address') {
+    // mis. "Budi · 0812 · Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310"
+    if (!value) return null;
+    const place = [value.alamat, value.kecamatan, value.kota, value.provinsi].filter(Boolean).join(', ');
+    const text = [value.name, value.phone, [place, value.kodePos].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+    return text || null;
   }
   if (def.format === 'cashMoves') {
     // mis. "OUT 50,000 · beli galon"

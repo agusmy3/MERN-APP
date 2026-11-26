@@ -10,7 +10,7 @@
  * 6. Membuat menu "Warehouse" (/gudang, di grup yang sama dengan /uom) dan grup "Inventory"
  *    berisi "Stock Adjustment", "Stock Movement" & "Stock Valuation" (/stock-valuation)
  * 7. Grup "Purchasing" (Purchase Order, Goods Receipt) & menu "System Settings" (/settings)
- * 8. Grup "Sales" (Sales Invoice) & menu "Customer" (/customer, di grup yang sama dengan /vendor)
+ * 8. Grup "Sales" (Sales Order, Delivery Order, Sales Invoice, ...) & menu "Customer" (/customer, di grup yang sama dengan /vendor)
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -43,6 +43,8 @@ const ROUTE_RESOURCE = {
   '/goods-receipt': 'goodsReceipt',
   '/settings': 'setting',
   '/customer': 'customer',
+  '/sales-order': 'salesOrder',
+  '/delivery-order': 'deliveryOrder',
   '/sales-invoice': 'salesInvoice',
   '/sales-return': 'salesReturn',
   '/sales-payment': 'salesPayment',
@@ -59,6 +61,8 @@ const POS_MENUS = [
 ];
 
 const SALES_MENUS = [
+  { menu: 'Sales Order', component: '/sales-order', icon: 'fa-solid fa-file-signature', resource: 'salesOrder', deskripsi: 'Pesanan customer: dikirim / diambil bertahap lewat surat jalan, lalu ditagih' },
+  { menu: 'Delivery Order', component: '/delivery-order', icon: 'fa-solid fa-truck-fast', resource: 'deliveryOrder', deskripsi: 'Surat jalan: stok keluar saat diposting, lalu dibuatkan invoice' },
   { menu: 'Sales Invoice', component: '/sales-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'salesInvoice', deskripsi: 'Penjualan langsung: stok keluar & laba kotor saat diposting' },
   { menu: 'Sales Return', component: '/sales-return', icon: 'fa-solid fa-rotate-left', resource: 'salesReturn', deskripsi: 'Retur atas invoice: stok masuk kembali, tagihan berkurang' },
   { menu: 'Sales Payment', component: '/sales-payment', icon: 'fa-solid fa-money-bill-wave', resource: 'salesPayment', deskripsi: 'Pembayaran & refund invoice penjualan' },

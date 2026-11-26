@@ -30,6 +30,8 @@ const ENTITY_RESOURCE = {
   costRevaluation: 'costRevaluation',
   customer: 'customer',
   salesInvoice: 'salesInvoice',
+  salesOrder: 'salesOrder',
+  deliveryOrder: 'deliveryOrder',
   salesReturn: 'salesReturn',
   salesPayment: 'salesPayment',
   priceList: 'priceList',
@@ -40,7 +42,7 @@ const ENTITY_RESOURCE = {
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift', 'salesOrder', 'deliveryOrder'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };
@@ -95,8 +97,8 @@ exports.getHistory = async (req, res) => {
       if (scope && PRODUK_SCOPES[scope]) {
         filter.entity = allowed.includes(PRODUK_SCOPES[scope]) ? PRODUK_SCOPES[scope] : '__none__';
       }
-    } else if (entity === 'purchaseOrder' || entity === 'salesInvoice') {
-      // PO + penerimaan barangnya / invoice + retur & pembayarannya (hanya entity yang boleh dilihat)
+    } else if (entity === 'purchaseOrder' || entity === 'salesInvoice' || entity === 'salesOrder') {
+      // PO + penerimaan barangnya / invoice + retur & pembayarannya / SO + pengirimannya (hanya entity yang boleh dilihat)
       filter = {
         entity: { $in: allowed },
         $or: [{ entity, entityId: oid }, { 'parent.id': oid }],

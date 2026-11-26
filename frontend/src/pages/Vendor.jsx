@@ -16,16 +16,22 @@ import { historyAside } from '../utils/historyAside';
 import VendorSuppliedProducts from '../components/produk/VendorSuppliedProducts';
 import { auditColumn, actionColumn } from '../utils/tableColumns';
 import { inputClass } from '../utils/formStyles';
+import RegionFields from '../components/RegionFields';
+import { EMPTY_REGION, regionFrom, regionError } from '../utils/regionMeta';
+import useToast from '../hooks/useToast';
+import { addressLine } from '../utils/salesMeta';
 
 const EMPTY_FORM = {
   companyName: '',
   companyAddress: '',
+  ...EMPTY_REGION,
   picName: '',
   picContact: '',
 };
 
 export default function Vendor() {
   const { user } = useAuth();
+  const toast = useToast();
 
   const fetchVendor = useCallback(async (params) => {
     const res = await getVendor(user.token, params);
@@ -41,10 +47,20 @@ export default function Vendor() {
     toForm: (row) => ({
       companyName: row.companyName,
       companyAddress: row.companyAddress,
+      ...regionFrom(row),
       picName: row.picName,
       picContact: row.picContact,
     }),
     getLabel: (row) => row.companyName,
+    // validasi ringan di client (penegakan di backend)
+    prepare: (f) => {
+      const err = regionError(f);
+      if (err) {
+        toast.warning(err);
+        return null;
+      }
+      return f;
+    },
     create: (payload) => createVendor(payload, user.token),
     update: (id, payload) => updateVendor(id, payload, user.token),
     remove: (id) => deleteVendor(id, user.token),
@@ -56,7 +72,7 @@ export default function Vendor() {
 
   const columns = [
     { key: 'companyName', header: 'Company', sortField: 'companyName', width: 220, className: 'font-medium' },
-    { key: 'companyAddress', header: 'Address', width: 260 },
+    { key: 'companyAddress', header: 'Address', width: 320, render: (row) => addressLine({ ...row, alamat: row.companyAddress }) },
     { key: 'picName', header: 'PIC', sortField: 'picName', width: 180 },
     { key: 'picContact', header: 'PIC Contact', width: 160 },
     auditColumn(table.sortField),
@@ -94,14 +110,16 @@ export default function Vendor() {
           <textarea
             id="vendor-company-address"
             name="companyAddress"
-            rows={3}
-            placeholder="Address"
+            rows={2}
+            placeholder="Jalan, nomor, RT/RW"
             value={form.companyAddress}
             onChange={crud.handleChange}
             className={inputClass}
             required
           />
         </FormField>
+
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="vendor" />
 
         <h3 className="text-sm font-semibold text-fg border-b border-line pb-1 pt-2">PIC (Person in Charge)</h3>
 

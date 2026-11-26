@@ -29,9 +29,14 @@ test('sales totals: line & document discount, PPN exclusive / inclusive', () => 
   const lines = [{ qty: 2, hargaJual: 100000, diskonPersen: 10 }, { qty: 1, hargaJual: 50000 }]
     .map((l) => ({ ...l, subtotal: salesLineSubtotal(l) }));
   assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11 }),
-    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 22000, total: 222000 });
+    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 22000, total: 222000, shippingCharge: 0, shippingDpp: 0, shippingTotal: 0 });
   assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11, priceIncludesTax: true }),
-    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000 });
+    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 19819.82, total: 200000, shippingCharge: 0, shippingDpp: 0, shippingTotal: 0 });
+  // ongkir: dpp tetap barang saja; PPN & total ikut ongkir
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11, shippingCharge: 10000 }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 200000, taxAmount: 23100, total: 233100, shippingCharge: 10000, shippingDpp: 10000, shippingTotal: 11100 });
+  assert.deepEqual(salesTotals(lines, { discountAmount: 30000, taxRate: 11, priceIncludesTax: true, shippingCharge: 11100 }),
+    { subtotal: 230000, discountAmount: 30000, dpp: 180180.18, taxAmount: 20919.82, total: 211100, shippingCharge: 11100, shippingDpp: 10000, shippingTotal: 11100 });
 });
 
 test('customer: auto code, walk-in protected, inactive / used customer rules', async () => {

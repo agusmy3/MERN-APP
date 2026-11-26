@@ -10,6 +10,10 @@ import { AuditDetail } from '../components/AuditInfo';
 import { historyAside } from '../utils/historyAside';
 import { auditColumn, actionColumn } from '../utils/tableColumns';
 import { inputClass } from '../utils/formStyles';
+import RegionFields from '../components/RegionFields';
+import { EMPTY_REGION, regionFrom, regionError } from '../utils/regionMeta';
+import useToast from '../hooks/useToast';
+import { addressLine } from '../utils/salesMeta';
 
 const EMPTY_FORM = {
   code: '',
@@ -17,6 +21,7 @@ const EMPTY_FORM = {
   phone: '',
   email: '',
   address: '',
+  ...EMPTY_REGION,
   npwp: '',
   deskripsi: '',
   termDays: 0,
@@ -27,6 +32,7 @@ const EMPTY_FORM = {
 /** Master Customer. Customer "Umum / Walk-in" bawaan tidak bisa dihapus / dinonaktifkan. */
 export default function Customer() {
   const { user } = useAuth();
+  const toast = useToast();
   const [priceLists, setPriceLists] = useState([]);
   useEffect(() => {
     getPriceListDropdown(user.token).then(setPriceLists).catch(console.error);
@@ -49,6 +55,7 @@ export default function Customer() {
       phone: row.phone || '',
       email: row.email || '',
       address: row.address || '',
+      ...regionFrom(row),
       npwp: row.npwp || '',
       deskripsi: row.deskripsi || '',
       termDays: row.termDays ?? 0,
@@ -56,6 +63,15 @@ export default function Customer() {
       isActive: row.isActive !== false,
     }),
     getLabel: (row) => row.name,
+    // validasi ringan di client (penegakan di backend)
+    prepare: (f) => {
+      const err = regionError(f);
+      if (err) {
+        toast.warning(err);
+        return null;
+      }
+      return f;
+    },
     canDeleteRow: (row) => !row.isWalkIn,
     create: (payload) => createCustomer(payload, user.token),
     update: (id, payload) => updateCustomer(id, payload, user.token),
@@ -85,7 +101,7 @@ export default function Customer() {
     { key: 'email', header: 'Email', width: 200 },
     { key: 'priceList', header: 'Price List', width: 140, render: (row) => row.priceList?.name || <span className="text-muted">Default</span> },
     { key: 'termDays', header: 'Term', width: 90, className: 'text-right tabular-nums', render: (row) => (row.termDays ? `${row.termDays} d` : 'Cash') },
-    { key: 'address', header: 'Address', width: 260 },
+    { key: 'address', header: 'Address', width: 320, render: (row) => addressLine(row) },
     {
       key: 'isActive',
       header: 'Status',
@@ -134,8 +150,10 @@ export default function Customer() {
         </div>
 
         <FormField label="Address" htmlFor="cust-address">
-          <textarea id="cust-address" name="address" rows={3} value={form.address} onChange={crud.handleChange} className={inputClass} />
+          <textarea id="cust-address" name="address" rows={2} placeholder="Jalan, nomor, RT/RW" value={form.address} onChange={crud.handleChange} className={inputClass} />
         </FormField>
+
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="cust" />
 
         <FormField label="Payment term (days)" htmlFor="cust-term" hint="Jatuh tempo invoice = tanggal invoice + termin. 0 = tunai.">
           <input id="cust-term" name="termDays" type="number" min="0" max="365" step="1" value={form.termDays} onChange={crud.handleChange} className={inputClass} />

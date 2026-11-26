@@ -98,6 +98,8 @@ export default function SalesInvoiceDetail() {
   const perm = usePermission('salesInvoice');
   const returnPerm = usePermission('salesReturn');
   const movementPerm = usePermission('stockMovement');
+  const soPerm = usePermission('salesOrder');
+  const dlvPerm = usePermission('deliveryOrder');
   const canSeeCost = usePermission('vendorPrice').canView;
   const toast = useToast();
   const confirm = useConfirm();
@@ -129,6 +131,7 @@ export default function SalesInvoiceDetail() {
       taxRate: d.taxRate ?? 0,
       priceIncludesTax: !!d.priceIncludesTax,
       discountAmount: d.discountAmount || 0,
+      shippingCharge: d.shippingCharge || 0, // hanya invoice dari surat jalan (ongkir SO)
     };
     const ls = d.lines.map(lineFromDoc);
     setDoc(d);
@@ -388,7 +391,7 @@ export default function SalesInvoiceDetail() {
         fallbackTitle="Sales Invoice"
         parentPath="/sales-invoice"
         title={doc?.no || 'New Invoice'}
-        subtitle="Penjualan langsung: stok keluar dari gudang saat diposting."
+        subtitle={doc?.source === 'SALES_ORDER' ? 'Tagihan atas surat jalan: stok sudah keluar di Delivery Order.' : 'Penjualan langsung: stok keluar dari gudang saat diposting.'}
         actions={(
           <>
             {!isNew && <StatusBadge status={status} meta={INVOICE_STATUS_META} />}
@@ -424,7 +427,9 @@ export default function SalesInvoiceDetail() {
       {cancelOpen && (
         <ReasonPanel
           title={`Cancel ${doc.no}`}
-          description={`Stok dikembalikan ke ${doc.gudang?.code} dengan HPP saat dijual (pergerakan pembalik).`}
+          description={doc.source === 'SALES_ORDER'
+            ? `Tagihan dibatalkan; stok tidak berubah (barang tetap terkirim lewat ${doc.deliveryOrder?.no || 'surat jalan'}) dan surat jalan bisa ditagih ulang.`
+            : `Stok dikembalikan ke ${doc.gudang?.code} dengan HPP saat dijual (pergerakan pembalik).`}
           placeholder="Alasan pembatalan (wajib)"
           confirmLabel="Cancel invoice"
           busy={busy}
@@ -622,6 +627,9 @@ export default function SalesInvoiceDetail() {
                 <dt className="text-muted">Subtotal</dt><dd className="text-right tabular-nums">{formatRupiah(totals.subtotal)}</dd>
                 {totals.discountAmount > 0 && (<><dt className="text-muted">Discount</dt><dd className="text-right tabular-nums">−{formatRupiah(totals.discountAmount)}</dd></>)}
                 <dt className="text-muted" title="Dasar pengenaan pajak = penjualan bersih">DPP</dt><dd className="text-right tabular-nums">{formatRupiah(totals.dpp)}</dd>
+                {totals.shippingCharge > 0 && (
+                  <><dt className="text-muted" title="Ongkir dari sales order (tanpa PPN); tidak termasuk penjualan barang">Shipping</dt><dd className="text-right tabular-nums">{formatRupiah(totals.shippingDpp)}</dd></>
+                )}
                 <dt className="text-muted">PPN {formatNumber(Number(form.taxRate) || 0)}%{form.priceIncludesTax ? ' (incl.)' : ''}</dt>
                 <dd className="text-right tabular-nums">{formatRupiah(totals.taxAmount)}</dd>
                 <dt className="font-semibold">Total</dt><dd className="text-right tabular-nums font-semibold">{formatRupiah(totals.total)}</dd>
@@ -654,6 +662,28 @@ export default function SalesInvoiceDetail() {
                   {doc.customer?.address && <div className="text-xs text-muted">{doc.customer.address}</div>}
                   {doc.customer?.npwp && <div className="text-xs text-muted">NPWP {doc.customer.npwp}</div>}
                 </dd>
+                {doc.salesOrder && (
+                  <>
+                    <dt className="text-muted">Sales order</dt>
+                    <dd>
+                      {soPerm.canView
+                        ? <Link to={`/sales-order/${doc.salesOrder._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{doc.salesOrder.no}</Link>
+                        : <span className="font-mono text-xs">{doc.salesOrder.no}</span>}
+                      {doc.salesOrder.customerPoNo && <span className="text-xs text-muted"> · PO {doc.salesOrder.customerPoNo}</span>}
+                    </dd>
+                  </>
+                )}
+                {doc.deliveryOrder && (
+                  <>
+                    <dt className="text-muted">Delivery</dt>
+                    <dd>
+                      {dlvPerm.canView
+                        ? <Link to={`/delivery-order/${doc.deliveryOrder._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{doc.deliveryOrder.no}</Link>
+                        : <span className="font-mono text-xs">{doc.deliveryOrder.no}</span>}
+                      <span className="text-xs text-muted"> · {formatDay(doc.deliveryOrder.date)}</span>
+                    </dd>
+                  </>
+                )}
                 {doc.postedDate && (<><dt className="text-muted">Posted</dt><dd>{formatDate2(doc.postedDate)} · {doc.postedBy?.name || '-'}</dd></>)}
                 {doc.cancelledDate && (<><dt className="text-muted">Cancelled</dt><dd>{formatDate2(doc.cancelledDate)} · {doc.cancelledBy?.name || '-'}</dd></>)}
                 {doc.cancelReason && (<><dt className="text-muted">Reason</dt><dd className="break-words">{doc.cancelReason}</dd></>)}
@@ -690,7 +720,7 @@ export default function SalesInvoiceDetail() {
                 </div>
               )}
               {doc.status !== 'DRAFT' && movementPerm.canView && (
-                <Link to={`/stock-movement?search=${encodeURIComponent(doc.no)}`} className="inline-block text-primary hover:underline">
+                <Link to={`/stock-movement?search=${encodeURIComponent(doc.deliveryOrder?.no || doc.no)}`} className="inline-block text-primary hover:underline">
                   <i className="fa fa-right-left mr-1"></i> View stock movements
                 </Link>
               )}

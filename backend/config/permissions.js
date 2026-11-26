@@ -43,6 +43,12 @@ const RESOURCES = [
   { key: 'purchaseOrder', label: 'Purchase Order', group: 'Purchasing' },
   // Penerimaan barang: create/update/delete = draft; post = posting & pembatalan (mengubah stok & HPP)
   { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // Sales Order (tidak mengubah stok): create = buat draft / konfirmasi; update = ubah draft, konfirmasi,
+  // cancel & close; delete = hapus draft
+  { key: 'salesOrder', label: 'Sales Order', group: 'Sales' },
+  // Delivery Order / surat jalan: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali).
+  // Buat invoice dari DO butuh juga salesInvoice create + post
+  { key: 'deliveryOrder', label: 'Delivery Order', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // penjualan langsung: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali).
   // HPP & laba kotor hanya untuk vendorPrice:view
   { key: 'salesInvoice', label: 'Sales Invoice', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },

@@ -12,7 +12,8 @@
  *   (beli per BOX / DUS / SAK), 3 vendor
  * - stok awal ber-HPP di kedua gudang (dokumen Saldo Awal), batas reorder (ada yang kritis)
  * - customer (termin & price list "Grosir"), 1 user per role (kasir & staff gudang ditugaskan)
- * - transaksi contoh: PO terlambat, draft adjustment, invoice kredit belum dibayar, 1 shift POS
+ * - transaksi contoh: PO terlambat, draft adjustment, invoice kredit belum dibayar, sales order + 1 surat jalan
+ *   belum ditagih, 1 shift POS
  *   tertutup dengan 2 penjualan
  * Semua dalam 1 transaksi + audit log.
  */
@@ -45,6 +46,8 @@ const ReorderRule = require('../models/ReorderRule');
 const Customer = require('../models/Customer');
 const PriceList = require('../models/PriceList');
 const SalesInvoice = require('../models/SalesInvoice');
+const SalesOrder = require('../models/SalesOrder');
+const DeliveryOrder = require('../models/DeliveryOrder');
 const SalesPayment = require('../models/SalesPayment');
 const PosShift = require('../models/PosShift');
 
@@ -155,9 +158,9 @@ async function main() {
       sembako: await create(Kategori, 'kategori', { name: 'Sembako', deskripsi: 'Kebutuhan pokok, dijual per berat' }),
     };
     const vendor = {
-      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1, Bandung' }),
-      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2, Jakarta' }),
-      pangan: await create(Vendor, 'vendor', { companyName: 'UD Pangan Jaya (Demo)', picName: 'Andi', picContact: '0812-0000-0003', companyAddress: 'Jl. Contoh No. 3, Surabaya' }),
+      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1', provinsi: 'Jawa Barat', kota: 'Bandung', kecamatan: 'Coblong', kodePos: '40132' }),
+      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2', provinsi: 'DKI Jakarta', kota: 'Jakarta Utara', kecamatan: 'Penjaringan', kodePos: '14440' }),
+      pangan: await create(Vendor, 'vendor', { companyName: 'UD Pangan Jaya (Demo)', picName: 'Andi', picContact: '0812-0000-0003', companyAddress: 'Jl. Contoh No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Genteng', kodePos: '60275' }),
     };
 
     // ---------- produk & SKU (harga jual + barcode) ----------
@@ -262,8 +265,8 @@ async function main() {
     });
     const customer = {
       walkIn: await Customer.findOne({ isWalkIn: true }),
-      maju: await create(Customer, 'customer', { code: 'CUST00001', name: 'CV Maju Jaya (Demo)', phone: '0813-0000-1001', address: 'Jl. Niaga No. 8, Jakarta', npwp: '01.234.567.8-901.000', termDays: 30, priceList: grosir._id }),
-      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3, Surabaya', termDays: 14 }),
+      maju: await create(Customer, 'customer', { code: 'CUST00001', name: 'CV Maju Jaya (Demo)', phone: '0813-0000-1001', address: 'Jl. Niaga No. 8', provinsi: 'DKI Jakarta', kota: 'Jakarta Barat', kecamatan: 'Tambora', kodePos: '11220', latitude: -6.1450123, longitude: 106.8058456, npwp: '01.234.567.8-901.000', termDays: 30, priceList: grosir._id }),
+      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174', termDays: 14 }),
       budi: await create(Customer, 'customer', { code: 'CUST00003', name: 'Budi Santoso (Demo)', phone: '0813-0000-1003' }),
     };
     if (!customer.walkIn) throw new Error('Customer walk-in belum ada. Jalankan npm run init.');
@@ -341,6 +344,40 @@ async function main() {
       items: [{ sku: p.kaos.by('Hitam', 'M'), qty: 6 }, { sku: p.keripik.by('Original'), qty: 24 }],
     });
 
+    // sales order Toko Sinar Abadi (dikirim, ongkir): 1 surat jalan sudah keluar, belum ditagih
+    const soItems = [{ sku: p.keripik.by('Original'), qty: 40 }, { sku: p.air.by('600 ml'), qty: 48 }];
+    const soLines = soItems.map(({ sku, qty }) => {
+      const l = { sku: sku._id, produk: sku.produk, qty, hargaJual: priceFor(customer.sinar, sku), diskonPersen: 0, qtyDelivered: 0 };
+      l.subtotal = salesLineSubtotal(l);
+      return l;
+    });
+    const soPit = settings['sales.priceIncludesTax'] === true;
+    const so = new SalesOrder({
+      no: await nextDocNo('SO'), customer: customer.sinar._id, gudang: gudang.main._id, date: new Date(Date.now() - 2 * DAY),
+      requestedDate: new Date(Date.now() + 2 * DAY), customerPoNo: 'PO-SA-0099', deliveryMethod: 'DELIVERY',
+      shipTo: { name: 'Toko Sinar Abadi', phone: '0813-0000-1002', alamat: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174' },
+      status: 'OPEN', taxRate, priceIncludesTax: soPit, lines: soLines,
+      ...salesTotals(soLines, { taxRate, priceIncludesTax: soPit, shippingCharge: 25000 }),
+      note: 'Data demo', confirmedBy: admin._id, confirmedDate: new Date(Date.now() - 2 * DAY), ...by,
+    });
+    await so.save();
+    const dlvLines = [{ sku: soLines[0].sku, produk: soLines[0].produk, qty: 20 }];
+    const dlv = new DeliveryOrder({
+      no: await nextDocNo('DO'), salesOrder: so._id, customer: so.customer, gudang: so.gudang, date: new Date(Date.now() - DAY),
+      deliveryMethod: 'DELIVERY', shipTo: so.shipTo.toObject(), vehicleNo: 'B 9123 XY', driverName: 'Sopir Demo',
+      status: 'DRAFT', lines: dlvLines, ...by,
+    });
+    const dlvMoves = await applyMovements(req, dlvLines.map((l) => ({ sku: l.sku, gudang: so.gudang, qty: -l.qty, type: 'SALE', note: so.no })),
+      { refType: 'DeliveryOrder', refId: dlv._id, refNo: dlv.no });
+    dlv.lines.forEach((l) => { l.unitCost = dlvMoves.find((m) => String(m.sku) === String(l.sku))?.unitCost ?? null; });
+    Object.assign(dlv, { status: 'POSTED', postedBy: admin._id, postedDate: new Date(Date.now() - DAY) });
+    await dlv.save();
+    so.lines[0].qtyDelivered = 20;
+    so.status = 'PARTIAL';
+    await so.save();
+    await log('salesOrder', [so]);
+    await log('deliveryOrder', [dlv]);
+
     // shift POS tertutup di TOKO-JKT: 2 penjualan (tunai & QRIS)
     const openedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const shift = await PosShift.create({
@@ -379,6 +416,8 @@ async function main() {
       users: users.length,
       po: po.no,
       invoice: inv.no,
+      so: so.no,
+      dlv: dlv.no,
       shift: shift.no,
       uoms: uomDefs.length,
     };
@@ -387,7 +426,7 @@ async function main() {
   console.log(`[+] 2 gudang (MAIN, SBY), 2 outlet (TOKO-JKT, TOKO-SBY), ${summary.uoms} UoM, 4 varian, 4 kategori, 3 vendor`);
   console.log(`[+] 6 produk, ${summary.skus} SKU (harga jual, barcode, harga vendor), stok awal ber-HPP di 2 gudang, batas reorder`);
   console.log('[+] Price list GROSIR, 3 customer (+ walk-in)');
-  console.log(`[+] Transaksi: ${summary.po} (terlambat), 1 draft adjustment, ${summary.invoice} (kredit, belum dibayar), shift ${summary.shift} (2 penjualan POS)`);
+  console.log(`[+] Transaksi: ${summary.po} (terlambat), 1 draft adjustment, ${summary.invoice} (kredit, belum dibayar), ${summary.so} + surat jalan ${summary.dlv} (belum ditagih), shift ${summary.shift} (2 penjualan POS)`);
   console.log(`[+] ${summary.users} user demo (password sama, dari --password):`);
   for (const u of DEMO_USERS) {
     const t = ROLE_TEMPLATES.find((x) => x.key === u.role);

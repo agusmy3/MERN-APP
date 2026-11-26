@@ -10,7 +10,7 @@ const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { applyMovements, nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
-const { returnLineValues, invoiceBalance } = require('../helpers/salesHelper');
+const { returnLineValues, invoiceBalance, goodsTotal } = require('../helpers/salesHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 
 const STATUSES = ['DRAFT', 'POSTED', 'CANCELLED'];
@@ -237,7 +237,7 @@ exports.getInvoiceForReturn = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.invoiceId)) return errorResponse(res, 'Invalid sales invoice', 400);
     const inv = await SalesInvoice.findById(req.params.invoiceId)
-      .select('no date status customer gudang lines subtotal dpp total')
+      .select('no date status customer gudang lines subtotal dpp total shippingTotal')
       .populate('customer', 'code name')
       .populate('gudang', 'code name')
       .populate('lines.sku', 'sku variantValues isActive')
@@ -354,7 +354,7 @@ const postCore = async (req, doc, inv) => {
       { $match: { salesInvoice: inv._id, status: 'POSTED' } },
       { $group: { _id: null, total: { $sum: '$total' }, dpp: { $sum: '$dpp' } } },
     ]);
-    totals.total = round2(inv.total - (prev[0]?.total || 0));
+    totals.total = round2(goodsTotal(inv) - (prev[0]?.total || 0)); // ongkir tidak ikut diretur
     totals.dpp = round2(inv.dpp - (prev[0]?.dpp || 0));
     totals.taxAmount = round2(totals.total - totals.dpp);
   }

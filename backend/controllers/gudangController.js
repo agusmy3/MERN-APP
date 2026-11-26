@@ -155,7 +155,8 @@ exports.deleteGudang = async (req, res) => {
       ]);
       const poCount = await require('../models/PurchaseOrder').countDocuments({ gudang: gudang._id });
       const trfCount = await require('../models/StockTransfer').countDocuments({ $or: [{ fromGudang: gudang._id }, { toGudang: gudang._id }] });
-      const invCount = await require('../models/SalesInvoice').countDocuments({ gudang: gudang._id });
+      const invCount = await require('../models/SalesInvoice').countDocuments({ gudang: gudang._id })
+        + await require('../models/SalesOrder').countDocuments({ gudang: gudang._id });
       const outletCount = await require('../models/Outlet').countDocuments({ gudang: gudang._id });
       if (outletCount) throw new HttpError(`Warehouse supplies ${outletCount} POS outlet(s). Move or delete them first.`, 400);
       if (balance || movement || docs || poCount || trfCount || invCount) {

@@ -35,19 +35,20 @@ const ROLE_TEMPLATES = [
   {
     key: 'warehouseStaff',
     name: 'Warehouse Staff',
-    deskripsi: 'Draft stock adjustment / opname, kirim & terima transfer, kartu stok, lihat reorder',
+    deskripsi: 'Draft stock adjustment / opname & surat jalan, kirim & terima transfer, kartu stok, lihat reorder',
     permissions: {
       produk: ['view'], gudang: ['view'],
       stockAdjustment: ['view', 'create', 'update', 'delete'],
       stockTransfer: DOC,
       stockMovement: ['view'],
       reorder: ['view'],
+      deliveryOrder: ['view', 'create', 'update', 'delete'],
     },
   },
   {
     key: 'warehouseSupervisor',
     name: 'Warehouse Supervisor',
-    deskripsi: 'Warehouse Staff + posting dokumen stok, cost revaluation, nilai persediaan, atur reorder',
+    deskripsi: 'Warehouse Staff + posting dokumen stok & surat jalan, cost revaluation, nilai persediaan, atur reorder',
     permissions: {
       produk: ['view'], gudang: ['view'],
       stockAdjustment: DOC,
@@ -56,6 +57,7 @@ const ROLE_TEMPLATES = [
       reorder: ['view', 'update'],
       costRevaluation: DOC,
       vendorPrice: ['view'],
+      deliveryOrder: DOC,
     },
   },
   {
@@ -74,11 +76,13 @@ const ROLE_TEMPLATES = [
   {
     key: 'salesAdmin',
     name: 'Sales Admin',
-    deskripsi: 'Sales invoice, retur penjualan, customer; lihat price list',
+    deskripsi: 'Sales order, tagihan dari surat jalan, sales invoice, retur penjualan, customer; lihat price list & surat jalan',
     permissions: {
       produk: ['view'],
       customer: ALL,
       priceList: ['view'],
+      salesOrder: ALL,
+      deliveryOrder: ['view'],
       salesInvoice: DOC,
       salesReturn: DOC,
     },
@@ -89,6 +93,8 @@ const ROLE_TEMPLATES = [
     deskripsi: 'Pembayaran & refund, laporan penjualan & umur piutang, nilai persediaan',
     permissions: {
       customer: ['view'],
+      salesOrder: ['view'],
+      deliveryOrder: ['view'],
       salesInvoice: ['view'],
       salesReturn: ['view'],
       salesPayment: ['view', 'create', 'update'],
