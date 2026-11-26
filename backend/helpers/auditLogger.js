@@ -496,7 +496,7 @@ const ENTITIES = {
   },
   setting: {
     fields: {
-      value: { label: 'Value' },
+      value: { label: 'Value', format: 'settingValue' },
     },
     label: (doc) => getSettingDefinition(doc._id)?.label || doc._id,
   },
@@ -516,6 +516,46 @@ const ENTITIES = {
 };
 
 const newBatchId = () => crypto.randomUUID();
+
+/**
+ * Gudang dokumen per entity (untuk menyaring log sesuai akses gudang user). raw = dokumen polos.
+ * Fungsi boleh async (pembayaran: gudang dari invoice / tagihannya). Entity yang tidak ada di sini = tidak terikat gudang.
+ */
+const one = (field) => (raw) => [raw[field]];
+const invoiceGudangs = (modelName, field) => async (ids) => {
+  const docs = await mongoose.model(modelName).find({ _id: { $in: ids.filter(Boolean) } }).select(field).lean();
+  return docs.flatMap((d) => (Array.isArray(d[field]) ? d[field] : [d[field]]));
+};
+const GUDANG_OF = {
+  gudang: (raw) => [raw._id],
+  outlet: one('gudang'),
+  stockAdjustment: one('gudang'),
+  stockTransfer: (raw) => [raw.fromGudang, raw.toGudang],
+  purchaseOrder: one('gudang'),
+  goodsReceipt: one('gudang'),
+  purchaseReturn: one('gudang'),
+  purchaseInvoice: (raw) => raw.gudangs || [],
+  vendorPayment: (raw) => invoiceGudangs('PurchaseInvoice', 'gudangs')([raw.purchaseInvoice]),
+  vendorPaymentBatch: (raw) => invoiceGudangs('PurchaseInvoice', 'gudangs')((raw.allocations || []).map((a) => a.purchaseInvoice)),
+  quotation: one('gudang'),
+  salesOrder: one('gudang'),
+  deliveryOrder: one('gudang'),
+  salesInvoice: one('gudang'),
+  salesReturn: one('gudang'),
+  salesPayment: one('gudang'),
+  customerReceipt: (raw) => invoiceGudangs('SalesInvoice', 'gudang')((raw.allocations || []).map((a) => a.salesInvoice)),
+  posShift: one('gudang'),
+  reorderRule: one('gudang'),
+};
+
+/** -> daftar ObjectId gudang unik untuk 1 dokumen, atau undefined bila entity tidak terikat gudang */
+const gudangsOf = async (entity, raw) => {
+  const fn = GUDANG_OF[entity];
+  if (!fn) return undefined;
+  const ids = (await fn(raw)) || [];
+  const unique = [...new Set(ids.filter((id) => id && mongoose.isValidObjectId(id?._id ?? id)).map((id) => String(id?._id ?? id)))];
+  return unique.map((id) => new mongoose.Types.ObjectId(id));
+};
 
 const toPlain = (doc) => (doc && typeof doc.toObject === 'function' ? doc.toObject({ depopulate: true }) : doc);
 const idOf = (v) => (v && typeof v === 'object' && v._id ? v._id : v);
@@ -610,6 +650,13 @@ const normalizeValue = (def, value, texts) => {
     // mis. "OUT 50,000 · beli galon"
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
     return (value || []).map((m) => `${m.type} ${num(m.amount)} · ${m.reason}`);
+  }
+  if (def.format === 'settingValue') {
+    // gambar (logo) tidak disimpan utuh di log: cukup ukuran + sidik jari agar perubahan tetap terdeteksi
+    if (typeof value === 'string' && value.startsWith('data:image/')) {
+      return `[image ${Math.max(1, Math.round((value.length * 3) / 4 / 1024))} KB · ${value.slice(-8)}]`;
+    }
+    return value ?? null;
   }
   if (def.format === 'packages') {
     // mis. "DUS = 24 @ 78,000 · 899001 (inactive)"
@@ -740,9 +787,10 @@ const write = async (req, entries, actor) => {
   })));
 };
 
-const base = (entity, raw, flat, opts) => {
+const base = async (entity, raw, flat, opts) => {
   const def = ENTITIES[entity];
   return {
+    gudangs: await gudangsOf(entity, raw),
     entity,
     entityId: mongoose.isValidObjectId(raw._id) && String(raw._id).length === 24 ? raw._id : null,
     entityLabel: def.label(raw, flat),
@@ -758,11 +806,11 @@ const withBatch = (opts, count) => ({ ...opts, batchId: opts.batchId || (count >
 const logCreate = async (req, entity, docs, opts = {}) => {
   const snaps = await snap(entity, docs);
   const o = withBatch(opts, snaps.size);
-  const entries = [...snaps.values()].map(({ raw, flat }) => ({
-    ...base(entity, raw, flat, o),
+  const entries = await Promise.all([...snaps.values()].map(async ({ raw, flat }) => ({
+    ...(await base(entity, raw, flat, o)),
     action: 'create',
     changes: diff(entity, {}, flat, { rawAfter: raw }),
-  }));
+  })));
   await write(req, entries);
 };
 
@@ -780,11 +828,11 @@ const logUpdate = async (req, entity, before, afterDocs, opts = {}) => {
     if (changes.length) entries.push({ raw: cur.raw, flat: cur.flat, changes });
   }
   const o = withBatch(opts, entries.length);
-  await write(req, entries.map(({ raw, flat, changes }) => ({
-    ...base(entity, raw, flat, o),
+  await write(req, await Promise.all(entries.map(async ({ raw, flat, changes }) => ({
+    ...(await base(entity, raw, flat, o)),
     action: 'update',
     changes,
-  })));
+  }))));
 };
 
 /**
@@ -794,16 +842,16 @@ const logUpdate = async (req, entity, before, afterDocs, opts = {}) => {
 const logDelete = async (req, entity, snapshots, opts = {}) => {
   const o = withBatch(opts, snapshots.size);
   const secretFields = Object.entries(ENTITIES[entity].fields).filter(([, d]) => d.secret).map(([f]) => f);
-  await write(req, [...snapshots.values()].map(({ raw, flat }) => {
+  await write(req, await Promise.all([...snapshots.values()].map(async ({ raw, flat }) => {
     const snapshot = { ...raw };
     secretFields.forEach((f) => delete snapshot[f]);
     return {
-      ...base(entity, raw, flat, o),
+      ...(await base(entity, raw, flat, o)),
       action: 'delete',
       changes: diff(entity, flat, {}).filter((c) => c.format !== 'secret'),
       snapshot,
     };
-  }));
+  })));
 };
 
 /** Login berhasil / gagal. `user` boleh null (email tidak terdaftar). Tidak pernah throw. */
@@ -827,6 +875,8 @@ const writeLogin = (req, { success, user, email, reason }) => write(req, [{
   }], user || null);
 
 module.exports = {
+  GUDANG_OF,
+  gudangsOf,
   ENTITIES,
   newBatchId,
   snap,

@@ -254,3 +254,12 @@ test('receiptPrint: package lines show package qty and base content', async () =
   assert.match(html, /2 PAK x 22\.000/);
   assert.match(html, /= 12 BTL/);
 });
+
+test('documentPrint: company logo in header (raster data URL only)', async () => {
+  const { salesOrderHtml } = await import('../src/utils/documentPrint.js');
+  const so = { no: 'SO-1', status: 'OPEN', customer: { name: 'X' }, lines: [], subtotal: 0, total: 0 };
+  const logo = 'data:image/png;base64,iVBORw0KGgo=';
+  assert.match(salesOrderHtml(so, { 'company.name': 'PT Kita', 'company.logo': logo }), /<img class="co-logo" src="data:image\/png;base64,iVBORw0KGgo="/);
+  assert.match(salesOrderHtml(so, { 'company.logo': logo }), /co-logo/); // logo tanpa nama tetap tampil
+  assert.doesNotMatch(salesOrderHtml(so, { 'company.name': 'PT', 'company.logo': 'javascript:alert(1)' }), /<img/);
+});

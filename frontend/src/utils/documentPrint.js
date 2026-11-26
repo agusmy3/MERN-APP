@@ -26,13 +26,18 @@ const multiline = (s) => esc(s).replace(/\n/g, '<br>');
 /** Kop perusahaan dari nilai System Settings ({ 'company.name': ... }); nama kosong = tanpa kop */
 const companyHead = (company = {}) => {
   const name = company['company.name'];
-  if (!name) return '';
+  const logo = company['company.logo'];
+  if (!name && !logo) return '';
   const contact = [company['company.phone'] && `Telp. ${esc(company['company.phone'])}`, esc(company['company.email'])].filter(Boolean).join(' · ');
+  // logo hanya data URL gambar raster dari System Settings (divalidasi backend)
+  const img = /^data:image\/(png|jpeg|webp);base64,/.test(logo || '') ? `<img class="co-logo" src="${logo}" alt="">` : '';
   return `<div class="co">
-      <div class="co-name">${esc(name)}</div>
+      ${img}<div>
+      <div class="co-name">${esc(name || '')}</div>
       ${company['company.address'] ? `<div>${multiline(company['company.address'])}</div>` : ''}
       ${contact ? `<div class="m">${contact}</div>` : ''}
       ${company['company.npwp'] ? `<div class="m">NPWP ${esc(company['company.npwp'])}</div>` : ''}
+      </div>
     </div>`;
 };
 
@@ -42,7 +47,8 @@ const BASE_CSS = `
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; margin: 0; }
     h1 { font-size: 18px; margin: 0 0 2px; letter-spacing: 1px; }
     .m { color: #444; font-size: 11px; }
-    .co { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
+    .co { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 12px; display: flex; align-items: center; gap: 14px; }
+    .co-logo { max-height: 60px; max-width: 200px; object-fit: contain; }
     .co-name { font-size: 16px; font-weight: bold; }
     .head { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
     .box { border: 1px solid #000; padding: 8px 10px; flex: 1; }

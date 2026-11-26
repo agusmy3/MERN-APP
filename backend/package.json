@@ -17,6 +17,7 @@
     "migrate:uom-type": "node scripts/migrate-uom-type.js",
     "migrate:invoice-deliveries": "node scripts/migrate-invoice-deliveries.js",
     "migrate:sales-lines": "node scripts/migrate-sales-lines.js",
+    "migrate:audit-gudang": "node scripts/migrate-audit-gudang.js",
     "seed:defaults": "node scripts/seed-defaults.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",

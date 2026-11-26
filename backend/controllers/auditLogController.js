@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const AuditLog = require('../models/AuditLog');
+const { gudangScope } = require('../helpers/gudangAccess');
 const {
   successResponse,
   errorResponse
@@ -57,6 +58,20 @@ const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' 
 const COST_ENTITIES = ['purchaseInvoice', 'vendorPayment', 'vendorPaymentBatch'];
 const canSeeEntity = (user, entity) => hasPermission(user, ENTITY_RESOURCE[entity], 'view')
   && (!COST_ENTITIES.includes(entity) || hasPermission(user, 'vendorPrice', 'view'));
+
+/**
+ * Akses gudang: log dokumen per gudang hanya terlihat jika salah satu gudangnya boleh diakses user;
+ * log tanpa gudang (master data, setting, user, ...) tidak disaring. -> filter tambahan atau null.
+ */
+const gudangLogFilter = (req) => {
+  const scope = gudangScope(req);
+  if (!scope) return null;
+  return { $or: [{ gudangs: { $exists: false } }, { gudangs: { $size: 0 } }, { gudangs: { $in: scope.map((id) => new mongoose.Types.ObjectId(id)) } }] };
+};
+const withGudang = (req, filter) => {
+  const g = gudangLogFilter(req);
+  return g ? { $and: [filter, g] } : filter;
+};
 
 const visibleEntities = (user) => Object.keys(ENTITY_RESOURCE).filter((entity) => canSeeEntity(user, entity));
 
@@ -121,7 +136,7 @@ exports.getHistory = async (req, res) => {
       filter = { entity, entityId: oid };
     }
 
-    return successResponse(res, await findPage(filter, paging(req, 20)));
+    return successResponse(res, await findPage(withGudang(req, filter), paging(req, 20)));
   } catch (error) {
     return errorResponse(res, error.message, 500);
   }
@@ -159,7 +174,7 @@ exports.getAuditLogs = async (req, res) => {
     }
 
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
-    return successResponse(res, await findPage(filter, paging(req, 10), sortOrder));
+    return successResponse(res, await findPage(withGudang(req, filter), paging(req, 10), sortOrder));
   } catch (error) {
     return errorResponse(res, error.message, 500);
   }
@@ -167,3 +182,5 @@ exports.getAuditLogs = async (req, res) => {
 
 // dipakai dashboard (aktivitas terbaru disaring sesuai izin)
 exports.ENTITY_RESOURCE = ENTITY_RESOURCE;
+exports.gudangLogFilter = gudangLogFilter;
+exports.visibleEntities = visibleEntities;

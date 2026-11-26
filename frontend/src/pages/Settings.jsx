@@ -5,6 +5,7 @@ import usePermission from '../hooks/usePermission';
 import useToast from '../hooks/useToast';
 import PageHeader from '../components/PageHeader';
 import { inputClass } from '../utils/formStyles';
+import { resizeImageFile } from '../utils/imageResize';
 
 /**
  * System Settings (variabel global): form dibangun dari registri backend (config/settings.js),
@@ -72,6 +73,45 @@ export default function Settings() {
             {d.description && <span className="block text-xs text-muted">{d.description}</span>}
           </span>
         </label>
+      );
+    }
+    if (d.type === 'image') {
+      const pick = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        try {
+          const url = await resizeImageFile(file, { maxBytes: d.maxBytes || 200 * 1024 });
+          setValues((v) => ({ ...v, [d.key]: url }));
+        } catch (err) {
+          toast.error(err.message);
+        }
+      };
+      return (
+        <div>
+          <span className="block text-sm font-medium text-fg mb-1">{d.label}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="h-20 min-w-40 px-3 rounded border border-line bg-surface flex items-center justify-center">
+              {values[d.key]
+                ? <img src={values[d.key]} alt={d.label} className="max-h-16 max-w-56 object-contain" />
+                : <span className="text-xs text-muted">Tidak ada</span>}
+            </div>
+            {perm.canUpdate && (
+              <div className="flex gap-2">
+                <label htmlFor={id} className="px-3 py-1.5 rounded border border-line hover:bg-subtle text-sm cursor-pointer">
+                  <i className="fa fa-upload mr-1"></i>{values[d.key] ? 'Ganti' : 'Upload'}
+                </label>
+                <input id={id} type="file" accept="image/png,image/jpeg,image/webp" onChange={pick} className="hidden" />
+                {values[d.key] && (
+                  <button type="button" onClick={() => setValues((v) => ({ ...v, [d.key]: '' }))} className="px-3 py-1.5 rounded border border-line hover:bg-subtle text-sm cursor-pointer">
+                    <i className="fa fa-xmark mr-1"></i>Hapus
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {d.description && <p className="text-xs text-muted mt-1">{d.description}</p>}
+        </div>
       );
     }
     if (d.multiline) {

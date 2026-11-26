@@ -7,7 +7,7 @@ const cors = require('cors');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // logo perusahaan (System Settings) dikirim sebagai data URL
 app.use((req, res, next) => {
   res.set(
     "Cache-Control",

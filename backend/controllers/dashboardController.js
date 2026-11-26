@@ -368,9 +368,11 @@ exports.getDashboard = async (req, res) => {
     if (can('stockMovement')) jobs.push(movementsByDay(tz, canSeeCost, gAgg).then((v) => { data.movementsByDay = v; }));
 
     if (can('auditLog')) {
-      const { ENTITY_RESOURCE } = require('./auditLogController');
-      const visible = Object.keys(ENTITY_RESOURCE).filter((e) => can(ENTITY_RESOURCE[e]));
-      jobs.push(AuditLog.find({ entity: { $in: visible } })
+      const { visibleEntities, gudangLogFilter } = require('./auditLogController');
+      // izin per entity (termasuk data biaya) + akses gudang
+      const g = gudangLogFilter(req);
+      const logFilter = { entity: { $in: visibleEntities(u) } };
+      jobs.push(AuditLog.find(g ? { $and: [logFilter, g] } : logFilter)
         .select('entity entityId entityLabel action userName date batchId changes.label')
         .sort({ date: -1, _id: -1 }).limit(10).lean()
         .then((logs) => { data.recentActivity = logs; }));

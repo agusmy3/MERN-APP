@@ -10,6 +10,8 @@ const mongoose = require('mongoose');
  * - snapshot   : dokumen lengkap saat delete (data mentah, tanpa password)
  * - batchId    : mengelompokkan banyak log dari 1 aksi (bulk edit, hapus berantai, ...)
  * - userName   : disalin agar tetap terbaca walau user dihapus
+ * - gudangs    : gudang dokumen terkait (dokumen per gudang); kosong = tidak terikat gudang. Dipakai untuk
+ *                menyaring log sesuai akses gudang user (helpers/auditLogger.js GUDANG_OF)
  */
 const changeSchema = new mongoose.Schema({
   field: { type: String, required: true },
@@ -32,6 +34,7 @@ const auditLogSchema = new mongoose.Schema({
   snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   meta: { type: mongoose.Schema.Types.Mixed, default: null },  // mis. alasan login gagal, user agent
   batchId: { type: String, default: null },
+  gudangs: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   userName: { type: String },
   ip: { type: String },
@@ -57,5 +60,7 @@ for (const op of [
 ]) {
   auditLogSchema.pre(op, immutable);
 }
+
+auditLogSchema.index({ gudangs: 1 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

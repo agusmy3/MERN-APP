@@ -47,6 +47,10 @@ const SETTINGS = [
   },
   // identitas perusahaan: dicetak di kop dokumen (SO, invoice, quotation, surat jalan)
   { key: 'company.name', label: 'Company name', group: 'Company', type: 'text', default: '', maxLength: 120, description: 'Kop dokumen cetak (Sales Order, Invoice, Quotation, Surat Jalan).' },
+  {
+    key: 'company.logo', label: 'Logo', group: 'Company', type: 'image', default: '', maxBytes: 200 * 1024,
+    description: 'Logo di kop dokumen cetak (PNG / JPEG / WEBP, otomatis diperkecil; maks. 200 KB). Kosong = tanpa logo.',
+  },
   { key: 'company.address', label: 'Address', group: 'Company', type: 'text', multiline: true, default: '', maxLength: 500 },
   { key: 'company.phone', label: 'Phone', group: 'Company', type: 'text', default: '', maxLength: 60 },
   { key: 'company.email', label: 'Email', group: 'Company', type: 'text', default: '', maxLength: 120 },

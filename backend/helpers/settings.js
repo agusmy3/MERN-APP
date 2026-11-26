@@ -24,6 +24,16 @@ const normalizeSetting = (key, value) => {
     if (def.max !== undefined && n > def.max) throw new Error(`${def.label} must be <= ${def.max}`);
     return n;
   }
+  if (def.type === 'image') {
+    // data URL gambar raster (SVG ditolak: bisa memuat script)
+    const v = String(value ?? '').trim();
+    if (!v) return '';
+    const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(v);
+    if (!m) throw new Error(`${def.label} must be a PNG, JPEG or WEBP image`);
+    const bytes = Math.floor((m[2].length * 3) / 4);
+    if (def.maxBytes && bytes > def.maxBytes) throw new Error(`${def.label} must be at most ${Math.round(def.maxBytes / 1024)} KB`);
+    return v;
+  }
   const text = String(value ?? '').trim();
   if (def.required && !text) throw new Error(`${def.label} is required`);
   if (def.maxLength && text.length > def.maxLength) throw new Error(`${def.label} must be at most ${def.maxLength} characters`);
