@@ -81,7 +81,7 @@ function NewBill({ token, initialVendor }) {
   };
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 w-full">
       <section className="rounded-lg border border-line bg-surface p-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <FormField label="Vendor" htmlFor="bill-vendor" required>
           <select id="bill-vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} className={inputClass}>
