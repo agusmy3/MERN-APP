@@ -16,7 +16,11 @@ export const receiptHtml = (r) => {
   const lines = r.lines.map((l) => {
     const name = [l.produk?.name, variantOf(l.sku)].filter(Boolean).join(' ');
     const disc = l.diskonPersen ? ` -${qtyFmt(l.diskonPersen)}%` : '';
-    return `<div class="item">${esc(name || l.sku?.sku)}</div>${row(`${qtyFmt(l.qty)} x ${money(l.hargaJual)}${disc}`, money(l.subtotal))}`;
+    // kemasan jual: "2 DUS x 78.000" (+ isi dalam satuan dasar)
+    const k = l.konversi || 1;
+    const unit = k > 1 ? ` ${esc(l.uom?.code || '')}` : '';
+    const isi = k > 1 ? `<div class="sm">  = ${qtyFmt(l.qty)} ${esc(l.produk?.uom?.code || '')}</div>` : '';
+    return `<div class="item">${esc(name || l.sku?.sku)}</div>${row(`${qtyFmt(l.qtyUom ?? l.qty)}${unit} x ${money(l.hargaJual)}${disc}`, money(l.subtotal))}${isi}`;
   }).join('');
   const pays = (r.payments || []).map((p) => row(esc(PAYMENT_METHODS[p.method] || p.method), money(p.amount))).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.no)}</title><style>

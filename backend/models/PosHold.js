@@ -14,7 +14,8 @@ const posHoldSchema = new mongoose.Schema({
   lines: [{
     _id: false,
     sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
-    qty: { type: Number, required: true },
+    uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', default: null }, // satuan jual (null = satuan dasar)
+    qty: { type: Number, required: true },        // dalam satuan jual
     diskonPersen: { type: Number, default: 0 },
   }],
   discountAmount: { type: Number, default: 0 },

@@ -394,7 +394,11 @@ const postCore = async (req, doc, inv) => {
 exports.createPostedReturn = async (req, inv, { date = new Date(), reason, lines, extra = {} }) => {
   const doc = await SalesReturn.create({
     no: await nextDocNo('RTN'), salesInvoice: inv._id, customer: inv.customer, gudang: inv.gudang,
-    date, reason, status: 'DRAFT', lines: lines.map((l) => { const il = invLineOf(inv, l); return { ...l, invoiceLine: il?._id, sku: il?.sku ?? l.sku, produk: il?.produk }; }),
+    date, reason, status: 'DRAFT', lines: lines.map((l) => {
+      const il = invLineOf(inv, l);
+      if (!il) throw new HttpError('One or more items are not on this sale', 400);
+      return { ...l, invoiceLine: il._id, sku: il.sku, produk: il.produk };
+    }),
     ...extra, createdBy: req.user._id,
   });
   await audit.logCreate(req, 'salesReturn', [doc]);

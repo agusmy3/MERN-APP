@@ -177,16 +177,23 @@ export default function Pos() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [query, customer, shift, user.token]);
 
+  // baris keranjang per SKU + satuan jual (SKU sama boleh beberapa kemasan: 1 PAK + 2 BOTOL)
+  const cartKey = (sku, uomId, konversi) => `${sku}:${konversi > 1 ? uomId : ''}`;
+  const unitPayload = (l) => (l.konversi > 1 ? l.uomId : null);
   const addToCart = (s) => {
+    const units = s.units?.length ? s.units : [{ uom: null, konversi: 1, price: s.price, priceSource: s.priceSource, isBase: true }];
+    const unit = units.find((u) => s.matchedUom && String(u.uom?._id) === String(s.matchedUom)) || units.find((u) => u.isBase) || units[0];
+    const key = cartKey(s._id, unit.uom?._id, unit.konversi);
     setCart((prev) => {
-      const i = prev.findIndex((l) => l.sku === s._id);
+      const i = prev.findIndex((l) => l.key === key);
       if (i >= 0) return prev.map((l, j) => (j === i ? { ...l, qty: round2(Number(l.qty) + 1) } : l));
       return [...prev, {
-        sku: s._id, code: s.sku, name: s.produk?.name || '', variant: s.variant, uom: s.uom,
-        stock: s.qty, hargaJual: s.price, priceSource: s.priceSource, qty: 1, diskonPersen: 0,
+        key, sku: s._id, code: s.sku, name: s.produk?.name || '', variant: s.variant, uom: s.uom,
+        units, uomId: unit.uom?._id ?? null, uomCode: unit.uom?.code || s.uom, konversi: unit.konversi,
+        stock: s.qty, hargaJual: unit.price, priceSource: unit.priceSource, qty: 1, diskonPersen: 0,
       }];
     });
-    if (s.qty <= 0) toast.warning(`${s.sku}: stok di gudang ${shift?.gudang?.code} habis.`);
+    if (s.qty < unit.konversi) toast.warning(`${s.sku}: stok di gudang ${shift?.gudang?.code} tidak cukup (${formatNumber(s.qty)} ${s.uom}).`);
     setQuery('');
     setResults([]);
     focusSearch();
@@ -218,8 +225,19 @@ export default function Pos() {
     }
   };
 
-  const setLine = (sku, field, value) => setCart((prev) => prev.map((l) => (l.sku === sku ? { ...l, [field]: value } : l)));
-  const removeLine = (sku) => setCart((prev) => prev.filter((l) => l.sku !== sku));
+  const setLine = (key, field, value) => setCart((prev) => prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
+  const removeLine = (key) => setCart((prev) => prev.filter((l) => l.key !== key));
+  // ganti satuan baris: harga & isi mengikuti kemasan; satuan yang sudah ada di baris lain tidak bisa dipilih
+  const setUnit = (key, uomId) => setCart((prev) => prev.map((l) => {
+    if (l.key !== key) return l;
+    const u = (l.units || []).find((x) => String(x.uom?._id) === String(uomId));
+    if (!u) return l;
+    return { ...l, key: cartKey(l.sku, u.uom?._id, u.konversi), uomId: u.uom?._id, uomCode: u.uom?.code, konversi: u.konversi, hargaJual: u.price, priceSource: u.priceSource };
+  }));
+  const unitOptions = (l) => (l.units || []).filter((u) => {
+    const k = cartKey(l.sku, u.uom?._id, u.konversi);
+    return k === l.key || !cart.some((x) => x.key === k);
+  });
   const resetSale = () => {
     setCart([]);
     setDiscountAmount('');
@@ -231,8 +249,9 @@ export default function Pos() {
     setCustomer(id);
     if (!cart.length) return;
     try {
-      const prices = await getPosPrices(user.token, id, cart.map((l) => l.sku));
-      setCart((prev) => prev.map((l) => (prices[l.sku] ? { ...l, hargaJual: prices[l.sku].price, priceSource: prices[l.sku].source } : l)));
+      const prices = await getPosPrices(user.token, id, cart.map((l) => ({ sku: l.sku, uom: unitPayload(l) })));
+      const keyOf = (l) => `${l.sku}:${unitPayload(l) || ''}`;
+      setCart((prev) => prev.map((l) => (prices[keyOf(l)] ? { ...l, hargaJual: prices[keyOf(l)].price, priceSource: prices[keyOf(l)].source } : l)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load prices');
     }
@@ -253,7 +272,9 @@ export default function Pos() {
   if (!ctx) return <div className="p-6 text-muted">Loading...</div>;
   if (!shift) return <OpenShift ctx={ctx} token={user.token} onOpened={load} canCreate={perm.canCreate} />;
 
-  const over = cart.filter((l) => Number(l.qty) > l.stock).length;
+  // stok satuan dasar per SKU dipakai bersama oleh semua baris SKU tsb
+  const baseUsed = cart.reduce((m, l) => m.set(l.sku, round2((m.get(l.sku) || 0) + (Number(l.qty) || 0) * (l.konversi || 1))), new Map());
+  const over = cart.filter((l) => baseUsed.get(l.sku) > l.stock).length;
 
   return (
     <div className="h-full flex flex-col">
@@ -324,19 +345,25 @@ export default function Pos() {
               </thead>
               <tbody>
                 {cart.map((l) => {
-                  const short = Number(l.qty) > l.stock;
+                  const short = baseUsed.get(l.sku) > l.stock;
+                  const opts = unitOptions(l);
                   return (
-                    <tr key={l.sku} className={short ? 'bg-danger-soft' : ''}>
+                    <tr key={l.key} className={short ? 'bg-danger-soft' : ''}>
                       <td className="px-3 py-1.5 border-t border-line-soft">
                         <div className="font-medium truncate max-w-72">{l.name} <span className="text-muted font-normal">· {l.variant}</span></div>
-                        <div className="text-xs text-muted font-mono">{l.code}{short && <span className="ml-2 font-sans text-danger">stok {formatNumber(l.stock)}</span>}</div>
+                        <div className="text-xs text-muted font-mono">{l.code}{short && <span className="ml-2 font-sans text-danger">stok {formatNumber(l.stock)} {l.uom}</span>}</div>
+                        {opts.length > 1 ? (
+                          <select aria-label={`Unit ${l.code}`} value={l.uomId || ''} onChange={(e) => setUnit(l.key, e.target.value)} className={`${cellInput} mt-1 w-auto px-1 text-xs`}>
+                            {opts.map((u) => <option key={u.uom?._id || 'base'} value={u.uom?._id || ''}>{u.uom?.code}{u.konversi > 1 ? ` isi ${formatNumber(u.konversi)}` : ''}</option>)}
+                          </select>
+                        ) : (l.konversi > 1 && <div className="text-xs text-primary">{l.uomCode} isi {formatNumber(l.konversi)} {l.uom}</div>)}
                       </td>
                       <td className="px-3 py-1.5 border-t border-line-soft">
                         <div className="flex items-center gap-1">
-                          <button type="button" aria-label={`Kurangi ${l.code}`} onClick={() => setLine(l.sku, 'qty', Math.max(round2(Number(l.qty) - 1), 1))} className="w-7 h-7 rounded border border-line hover:bg-subtle cursor-pointer">−</button>
-                          <input aria-label={`Qty ${l.code}`} type="number" min="0.01" step="0.01" value={l.qty}
-                            onChange={(e) => setLine(l.sku, 'qty', e.target.value)} className={`${cellInput} text-center tabular-nums`} />
-                          <button type="button" aria-label={`Tambah ${l.code}`} onClick={() => setLine(l.sku, 'qty', round2(Number(l.qty) + 1))} className="w-7 h-7 rounded border border-line hover:bg-subtle cursor-pointer">+</button>
+                          <button type="button" aria-label={`Kurangi ${l.code}`} onClick={() => setLine(l.key, 'qty', Math.max(round2(Number(l.qty) - 1), 1))} className="w-7 h-7 rounded border border-line hover:bg-subtle cursor-pointer">−</button>
+                          <input aria-label={`Qty ${l.code}`} type="number" min={l.konversi > 1 ? 1 : 0.01} step={l.konversi > 1 ? 1 : 0.01} value={l.qty}
+                            onChange={(e) => setLine(l.key, 'qty', e.target.value)} className={`${cellInput} text-center tabular-nums`} />
+                          <button type="button" aria-label={`Tambah ${l.code}`} onClick={() => setLine(l.key, 'qty', round2(Number(l.qty) + 1))} className="w-7 h-7 rounded border border-line hover:bg-subtle cursor-pointer">+</button>
                         </div>
                       </td>
                       <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums">
@@ -345,11 +372,11 @@ export default function Pos() {
                       </td>
                       <td className="px-3 py-1.5 border-t border-line-soft">
                         <input aria-label={`Discount ${l.code}`} type="number" min="0" max="100" step="0.01" value={l.diskonPersen}
-                          onChange={(e) => setLine(l.sku, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                          onChange={(e) => setLine(l.key, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                       </td>
                       <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums font-medium">{formatRupiah(salesLineSubtotal(l))}</td>
                       <td className="px-3 py-1.5 border-t border-line-soft text-center">
-                        <button type="button" aria-label={`Hapus ${l.code}`} onClick={() => removeLine(l.sku)} className="w-8 h-8 rounded-md text-muted hover:text-danger hover:bg-danger-soft cursor-pointer"><i className="fa fa-xmark"></i></button>
+                        <button type="button" aria-label={`Hapus ${l.code}`} onClick={() => removeLine(l.key)} className="w-8 h-8 rounded-md text-muted hover:text-danger hover:bg-danger-soft cursor-pointer"><i className="fa fa-xmark"></i></button>
                       </td>
                     </tr>
                   );
@@ -425,7 +452,7 @@ export default function Pos() {
             try {
               const res = await createPosSale({
                 customer,
-                lines: cart.map((l) => ({ sku: l.sku, qty: l.qty, diskonPersen: l.diskonPersen || 0 })),
+                lines: cart.map((l) => ({ sku: l.sku, uom: unitPayload(l), qty: l.qty, diskonPersen: l.diskonPersen || 0 })),
                 discountAmount: Number(discountAmount) || 0,
                 payments,
               }, user.token);
@@ -462,7 +489,7 @@ export default function Pos() {
           try {
             await createHold({
               customer, note, discountAmount: Number(discountAmount) || 0,
-              lines: cart.map((l) => ({ sku: l.sku, qty: l.qty, diskonPersen: l.diskonPersen || 0 })),
+              lines: cart.map((l) => ({ sku: l.sku, uom: unitPayload(l), qty: l.qty, diskonPersen: l.diskonPersen || 0 })),
             }, user.token);
             toast.success('Transaksi ditahan');
             setModal(null);
@@ -476,7 +503,7 @@ export default function Pos() {
       {modal === 'held' && (
         <HeldDialog token={user.token} cartEmpty={!cart.length} onClose={() => { setModal(null); focusSearch(); }} onChanged={load}
           onResume={(data) => {
-            setCart(data.lines);
+            setCart(data.lines.map((l) => ({ ...l, key: cartKey(l.sku, l.uomId, l.konversi || 1), konversi: l.konversi || 1, uomCode: l.uomCode || l.uom })));
             setDiscountAmount(data.discountAmount || '');
             setCustomer(data.customer || ctx.walkIn?._id || '');
             if (data.skipped) toast.warning(`${data.skipped} barang dilewati (sudah tidak aktif).`);
@@ -743,7 +770,7 @@ function VoidReturnDialog({ token, initialNo, onClose, onDone }) {
   }, [token]);
   useEffect(() => { if (initialNo) find(initialNo); }, [initialNo, find]);
 
-  const returnValue = sale ? round2(sale.lines.reduce((s, l) => s + (Number(qty[l.sku._id]) || 0) * l.unitAmount, 0)) : 0;
+  const returnValue = sale ? round2(sale.lines.reduce((s, l) => s + (Number(qty[l._id]) || 0) * l.unitAmount, 0)) : 0;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -755,7 +782,7 @@ function VoidReturnDialog({ token, initialNo, onClose, onDone }) {
         const res = await voidPosSale(sale._id, { reason, approver, pin }, token);
         setResult({ text: `${res.data.data.no} dibatalkan. Kembalikan ${formatRupiah(res.data.data.total)} ke pelanggan.` });
       } else {
-        const lines = sale.lines.map((l) => ({ sku: l.sku._id, qty: Number(qty[l.sku._id]) || 0 })).filter((l) => l.qty > 0);
+        const lines = sale.lines.map((l) => ({ invoiceLine: l._id, qty: Number(qty[l._id]) || 0 })).filter((l) => l.qty > 0);
         if (!lines.length) { setBusy(false); return toast.warning('Isi qty barang yang dikembalikan.'); }
         const res = await createPosReturn({ salesInvoice: sale._id, lines, reason, refundMethod, reference, approver, pin }, token);
         const r = res.data.data;
@@ -806,13 +833,15 @@ function VoidReturnDialog({ token, initialNo, onClose, onDone }) {
                         <thead className="text-left text-muted"><tr><th className="py-1">Barang</th><th className="py-1 text-right w-20">Dibeli</th><th className="py-1 text-right w-20">Bisa</th><th className="py-1 w-28 text-right">Retur</th></tr></thead>
                         <tbody>
                           {sale.lines.map((l) => (
-                            <tr key={l.sku._id} className="border-t border-line-soft">
-                              <td className="py-1">{l.produk?.name} <span className="text-muted">· {l.variant}</span><div className="text-xs text-muted">{formatRupiah(l.unitAmount)} / unit</div></td>
+                            <tr key={l._id} className="border-t border-line-soft">
+                              <td className="py-1">{l.produk?.name} <span className="text-muted">· {l.variant}</span>
+                                {(l.konversi || 1) > 1 && <div className="text-xs text-primary">dibeli {formatNumber(l.qtyUom)} {l.uom?.code} · retur per {l.produk?.uom?.code}</div>}
+                                <div className="text-xs text-muted">{formatRupiah(l.unitAmount)} / {l.produk?.uom?.code || 'unit'}</div></td>
                               <td className="py-1 text-right tabular-nums">{formatNumber(l.qty)}</td>
                               <td className="py-1 text-right tabular-nums">{formatNumber(l.returnable)}</td>
                               <td className="py-1 text-right">
-                                <input type="number" min="0" max={l.returnable} step="0.01" disabled={!l.returnable} value={qty[l.sku._id] ?? ''}
-                                  onChange={(e) => setQty((q) => ({ ...q, [l.sku._id]: e.target.value }))} aria-label={`Return ${l.sku.sku}`}
+                                <input type="number" min="0" max={l.returnable} step="0.01" disabled={!l.returnable} value={qty[l._id] ?? ''}
+                                  onChange={(e) => setQty((q) => ({ ...q, [l._id]: e.target.value }))} aria-label={`Return ${l.sku.sku}`}
                                   className={`${cellInput} text-right tabular-nums w-24`} />
                               </td>
                             </tr>

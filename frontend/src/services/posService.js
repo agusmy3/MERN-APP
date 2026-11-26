@@ -34,7 +34,8 @@ export const getPosReceipt = async (id, token) => (await axios.get(`${POS}/sales
 export const getShifts = async (token, params) => (await axios.get(SHIFT, { ...getHeaders(token), params })).data.data;
 export const getShift = async (id, token) => (await axios.get(`${SHIFT}/${id}`, getHeaders(token))).data.data;
 export const forceCloseShift = (id, data, token) => axios.post(`${SHIFT}/${id}/close`, data, getHeaders(token));
-export const getPosPrices = async (token, customer, skus) => (await axios.post(`${POS}/prices`, { customer, skus }, getHeaders(token))).data.data;
+/** items = [{ sku, uom }] (uom null = satuan dasar) -> { 'sku:uom': { price, source } } */
+export const getPosPrices = async (token, customer, items) => (await axios.post(`${POS}/prices`, { customer, items }, getHeaders(token))).data.data;
 
 // ---------- POS fase 2 ----------
 /** supervisor yang bisa menyetujui (PIN) di outlet shift ini: [{ _id, name }] */

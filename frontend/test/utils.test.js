@@ -243,3 +243,14 @@ test('selling packages: line helpers & printed units', async () => {
   assert.match(html, />2<\/td>/);
   assert.match(html, /DUS <span class="m">\(48 PCS\)/);
 });
+
+test('receiptPrint: package lines show package qty and base content', async () => {
+  const { receiptHtml } = await import('../src/utils/receiptPrint.js');
+  const html = receiptHtml({
+    no: 'POS-1', date: '2026-11-26T10:00:00', outlet: { name: 'Toko', receiptWidth: 58 }, customer: { name: 'Walk-in', isWalkIn: true },
+    lines: [{ qty: 12, qtyUom: 2, konversi: 6, uom: { code: 'PAK' }, hargaJual: 22000, subtotal: 44000, produk: { name: 'Air', uom: { code: 'BTL' } }, sku: { sku: 'AIR' } }],
+    subtotal: 44000, discountAmount: 0, dpp: 39639.64, taxAmount: 4360.36, taxRate: 11, priceIncludesTax: true, total: 44000, payments: [{ method: 'CASH', amount: 50000, type: 'PAYMENT' }], cashTendered: 50000, change: 6000,
+  });
+  assert.match(html, /2 PAK x 22\.000/);
+  assert.match(html, /= 12 BTL/);
+});
