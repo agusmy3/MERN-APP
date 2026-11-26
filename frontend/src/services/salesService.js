@@ -146,3 +146,14 @@ export const getAgingReport = async (token, params) => (await axios.get('/api/sa
 export const getBackorderReport = async (token, params) => (await axios.get('/api/sales-report/backorder', { ...getHeaders(token), params })).data.data;
 /** surat jalan per periode: params { from, to, gudang, customer, method, invoiced } -> { rows, totals, truncated } */
 export const getDeliveryReport = async (token, params) => (await axios.get('/api/sales-report/delivery', { ...getHeaders(token), params })).data.data;
+
+// ---------- Customer Receipt (penerimaan gabungan beberapa invoice) ----------
+
+const RCV = '/api/customer-receipt';
+export const getCustomerReceipts = async (token, params) => (await axios.get(RCV, { ...getHeaders(token), params })).data.data;
+export const getCustomerReceipt = async (id, token) => (await axios.get(`${RCV}/${id}`, getHeaders(token))).data.data;
+/** invoice POSTED belum lunas customer (jatuh tempo tertua dulu) + balance, overdue */
+export const getCustomerOpenInvoices = async (customer, token) => (await axios.get(`${RCV}/open-invoices`, { ...getHeaders(token), params: { customer } })).data.data;
+/** { customer, date, method, amount, reference, note, allocations: [{ invoice, amount }] } */
+export const createCustomerReceipt = (data, token) => axios.post(RCV, data, getHeaders(token));
+export const cancelCustomerReceipt = (id, reason, token) => axios.post(`${RCV}/${id}/cancel`, { reason }, getHeaders(token));

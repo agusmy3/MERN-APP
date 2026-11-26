@@ -11,6 +11,7 @@ const pl = require('../controllers/priceListController');
 const PriceList = require('../models/PriceList');
 const report = require('../controllers/salesReportController');
 const quo = require('../controllers/quotationController');
+const { customerReceipt: rcv } = require('../controllers/paymentBatchController');
 const so = require('../controllers/salesOrderController');
 const dlv = require('../controllers/deliveryOrderController');
 
@@ -134,4 +135,12 @@ quotation.post('/:id/revise', protect, authorize('quotation', 'update'), quo.rev
 quotation.post('/:id/reject', protect, authorize('quotation', 'update'), quo.rejectQuotation);
 quotation.post('/:id/convert', protect, authorize('quotation', 'update'), quo.convertQuotation);
 
-module.exports = { quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };
+/** Customer Receipt (/api/customer-receipt) — 1 penerimaan untuk beberapa invoice; izin salesPayment (create = catat, update = batalkan) */
+const customerReceipt = express.Router();
+customerReceipt.get('/', protect, authorize('salesPayment', 'view'), rcv.list);
+customerReceipt.get('/open-invoices', protect, authorize('salesPayment', 'view'), rcv.openInvoices);
+customerReceipt.get('/:id', protect, authorize('salesPayment', 'view'), rcv.get);
+customerReceipt.post('/', protect, authorize('salesPayment', 'create'), rcv.create);
+customerReceipt.post('/:id/cancel', protect, authorize('salesPayment', 'update'), rcv.cancel);
+
+module.exports = { customerReceipt, quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };

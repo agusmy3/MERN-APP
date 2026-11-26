@@ -430,6 +430,32 @@ const ENTITIES = {
     label: (doc) => doc.no,
     parent: (doc) => ({ entity: 'purchaseInvoice', id: doc.purchaseInvoice?._id ?? doc.purchaseInvoice }),
   },
+  customerReceipt: {
+    fields: {
+      customer: { label: 'Customer', ref: ['Customer', 'name'] },
+      date: { label: 'Date', format: 'date' },
+      method: { label: 'Method', labels: { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' } },
+      amount: { label: 'Amount', format: 'money' },
+      reference: { label: 'Reference' },
+      note: { label: 'Note' },
+      status: { label: 'Status' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
+  vendorPaymentBatch: {
+    fields: {
+      vendor: { label: 'Vendor', ref: ['Vendor', 'companyName'] },
+      date: { label: 'Date', format: 'date' },
+      method: { label: 'Method', labels: { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' } },
+      amount: { label: 'Amount', format: 'money' },
+      reference: { label: 'Reference' },
+      note: { label: 'Note' },
+      status: { label: 'Status' },
+      cancelReason: { label: 'Cancel Reason' },
+    },
+    label: (doc) => doc.no,
+  },
   purchaseReturn: {
     fields: {
       goodsReceipt: { label: 'Goods Receipt', ref: ['GoodsReceipt', 'no'] },

@@ -43,6 +43,8 @@ import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
 import PurchaseInvoice from './pages/PurchaseInvoice';
 import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail';
 import VendorPayment from './pages/VendorPayment';
+import PaymentBatchList from './pages/PaymentBatchList';
+import PaymentBatchDetail from './pages/PaymentBatchDetail';
 import PurchaseReturn from './pages/PurchaseReturn';
 import PurchaseReturnDetail from './pages/PurchaseReturnDetail';
 import Settings from './pages/Settings';
@@ -102,6 +104,11 @@ function App() {
         {/* :id = 'new' (?vendor=) atau id tagihan */}
         <Route path="/purchase-invoice/:id" element={guard('purchaseInvoice', <PurchaseInvoiceDetail />)} />
         <Route path="/vendor-payment" element={guard('vendorPayment', <VendorPayment />)} />
+        {/* pembayaran gabungan: beberapa tagihan vendor / invoice customer sekaligus; :id = 'new' atau id */}
+        <Route path="/vendor-payment-batch" element={guard('vendorPayment', <PaymentBatchList kind="vendor" />)} />
+        <Route path="/vendor-payment-batch/:id" element={guard('vendorPayment', <PaymentBatchDetail kind="vendor" />)} />
+        <Route path="/customer-receipt" element={guard('salesPayment', <PaymentBatchList kind="customer" />)} />
+        <Route path="/customer-receipt/:id" element={guard('salesPayment', <PaymentBatchDetail kind="customer" />)} />
         <Route path="/purchase-return" element={guard('purchaseReturn', <PurchaseReturn />)} />
         {/* :id = 'new' (?gr=) atau id dokumen */}
         <Route path="/purchase-return/:id" element={guard('purchaseReturn', <PurchaseReturnDetail />)} />

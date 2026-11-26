@@ -39,6 +39,7 @@ app.use('/api/purchase-order', require('./routes/purchaseRoutes').purchaseOrder)
 app.use('/api/goods-receipt', require('./routes/purchaseRoutes').goodsReceipt);
 app.use('/api/purchase-invoice', require('./routes/purchaseRoutes').purchaseInvoice);
 app.use('/api/vendor-payment', require('./routes/purchaseRoutes').vendorPayment);
+app.use('/api/vendor-payment-batch', require('./routes/purchaseRoutes').vendorPaymentBatch);
 app.use('/api/purchase-return', require('./routes/purchaseRoutes').purchaseReturn);
 app.use('/api/customer', require('./routes/salesRoutes').customer);
 app.use('/api/sales-invoice', require('./routes/salesRoutes').salesInvoice);
@@ -47,6 +48,7 @@ app.use('/api/sales-order', require('./routes/salesRoutes').salesOrder);
 app.use('/api/delivery-order', require('./routes/salesRoutes').deliveryOrder);
 app.use('/api/sales-return', require('./routes/salesRoutes').salesReturn);
 app.use('/api/sales-payment', require('./routes/salesRoutes').salesPayment);
+app.use('/api/customer-receipt', require('./routes/salesRoutes').customerReceipt);
 app.use('/api/price-list', require('./routes/salesRoutes').priceList);
 app.use('/api/sales-report', require('./routes/salesRoutes').salesReport);
 app.use('/api/outlet', require('./routes/posRoutes').outlet);

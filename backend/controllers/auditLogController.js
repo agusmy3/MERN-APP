@@ -35,6 +35,8 @@ const ENTITY_RESOURCE = {
   purchaseInvoice: 'purchaseInvoice',
   vendorPayment: 'vendorPayment',
   purchaseReturn: 'purchaseReturn',
+  customerReceipt: 'salesPayment',
+  vendorPaymentBatch: 'vendorPayment',
   deliveryOrder: 'deliveryOrder',
   salesReturn: 'salesReturn',
   salesPayment: 'salesPayment',
@@ -46,13 +48,13 @@ const ENTITY_RESOURCE = {
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift', 'salesOrder', 'deliveryOrder', 'quotation', 'purchaseInvoice', 'purchaseReturn'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift', 'salesOrder', 'deliveryOrder', 'quotation', 'purchaseInvoice', 'purchaseReturn', 'customerReceipt', 'vendorPaymentBatch'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };
 
 // log tagihan & pembayaran vendor berisi harga beli: butuh juga vendorPrice:view
-const COST_ENTITIES = ['purchaseInvoice', 'vendorPayment'];
+const COST_ENTITIES = ['purchaseInvoice', 'vendorPayment', 'vendorPaymentBatch'];
 const canSeeEntity = (user, entity) => hasPermission(user, ENTITY_RESOURCE[entity], 'view')
   && (!COST_ENTITIES.includes(entity) || hasPermission(user, 'vendorPrice', 'view'));
 

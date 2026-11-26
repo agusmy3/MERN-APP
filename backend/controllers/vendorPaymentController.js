@@ -79,6 +79,7 @@ exports.getPayments = async (req, res) => {
       VendorPayment.countDocuments(filter),
       VendorPayment.find(filter)
         .populate('purchaseInvoice', 'no vendorInvoiceNo')
+        .populate('batch', 'no')
         .populate('vendor', 'companyName')
         .populate('createdBy', 'name')
         .populate('updatedBy', 'name')
@@ -164,6 +165,10 @@ exports.cancelPayment = async (req, res) => {
       const doc = await VendorPayment.findById(req.params.id);
       if (!doc) throw new HttpError('Payment not found', 404);
       if (doc.status !== 'POSTED') throw new HttpError('Payment is already cancelled', 400);
+      if (doc.batch) {
+        const batch = await mongoose.model('VendorPaymentBatch').findById(doc.batch).select('no').lean();
+        throw new HttpError(`${doc.no} is part of combined payment ${batch?.no || ''}. Cancel that payment instead.`, 400);
+      }
       await lock(ref('purchaseInvoice', doc.purchaseInvoice));
       const bill = await loadBill(req, doc.purchaseInvoice);
       const before = await audit.snap('vendorPayment', [doc]);

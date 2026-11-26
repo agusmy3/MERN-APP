@@ -18,6 +18,7 @@ const salesPaymentSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   method: { type: String, required: true, enum: ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'] },
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null }, // POS: masuk laci shift ini
+  batch: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomerReceipt', default: null }, // bagian dari penerimaan gabungan
   amount: { type: Number, required: true },            // selalu positif
   reference: { type: String, default: '' },            // no. bukti transfer / kuitansi
   note: { type: String, default: '' },

@@ -362,7 +362,7 @@ export default function PurchaseInvoiceDetail() {
           </section>
           {posted && (
             <InvoicePayments doc={doc} token={user.token} onChanged={load} resource="vendorPayment" invoiceKey="purchaseInvoice"
-              createFn={createVendorPayment} cancelFn={cancelVendorPayment} methods={VENDOR_PAYMENT_METHODS} refundText="dikembalikan oleh vendor" />
+              createFn={createVendorPayment} cancelFn={cancelVendorPayment} methods={VENDOR_PAYMENT_METHODS} refundText="dikembalikan oleh vendor" batchPath="/vendor-payment-batch" />
           )}
           <section className="rounded-lg border border-line bg-surface p-4">
             <h3 className="font-semibold text-fg mb-2">History</h3>

@@ -173,7 +173,7 @@ exports.getInvoice = async (req, res) => {
     doc.overdue = doc.status === 'POSTED' && doc.balance > 0 && doc.dueDate < startOfDay(new Date());
     const grIds = (doc.goodsReceipts || []).map((g) => g._id);
     const [payments, returns, pos] = await Promise.all([
-      VendorPayment.find({ purchaseInvoice: doc._id }).populate('createdBy', 'name').populate('cancelledBy', 'name').sort({ createdDate: 1 }).lean(),
+      VendorPayment.find({ purchaseInvoice: doc._id }).populate('batch', 'no').populate('createdBy', 'name').populate('cancelledBy', 'name').sort({ createdDate: 1 }).lean(),
       PurchaseReturn.find({ goodsReceipt: { $in: grIds }, status: { $ne: 'CANCELLED' } }).select('no date status total resolution purchaseInvoice goodsReceipt').sort({ createdDate: 1 }).lean(),
       PurchaseOrder.find({ _id: { $in: (doc.goodsReceipts || []).map((g) => g.purchaseOrder) } }).select('no').lean(),
     ]);

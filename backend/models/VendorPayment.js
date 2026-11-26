@@ -9,6 +9,7 @@ const vendorPaymentSchema = new mongoose.Schema({
   type: { type: String, enum: ['PAYMENT', 'REFUND'], default: 'PAYMENT' },
   purchaseInvoice: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseInvoice', required: true },
   vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
+  batch: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorPaymentBatch', default: null }, // bagian dari pembayaran gabungan
   date: { type: Date, required: true },
   method: { type: String, enum: ['CASH', 'TRANSFER', 'OTHER'], required: true },
   amount: { type: Number, required: true },     // positif

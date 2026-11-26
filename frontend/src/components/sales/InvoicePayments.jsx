@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { createSalesPayment, cancelSalesPayment } from '../../services/salesService';
 import usePermission from '../../hooks/usePermission';
 import useToast from '../../hooks/useToast';
@@ -17,7 +18,7 @@ const btn = 'px-3 py-1.5 rounded text-sm cursor-pointer disabled:opacity-50 disa
 export default function InvoicePayments({
   doc, token, onChanged, resource = 'salesPayment', invoiceKey = 'salesInvoice',
   createFn = createSalesPayment, cancelFn = cancelSalesPayment, methods = PAYMENT_METHODS,
-  refundText = 'dikembalikan ke customer',
+  refundText = 'dikembalikan ke customer', batchPath = '/customer-receipt',
 }) {
   const perm = usePermission(resource);
   const toast = useToast();
@@ -131,6 +132,7 @@ export default function InvoicePayments({
                 <div className="flex items-center justify-between gap-2 text-xs text-muted">
                   <span>{formatDay(p.date)} · {methods[p.method] || p.method}{p.type === 'REFUND' ? ' · refund' : ''}{p.reference ? ` · ${p.reference}` : ''}</span>
                   {cancelled ? <span className="text-danger" title={p.cancelReason}>cancelled</span>
+                    : p.batch ? <Link to={`${batchPath}/${p.batch._id || p.batch}`} className="text-primary hover:underline" title="Bagian dari pembayaran gabungan">via {p.batch.no || 'batch'}</Link>
                     : perm.canUpdate && cancelId !== p._id && (
                       <button type="button" onClick={() => { setCancelId(p._id); setCancelReason(''); }} className="hover:text-danger cursor-pointer">cancel</button>
                     )}

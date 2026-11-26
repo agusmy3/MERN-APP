@@ -6,6 +6,7 @@ const gr = require('../controllers/goodsReceiptController');
 const bill = require('../controllers/purchaseInvoiceController');
 const vpay = require('../controllers/vendorPaymentController');
 const prt = require('../controllers/purchaseReturnController');
+const { vendorPaymentBatch: vpb } = require('../controllers/paymentBatchController');
 // tagihan & pembayaran vendor = data harga beli
 const cost = authorize('vendorPrice', 'view');
 
@@ -68,4 +69,12 @@ purchaseReturn.delete('/:id', protect, authorize('purchaseReturn', 'delete'), pr
 purchaseReturn.post('/:id/post', protect, authorize('purchaseReturn', 'post'), prt.postReturn);
 purchaseReturn.post('/:id/cancel', protect, authorize('purchaseReturn', 'post'), prt.cancelReturn);
 
-module.exports = { purchaseOrder, goodsReceipt, purchaseInvoice, vendorPayment, purchaseReturn };
+/** Vendor Payment Batch (/api/vendor-payment-batch) — 1 pembayaran untuk beberapa tagihan; izin vendorPayment + vendorPrice:view */
+const vendorPaymentBatch = express.Router();
+vendorPaymentBatch.get('/', protect, authorize('vendorPayment', 'view'), cost, vpb.list);
+vendorPaymentBatch.get('/open-invoices', protect, authorize('vendorPayment', 'view'), cost, vpb.openInvoices);
+vendorPaymentBatch.get('/:id', protect, authorize('vendorPayment', 'view'), cost, vpb.get);
+vendorPaymentBatch.post('/', protect, authorize('vendorPayment', 'create'), cost, vpb.create);
+vendorPaymentBatch.post('/:id/cancel', protect, authorize('vendorPayment', 'update'), cost, vpb.cancel);
+
+module.exports = { vendorPaymentBatch, purchaseOrder, goodsReceipt, purchaseInvoice, vendorPayment, purchaseReturn };

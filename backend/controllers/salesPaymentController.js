@@ -70,6 +70,7 @@ exports.getPayments = async (req, res) => {
       SalesPayment.countDocuments(filter),
       SalesPayment.find(filter)
         .populate('salesInvoice', 'no')
+        .populate('batch', 'no')
         .populate('customer', 'code name')
         .populate('gudang', 'code')
         .populate('createdBy', 'name')
@@ -168,6 +169,10 @@ exports.cancelPayment = async (req, res) => {
       if (!doc) throw new HttpError('Payment not found', 404);
       assertGudang(req, doc.gudang);
       if (doc.status !== 'POSTED') throw new HttpError('Payment is already cancelled', 400);
+      if (doc.batch) {
+        const batch = await mongoose.model('CustomerReceipt').findById(doc.batch).select('no').lean();
+        throw new HttpError(`${doc.no} is part of combined payment ${batch?.no || ''}. Cancel that payment instead.`, 400);
+      }
       if (doc.shift) {
         const shift = await require('../models/PosShift').findById(doc.shift).select('status no').lean();
         if (shift?.status === 'CLOSED') throw new HttpError(`Payment belongs to POS shift ${shift.no}, which is already closed`, 400);

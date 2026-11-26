@@ -254,3 +254,48 @@ export const quotationHtml = (q, company = {}) => {
 export const printQuotation = (q, company) => printHtml(quotationHtml(q, company));
 export const printSalesOrder = (so, company) => printHtml(salesOrderHtml(so, company));
 export const printInvoice = (inv, company) => printHtml(invoiceHtml(inv, company));
+
+/**
+ * Kuitansi / bukti pembayaran gabungan (CustomerReceipt / VendorPaymentBatch):
+ * opts { title, subtitle, partyHeading, partyName, invoiceField, methods }
+ */
+export const paymentBatchHtml = (d, company = {}, opts = {}) => {
+  const rows = (d.allocations || []).map((a, i) => {
+    const inv = a[opts.invoiceField] || {};
+    return `<tr>
+      <td class="r">${i + 1}</td>
+      <td><b>${esc(inv.no)}</b>${inv.vendorInvoiceNo ? `<div class="m">Faktur ${esc(inv.vendorInvoiceNo)}</div>` : ''}</td>
+      <td>${day(inv.date)}</td>
+      <td>${inv.dueDate ? day(inv.dueDate) : ''}</td>
+      <td class="r">${money(inv.total)}</td>
+      <td class="r"><b>${money(a.amount)}</b></td>
+    </tr>`;
+  }).join('');
+  const info = (label, value) => (value ? `<tr><th>${label}</th><td>${esc(value)}</td></tr>` : '');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(d.no)}</title>
+  <style>${BASE_CSS}</style></head><body>
+    ${companyHead(company)}
+    <div class="head">
+      <div>
+        <h1>${esc(opts.title)}</h1>
+        ${opts.subtitle ? `<div class="m">${esc(opts.subtitle)}</div>` : ''}
+        ${d.status === 'CANCELLED' ? '<div class="stamp">DIBATALKAN</div>' : ''}
+      </div>
+      <table class="i">
+        ${info('No.', d.no)}${info('Tanggal', day(d.date))}${info('Metode', opts.methods?.[d.method] || d.method)}${info('Referensi', d.reference)}
+      </table>
+    </div>
+    <div class="head"><div class="box"><h3>${esc(opts.partyHeading)}</h3><b>${esc(opts.partyName)}</b></div>
+      <div class="box"><h3>Jumlah</h3><b style="font-size:16px">Rp ${money(d.amount)}</b></div></div>
+    <table class="l">
+      <thead><tr><th class="r" style="width:28px">#</th><th>Untuk pembayaran</th><th style="width:95px">Tanggal</th><th style="width:95px">Jatuh tempo</th><th class="r" style="width:110px">Total</th><th class="r" style="width:110px">Dibayar</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${d.note ? `<div style="margin-top:10px"><b>Catatan:</b> <span class="note">${esc(d.note)}</span></div>` : ''}
+    <div class="sign"><div>Penerima<div class="line"></div></div><div>Penyetor<div class="line"></div></div></div>
+    ${company['company.documentFooter'] ? `<div class="m note" style="margin-top:14px">${esc(company['company.documentFooter'])}</div>` : ''}
+    <div class="m" style="margin-top:12px">Dicetak ${dayjs().format('DD/MM/YYYY HH:mm')}</div>
+  </body></html>`;
+};
+
+export const printPaymentBatch = (d, company, opts) => printHtml(paymentBatchHtml(d, company, opts));

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import usePermission from '../hooks/usePermission';
 import { getSalesPayments, getCustomerDropdown } from '../services/salesService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
@@ -22,6 +23,8 @@ const selectClass = `${inputClass} sm:w-auto`;
  */
 export default function SalesPayment() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const perm = usePermission('salesPayment');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [customerList, setCustomerList] = useState([]);
   const [totalNet, setTotalNet] = useState(null);
@@ -73,6 +76,7 @@ export default function SalesPayment() {
       ),
     },
     { key: 'reference', header: 'Reference', width: 160 },
+    { key: 'batch', header: 'Combined', width: 150, render: (d) => (d.batch ? <Link to={`/customer-receipt/${d.batch._id}`} className="font-mono text-xs text-primary hover:underline">{d.batch.no}</Link> : '') },
     {
       key: 'status',
       header: 'Status',
@@ -95,8 +99,20 @@ export default function SalesPayment() {
     <div className="h-full p-4 flex flex-col">
       <PageHeader
         fallbackTitle="Sales Payment"
-        actions={totalNet !== null && filters.status !== 'CANCELLED' && (
-          <div className="text-sm text-muted">Net received: <b className="text-fg tabular-nums">{formatRupiah(totalNet)}</b></div>
+        actions={(
+          <>
+            {totalNet !== null && filters.status !== 'CANCELLED' && (
+              <div className="text-sm text-muted">Net received: <b className="text-fg tabular-nums">{formatRupiah(totalNet)}</b></div>
+            )}
+            <button type="button" onClick={() => navigate('/customer-receipt')} className="px-4 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer">
+              <i className="fa fa-layer-group"></i> Combined receipts
+            </button>
+            {perm.canCreate && (
+              <button type="button" onClick={() => navigate('/customer-receipt/new')} className="bg-primary hover:bg-primary-hover text-primary-fg px-4 py-2 rounded text-sm cursor-pointer">
+                <i className="fa fa-plus"></i> Receive payment
+              </button>
+            )}
+          </>
         )}
       />
 

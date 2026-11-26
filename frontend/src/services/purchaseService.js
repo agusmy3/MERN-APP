@@ -77,3 +77,13 @@ export const updatePurchaseReturn = (id, data, token) => axios.put(`${PRT}/${id}
 export const deletePurchaseReturn = (id, token) => axios.delete(`${PRT}/${id}`, getHeaders(token));
 export const postPurchaseReturn = (id, token) => axios.post(`${PRT}/${id}/post`, {}, getHeaders(token));
 export const cancelPurchaseReturn = (id, reason, token) => axios.post(`${PRT}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Vendor Payment Batch (pembayaran gabungan beberapa tagihan) ----------
+
+const VPB = '/api/vendor-payment-batch';
+export const getVendorPaymentBatches = async (token, params) => (await axios.get(VPB, { ...getHeaders(token), params })).data.data;
+export const getVendorPaymentBatch = async (id, token) => (await axios.get(`${VPB}/${id}`, getHeaders(token))).data.data;
+export const getVendorOpenBills = async (vendor, token) => (await axios.get(`${VPB}/open-invoices`, { ...getHeaders(token), params: { vendor } })).data.data;
+/** { vendor, date, method, amount, reference, note, allocations: [{ invoice, amount }] } */
+export const createVendorPaymentBatch = (data, token) => axios.post(VPB, data, getHeaders(token));
+export const cancelVendorPaymentBatch = (id, reason, token) => axios.post(`${VPB}/${id}/cancel`, { reason }, getHeaders(token));

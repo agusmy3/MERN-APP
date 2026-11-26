@@ -203,3 +203,19 @@ test('allocateFreight (frontend copy) matches backend rules', async () => {
   assert.deepEqual(out.map((l) => [l.freightCost, l.unitCost]), [[21600, 9900], [6600, 12100]]);
   assert.deepEqual(allocateFreight([{ qtyBase: 1, baseUnitCost: 0 }, { qtyBase: 3, baseUnitCost: 0 }], 40).map((l) => l.freightCost), [10, 30]);
 });
+
+test('allocateFifo: oldest first, capped by balance; payment batch receipt print', async () => {
+  const { allocateFifo } = await import('../src/utils/paymentMeta.js');
+  const inv = [{ _id: 'a', balance: 500000 }, { _id: 'b', balance: 700000 }, { _id: 'c', balance: 300000 }];
+  assert.deepEqual(allocateFifo(inv, 1000000), { a: 500000, b: 500000 });
+  assert.deepEqual(allocateFifo(inv, '1500000.5'), { a: 500000, b: 700000, c: 300000 });
+  assert.deepEqual(allocateFifo(inv, 0), {});
+  const { paymentBatchHtml } = await import('../src/utils/documentPrint.js');
+  const html = paymentBatchHtml({ no: 'RCV-1', date: '2026-11-26', method: 'TRANSFER', amount: 1000000, status: 'POSTED',
+    allocations: [{ amount: 500000, salesInvoice: { no: 'INV-1', total: 500000 } }] },
+  { 'company.name': 'PT Kita' }, { title: 'KUITANSI', partyHeading: 'Diterima dari', partyName: 'CV <A>', invoiceField: 'salesInvoice', methods: { TRANSFER: 'Transfer' } });
+  assert.match(html, /KUITANSI/);
+  assert.match(html, /CV &lt;A&gt;/);
+  assert.match(html, /INV-1/);
+  assert.match(html, /1\.000\.000/);
+});
