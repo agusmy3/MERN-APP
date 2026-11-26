@@ -145,6 +145,86 @@
   color-scheme: dark;
 }
 
+/* ---------- Ocean & Coral ---------- */
+[data-theme="ocean-coral"] {
+  --t-page: #f0f9ff; --t-surface: #ffffff; --t-subtle: #e8f4fb; --t-input: #ffffff;
+  --t-fg: #0c2a3d; --t-muted: #5b7a8f; --t-line: #d3e6f2; --t-line-soft: #eaf4fa;
+  --t-nav: #ffffff; --t-nav-fg: #0c2a3d; --t-nav-line: #d3e6f2; --t-nav-hover: #eaf4fa;
+  --t-side: #0c4a6e; --t-side-fg: #c7e3f4; --t-side-muted: #6fa3c4; --t-side-line: #0c4a6e;
+  --t-side-hover: #0f5a85; --t-side-active: #13679a; --t-side-active-fg: #ffffff; --t-side-bar: #fb7185;
+  --t-primary: #0369a1; --t-primary-hover: #075985; --t-primary-fg: #ffffff;
+  --t-primary-soft: #e0f2fe; --t-primary-soft-fg: #075985;
+  --t-head: #f0f9ff; --t-head-fg: #335a73; --t-highlight: #fff1f2;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Violet & Sunset (navbar berwarna) ---------- */
+[data-theme="violet-sunset"] {
+  --t-page: #faf5ff; --t-surface: #ffffff; --t-subtle: #f5effc; --t-input: #ffffff;
+  --t-fg: #2e1065; --t-muted: #6b5b8a; --t-line: #e9dcf7; --t-line-soft: #f5effc;
+  --t-nav: #4c1d95; --t-nav-fg: #f5f3ff; --t-nav-line: #4c1d95; --t-nav-hover: #5b21b6;
+  --t-side: #3b0764; --t-side-fg: #e4d4fb; --t-side-muted: #9b7fc4; --t-side-line: #3b0764;
+  --t-side-hover: #4c1d95; --t-side-active: #581c87; --t-side-active-fg: #ffffff; --t-side-bar: #fb923c;
+  --t-primary: #7c3aed; --t-primary-hover: #6d28d9; --t-primary-fg: #ffffff;
+  --t-primary-soft: #ede9fe; --t-primary-soft-fg: #5b21b6;
+  --t-head: #f3e8ff; --t-head-fg: #5b21b6; --t-highlight: #fff7ed;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Tropical Teal ---------- */
+[data-theme="tropical-teal"] {
+  --t-page: #f0fdfa; --t-surface: #ffffff; --t-subtle: #e6f7f3; --t-input: #ffffff;
+  --t-fg: #08302c; --t-muted: #52766f; --t-line: #cdeae3; --t-line-soft: #e6f7f3;
+  --t-nav: #ffffff; --t-nav-fg: #08302c; --t-nav-line: #cdeae3; --t-nav-hover: #e6f7f3;
+  --t-side: #134e4a; --t-side-fg: #ccede6; --t-side-muted: #6ea89e; --t-side-line: #134e4a;
+  --t-side-hover: #175e58; --t-side-active: #1b6b64; --t-side-active-fg: #ffffff; --t-side-bar: #facc15;
+  --t-primary: #0f766e; --t-primary-hover: #115e59; --t-primary-fg: #ffffff;
+  --t-primary-soft: #ccfbf1; --t-primary-soft-fg: #115e59;
+  --t-head: #f0fdfa; --t-head-fg: #2f5f58; --t-highlight: #fefce8;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Berry & Sky ---------- */
+[data-theme="berry-sky"] {
+  --t-page: #fdf2f8; --t-surface: #ffffff; --t-subtle: #fbe9f2; --t-input: #ffffff;
+  --t-fg: #3b0a24; --t-muted: #7d5468; --t-line: #f3d5e4; --t-line-soft: #fbe9f2;
+  --t-nav: #ffffff; --t-nav-fg: #3b0a24; --t-nav-line: #f3d5e4; --t-nav-hover: #fbe9f2;
+  --t-side: #500724; --t-side-fg: #f6d0e1; --t-side-muted: #b07a93; --t-side-line: #500724;
+  --t-side-hover: #66102f; --t-side-active: #7a1438; --t-side-active-fg: #ffffff; --t-side-bar: #38bdf8;
+  --t-primary: #be185d; --t-primary-hover: #9d174d; --t-primary-fg: #ffffff;
+  --t-primary-soft: #fce7f3; --t-primary-soft-fg: #9d174d;
+  --t-head: #fdf2f8; --t-head-fg: #6b2142; --t-highlight: #f0f9ff;
+  --t-danger: #dc2626; --t-danger-fg: #ffffff; --t-danger-soft: #fef2f2; --t-danger-line: #fecaca;
+  --t-warning-soft: #fef3c7; --t-warning-fg: #92400e;
+  --t-success-soft: #dcfce7; --t-success-fg: #166534;
+  color-scheme: light;
+}
+
+/* ---------- Aurora (gelap berwarna) ---------- */
+[data-theme="aurora"] {
+  --t-page: #0b1020; --t-surface: #111733; --t-subtle: #1a2147; --t-input: #0f1530;
+  --t-fg: #e6e8ff; --t-muted: #9aa0c8; --t-line: #262e5c; --t-line-soft: #1a2147;
+  --t-nav: #0e1430; --t-nav-fg: #e6e8ff; --t-nav-line: #262e5c; --t-nav-hover: #1a2147;
+  --t-side: #0b1020; --t-side-fg: #c3c8ef; --t-side-muted: #6f76a8; --t-side-line: #161d3a;
+  --t-side-hover: #161d3a; --t-side-active: #1e1b4b; --t-side-active-fg: #ffffff; --t-side-bar: #34d399;
+  --t-primary: #a78bfa; --t-primary-hover: #c4b5fd; --t-primary-fg: #1e1b4b;
+  --t-primary-soft: #2e2a6b; --t-primary-soft-fg: #ddd6fe;
+  --t-head: #161d3a; --t-head-fg: #b8bde6; --t-highlight: #1e1b4b;
+  --t-danger: #f87171; --t-danger-fg: #1f0a0a; --t-danger-soft: #3b1219; --t-danger-line: #7f1d1d;
+  --t-warning-soft: #3a2a0b; --t-warning-fg: #fcd34d;
+  --t-success-soft: #0f2e22; --t-success-fg: #6ee7b7;
+  color-scheme: dark;
+}
+
 @layer base {
   body {
     background-color: var(--color-page);

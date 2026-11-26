@@ -263,3 +263,20 @@ test('documentPrint: company logo in header (raster data URL only)', async () =>
   assert.match(salesOrderHtml(so, { 'company.logo': logo }), /co-logo/); // logo tanpa nama tetap tampil
   assert.doesNotMatch(salesOrderHtml(so, { 'company.name': 'PT', 'company.logo': 'javascript:alert(1)' }), /<img/);
 });
+
+test('themes: every theme in themes.js has a complete CSS block in index.css', async () => {
+  const { THEMES, DEFAULT_THEME, isValidTheme } = await import('../src/theme/themes.js');
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+  const required = [...css.matchAll(/--color-[a-z-]+:\s*var\((--t-[a-z-]+)\)/g)].map((m) => m[1]);
+  assert.ok(required.length > 30);
+  assert.equal(new Set(THEMES.map((t) => t.id)).size, THEMES.length);
+  for (const t of THEMES) {
+    const m = css.match(new RegExp(`\\[data-theme="${t.id}"\\]\\s*\\{([^}]*)\\}`));
+    assert.ok(m, `CSS block for ${t.id}`);
+    for (const v of required) assert.ok(m[1].includes(`${v}:`), `${t.id} defines ${v}`);
+    assert.match(m[1], new RegExp(`color-scheme:\\s*${t.dark ? 'dark' : 'light'}`), `${t.id} color-scheme`);
+  }
+  assert.ok(isValidTheme('aurora') && isValidTheme(DEFAULT_THEME) && !isValidTheme('nope'));
+  assert.equal(THEMES.length, 10);
+});

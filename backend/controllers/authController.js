@@ -8,7 +8,9 @@ const { getEffectivePermissions } = require('../config/permissions');
 const audit = require('../helpers/auditLogger');
 
 // Harus sama dengan daftar tema di frontend (src/theme/themes.js)
-const ALLOWED_THEMES = ['slate-indigo', 'navy-amber', 'emerald-stone', 'light-teal', 'zinc-sky'];
+// id tema (daftar & warnanya di frontend: src/theme/themes.js + src/index.css). Backend cukup memeriksa
+// formatnya; tema yang tidak dikenal frontend otomatis kembali ke tema default.
+const THEME_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * Data user yang dikirim ke frontend (login & /me): profil, role ringkas, dan izin efektif.
@@ -70,7 +72,7 @@ exports.me = async (req, res) => {
 exports.updateTheme = async (req, res) => {
   try {
     const { theme } = req.body;
-    if (!ALLOWED_THEMES.includes(theme)) {
+    if (typeof theme !== 'string' || theme.length > 40 || !THEME_ID.test(theme)) {
       return errorResponse(res, 'Invalid theme', 400);
     }
 

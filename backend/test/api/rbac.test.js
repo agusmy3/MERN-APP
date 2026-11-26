@@ -49,3 +49,16 @@ test('role in use cannot be deleted; super admin cannot deactivate itself', asyn
   const self = await admin.put(`/api/user/${admin.user._id}`, { isActive: false });
   assert.equal(self.status, 400);
 });
+
+test('theme: any well-formed theme id is saved per user (palettes are defined in the frontend), bad ids rejected', async () => {
+  const user = await t.loginAs({}, 'Tema');
+  for (const theme of ['aurora', 'violet-sunset', 'ocean-coral']) {
+    const res = await user.put('/api/auth/theme', { theme });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.theme, theme);
+  }
+  for (const theme of ['', 'Aurora', 'x y', '<script>', 'a--b', 'x'.repeat(41), 12]) {
+    assert.equal((await user.put('/api/auth/theme', { theme })).status, 400);
+  }
+  assert.equal(ok(await user.get('/api/auth/me')).theme, 'ocean-coral');
+});

@@ -315,7 +315,8 @@ Semua model punya field audit: `createdDate`, `createdBy` (ref User), `updatedDa
 - **Tema / palet** (halaman `/appearance`, ikon 🎨 di Navbar):
   - **Jangan pakai warna Tailwind langsung** (`bg-blue-600`, `text-gray-700`, ...). Pakai token semantik dari [src/index.css](frontend/src/index.css): `bg-page`, `bg-surface`, `bg-subtle`, `text-fg`, `text-muted`, `border-line`, `border-line-soft`, `bg-primary`/`hover:bg-primary-hover`/`text-primary-fg`, `bg-primary-soft`, `bg-nav*`, `bg-side*`, `bg-head`, `bg-highlight`, `text-danger`/`bg-danger-soft`, `bg-warning-soft`, `bg-success-soft`. Teks di atas `bg-primary` selalu `text-primary-fg` (bukan `text-white`, karena tema gelap memakai primary terang).
   - Tema = atribut `data-theme` di `<html>`; tiap tema hanya mengisi ulang variabel `--t-*`. Default `slate-indigo`.
-  - Menambah tema: blok `[data-theme="..."]` di `index.css` + entri di [src/theme/themes.js](frontend/src/theme/themes.js) + `ALLOWED_THEMES` di `backend/controllers/authController.js`.
+  - Tema tersedia (10): `slate-indigo` (default), `navy-amber`, `emerald-stone`, `light-teal`, `zinc-sky` (gelap), `ocean-coral`, `violet-sunset` (navbar berwarna), `tropical-teal`, `berry-sky`, `aurora` (gelap berwarna).
+  - Menambah tema: blok `[data-theme="..."]` di `index.css` (semua variabel `--t-*` + `color-scheme`) + entri di [src/theme/themes.js](frontend/src/theme/themes.js) (`dark: true` untuk tema gelap). Backend hanya memeriksa format id (`THEME_ID` di `authController`); id yang tidak dikenal frontend kembali ke default. Test `frontend/test/utils.test.js` memastikan setiap tema di `themes.js` punya blok CSS lengkap.
   - Pilihan disimpan per user (`User.theme`, `PUT /api/auth/theme`) dan disalin ke `localStorage` key `theme`; script di `index.html` menerapkannya sebelum React render agar tidak berkedip. State: `ThemeProvider` / `useTheme()`.
 
 ## Konvensi

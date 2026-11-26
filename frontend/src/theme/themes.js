@@ -1,5 +1,6 @@
-// Daftar palet tampilan. `id` harus sama dengan selector [data-theme="..."] di src/index.css
-// dan ALLOWED_THEMES di backend/controllers/authController.js.
+// Daftar palet tampilan. `id` harus sama dengan selector [data-theme="..."] di src/index.css.
+// Backend hanya memeriksa format id (lihat THEME_ID di backend/controllers/authController.js);
+// id yang tidak ada di daftar ini kembali ke DEFAULT_THEME di frontend.
 export const THEMES = [
   {
     id: 'slate-indigo',
@@ -30,6 +31,37 @@ export const THEMES = [
     name: 'Zinc & Sky',
     tag: 'Mode gelap',
     description: 'Latar gelap dengan aksen biru langit. Nyaman untuk ruangan redup.',
+    dark: true,
+  },
+  {
+    id: 'ocean-coral',
+    name: 'Ocean & Coral',
+    tag: 'Segar dan cerah',
+    description: 'Sidebar biru laut dengan penanda menu coral. Bersih dan modern.',
+  },
+  {
+    id: 'violet-sunset',
+    name: 'Violet & Sunset',
+    tag: 'Paling berwarna',
+    description: 'Navbar dan sidebar ungu dengan aksen oranye senja. Bingkai aplikasi paling hidup.',
+  },
+  {
+    id: 'tropical-teal',
+    name: 'Tropical Teal',
+    tag: 'Ceria tapi tenang',
+    description: 'Teal tua dengan aksen kuning lemon. Berwarna tanpa melelahkan mata.',
+  },
+  {
+    id: 'berry-sky',
+    name: 'Berry & Sky',
+    tag: 'Berani dan unik',
+    description: 'Sidebar berry tua, tombol magenta, penanda menu biru langit.',
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    tag: 'Mode gelap berwarna',
+    description: 'Latar biru malam dengan aksen ungu terang dan hijau aurora.',
     dark: true,
   },
 ];
