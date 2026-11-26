@@ -41,16 +41,18 @@ const parseReturn = (body) => {
   if (!reason) throw new HttpError('Return reason is required', 400);
 
   const seen = new Set();
+  // baris: { invoiceLine (id baris invoice) | sku (baris invoice satu-satunya untuk SKU tsb), qty SATUAN DASAR, note }
   const lines = (Array.isArray(body.lines) ? body.lines : [])
     .filter((l) => !(l?.qty === '' || l?.qty === null || l?.qty === undefined || Number(l.qty) === 0))
     .map((l, i) => {
       const n = `Line ${i + 1}`;
-      if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-      if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-      seen.add(String(l.sku));
+      if (l?.invoiceLine ? !mongoose.isValidObjectId(l.invoiceLine) : !mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid invoice line`, 400);
+      const key = String(l.invoiceLine || l.sku);
+      if (seen.has(key)) throw new HttpError(`${n}: the same invoice line appears more than once`, 400);
+      seen.add(key);
       const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true });
       if (err) throw new HttpError(`${n}: ${err}`, 400);
-      return { sku: String(l.sku), qty: round2(l.qty), note: trimText(l.note, 200) || undefined };
+      return { invoiceLine: l.invoiceLine ? String(l.invoiceLine) : null, sku: l.sku ? String(l.sku) : null, qty: round2(l.qty), note: trimText(l.note, 200) || undefined };
     });
   if (!lines.length) throw new HttpError('Fill in the returned quantity for at least one item', 400);
   return { salesInvoice: String(body.salesInvoice), date, reason, lines };
@@ -69,14 +71,26 @@ const loadInvoiceFor = async (req, invoiceId) => {
   return inv;
 };
 
+/** Baris invoice untuk baris retur: per id (invoiceLine), atau per SKU bila SKU tsb hanya 1 baris (retur lama / POS) */
+const invLineOf = (inv, l) => {
+  if (l.invoiceLine) return inv.lines.find((x) => String(x._id) === String(l.invoiceLine)) || null;
+  const matches = inv.lines.filter((x) => String(x.sku) === String(l.sku?._id ?? l.sku));
+  if (matches.length > 1) throw new HttpError('This item appears in several units on the invoice: choose the invoice line', 400);
+  return matches[0] || null;
+};
+
 const fillLines = async (inv, lines) => {
-  const byLine = new Map(inv.lines.map((l) => [String(l.sku), l]));
-  const codes = new Map((await ProdukSku.find({ _id: { $in: lines.map((l) => l.sku) } }).select('sku').lean())
+  const codes = new Map((await ProdukSku.find({ _id: { $in: inv.lines.map((l) => l.sku) } }).select('sku').lean())
     .map((s) => [String(s._id), s.sku]));
+  const seen = new Set();
   for (const l of lines) {
-    const il = byLine.get(l.sku);
+    const il = invLineOf(inv, l);
+    if (!il) throw new HttpError(`${codes.get(String(l.sku)) || 'Item'} is not on invoice ${inv.no}`, 400);
+    if (seen.has(String(il._id))) throw new HttpError('The same invoice line appears more than once', 400);
+    seen.add(String(il._id));
+    l.invoiceLine = il._id;
+    l.sku = String(il.sku);
     const code = codes.get(l.sku) || 'Item';
-    if (!il) throw new HttpError(`${code} is not on invoice ${inv.no}`, 400);
     const max = returnable(il);
     if (l.qty > max) throw new HttpError(`${code}: return ${fmt(l.qty)} exceeds the returnable quantity ${fmt(max)}`, 400);
     l.produk = il.produk;
@@ -194,9 +208,10 @@ exports.getReturn = async (req, res) => {
     if (!doc) return errorResponse(res, 'Sales return not found', 404);
     assertGudang(req, doc.gudang?._id ?? doc.gudang);
     const inv = await SalesInvoice.findById(doc.salesInvoice?._id).select('lines').lean();
-    const byLine = new Map((inv?.lines || []).map((l) => [String(l.sku), l]));
     doc.lines.forEach((l) => {
-      const il = byLine.get(String(l.sku?._id ?? l.sku));
+      let il = null;
+      try { il = inv ? invLineOf(inv, l) : null; } catch { il = null; }
+      l.invoiceLine = l.invoiceLine || il?._id || null;
       l.sold = il?.qty ?? null;
       l.returned = il?.qtyReturned ?? null;
       l.returnable = il ? returnable(il) : null;
@@ -242,13 +257,14 @@ exports.getInvoiceForReturn = async (req, res) => {
       .populate('gudang', 'code name')
       .populate('lines.sku', 'sku variantValues isActive')
       .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
       .lean();
     if (!inv) return errorResponse(res, 'Sales invoice not found', 404);
     assertGudang(req, inv.gudang?._id);
     if (inv.status !== 'POSTED') return errorResponse(res, 'Only posted invoices can be returned', 400);
     inv.lines.forEach((l) => {
       l.returnable = returnable(l);
-      l.unitAmount = returnLineValues(l, 1, inv).amount; // nilai retur per unit (termasuk PPN)
+      l.unitAmount = returnLineValues(l, 1, inv).amount; // nilai retur per SATUAN DASAR (termasuk PPN)
       delete l.unitCost;
     });
     return successResponse(res, inv);
@@ -331,7 +347,7 @@ exports.deleteReturn = async (req, res) => {
 const postCore = async (req, doc, inv) => {
   await lock(ref('gudang', doc.gudang));
   if (!(await Gudang.exists({ _id: doc.gudang }))) throw new HttpError('Warehouse no longer exists', 400);
-  const lines = doc.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, note: l.note }));
+  const lines = doc.lines.map((l) => ({ invoiceLine: l.invoiceLine, sku: String(l.sku), qty: l.qty, note: l.note }));
   await fillLines(inv, lines); // validasi ulang qty (retur lain bisa sudah diposting)
 
   const before = await audit.snap('salesReturn', [doc]);
@@ -345,8 +361,8 @@ const postCore = async (req, doc, inv) => {
     note: l.note || doc.reason,
   })), { refType: 'SalesReturn', refId: doc._id, refNo: doc.no });
 
-  const qtyOf = new Map(lines.map((l) => [l.sku, l.qty]));
-  inv.lines.forEach((l) => { l.qtyReturned = round2((l.qtyReturned || 0) + (qtyOf.get(String(l.sku)) || 0)); });
+  const qtyOf = new Map(lines.map((l) => [String(l.invoiceLine), l.qty]));
+  inv.lines.forEach((l) => { l.qtyReturned = round2((l.qtyReturned || 0) + (qtyOf.get(String(l._id)) || 0)); });
   const totals = sumTotals(lines);
   if (inv.lines.every((l) => l.qtyReturned >= l.qty)) {
     // retur terakhir: pakai sisa nilai invoice supaya total retur = total invoice persis
@@ -378,7 +394,7 @@ const postCore = async (req, doc, inv) => {
 exports.createPostedReturn = async (req, inv, { date = new Date(), reason, lines, extra = {} }) => {
   const doc = await SalesReturn.create({
     no: await nextDocNo('RTN'), salesInvoice: inv._id, customer: inv.customer, gudang: inv.gudang,
-    date, reason, status: 'DRAFT', lines: lines.map((l) => ({ ...l, produk: inv.lines.find((x) => String(x.sku) === String(l.sku))?.produk })),
+    date, reason, status: 'DRAFT', lines: lines.map((l) => { const il = invLineOf(inv, l); return { ...l, invoiceLine: il?._id, sku: il?.sku ?? l.sku, produk: il?.produk }; }),
     ...extra, createdBy: req.user._id,
   });
   await audit.logCreate(req, 'salesReturn', [doc]);
@@ -431,8 +447,13 @@ exports.cancelReturn = async (req, res) => {
         note: `Cancelled: ${cancelReason}`,
       })), { refType: 'SalesReturn', refId: doc._id, refNo: doc.no, isReversal: true });
 
-      const qtyOf = new Map(doc.lines.map((l) => [String(l.sku), l.qty]));
-      inv.lines.forEach((l) => { l.qtyReturned = Math.max(round2((l.qtyReturned || 0) - (qtyOf.get(String(l.sku)) || 0)), 0); });
+      const qtyOf = new Map();
+      doc.lines.forEach((l) => {
+        let il = null;
+        try { il = invLineOf(inv, l); } catch { il = null; }
+        if (il) qtyOf.set(String(il._id), round2((qtyOf.get(String(il._id)) || 0) + l.qty));
+      });
+      inv.lines.forEach((l) => { l.qtyReturned = Math.max(round2((l.qtyReturned || 0) - (qtyOf.get(String(l._id)) || 0)), 0); });
       inv.returnedAmount = Math.max(round2((inv.returnedAmount || 0) - doc.total), 0);
       inv.paymentStatus = invoiceBalance(inv).paymentStatus;
       await inv.save();

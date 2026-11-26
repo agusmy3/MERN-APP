@@ -100,6 +100,7 @@ test('demo: master, stock, users per role with scoped access, sample transaction
   assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).kota, 'Surabaya');
   assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).creditLimit, 25000000);
   assert.equal(await t.model('Quotation').countDocuments({ status: 'SENT' }), 1);
+  assert.ok(await t.model('ProdukSku').exists({ 'packages.konversi': 24 }));
   assert.equal((await t.model('Vendor').findOne({ companyName: 'CV Sandang Makmur (Demo)' }).lean()).termDays, 30);
 
   // kartu stok konsisten dengan saldo

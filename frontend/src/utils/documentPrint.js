@@ -13,6 +13,13 @@ const variantOf = (sku) => (sku?.variantValues || []).map((v) => v.value).join('
 const addressOf = (a) => (a
   ? [[a.alamat ?? a.address, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
   : '');
+/** qty & satuan baris (kemasan jual): "10" + "DUS (240 PCS)" */
+const lineQty = (l) => qtyFmt(l.qtyUom ?? l.qty);
+const lineUnit = (l) => {
+  const base = l.produk?.uom?.code || '';
+  const k = l.konversi || 1;
+  return k > 1 ? `${esc(l.uom?.code || '')} <span class="m">(${qtyFmt(l.qty)} ${esc(base)})</span>` : esc(l.uom?.code || base);
+};
 const money = (n) => Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const multiline = (s) => esc(s).replace(/\n/g, '<br>');
 
@@ -63,8 +70,8 @@ export const deliveryNoteHtml = (d, company = {}) => {
   const rows = (d.lines || []).map((l, i) => `<tr>
       <td class="r">${i + 1}</td>
       <td><b>${esc(l.sku?.sku)}</b><div class="m">${esc(l.produk?.name)}${variantOf(l.sku) ? ` · ${esc(variantOf(l.sku))}` : ''}</div></td>
-      <td class="r">${qtyFmt(l.qty)}</td>
-      <td>${esc(l.produk?.uom?.code)}</td>
+      <td class="r">${lineQty(l)}</td>
+      <td>${lineUnit(l)}</td>
       <td>${esc(l.note)}</td>
     </tr>`).join('');
   const info = (label, value) => (value ? `<tr><th>${label}</th><td>${esc(value)}</td></tr>` : '');
@@ -101,7 +108,7 @@ export const deliveryNoteHtml = (d, company = {}) => {
       </div>
     </div>
     <table class="l">
-      <thead><tr><th class="r" style="width:32px">#</th><th>Barang</th><th class="r" style="width:80px">Qty</th><th style="width:60px">Satuan</th><th style="width:30%">Keterangan</th></tr></thead>
+      <thead><tr><th class="r" style="width:32px">#</th><th>Barang</th><th class="r" style="width:80px">Qty</th><th style="width:110px">Satuan</th><th style="width:30%">Keterangan</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="sign">
@@ -125,8 +132,8 @@ export const salesDocumentHtml = (d, company = {}, opts = {}) => {
   const rows = (d.lines || []).map((l, i) => `<tr>
       <td class="r">${i + 1}</td>
       <td><b>${esc(l.sku?.sku)}</b><div class="m">${esc(l.produk?.name)}${variantOf(l.sku) ? ` · ${esc(variantOf(l.sku))}` : ''}</div>${l.note ? `<div class="m">${esc(l.note)}</div>` : ''}</td>
-      <td class="r">${qtyFmt(l.qty)}</td>
-      <td>${esc(l.produk?.uom?.code)}</td>
+      <td class="r">${lineQty(l)}</td>
+      <td>${lineUnit(l)}</td>
       <td class="r">${money(l.hargaJual)}</td>
       <td class="r">${l.diskonPersen ? `${qtyFmt(l.diskonPersen)}%` : ''}</td>
       <td class="r">${money(l.subtotal)}</td>
@@ -159,7 +166,7 @@ export const salesDocumentHtml = (d, company = {}, opts = {}) => {
     </div>
     <div class="head">${(opts.parties || []).map(party).join('')}</div>
     <table class="l">
-      <thead><tr><th class="r" style="width:28px">#</th><th>Barang</th><th class="r" style="width:60px">Qty</th><th style="width:50px">Satuan</th><th class="r" style="width:95px">Harga</th><th class="r" style="width:50px">Disk.</th><th class="r" style="width:105px">Jumlah</th></tr></thead>
+      <thead><tr><th class="r" style="width:28px">#</th><th>Barang</th><th class="r" style="width:60px">Qty</th><th style="width:100px">Satuan</th><th class="r" style="width:95px">Harga</th><th class="r" style="width:50px">Disk.</th><th class="r" style="width:105px">Jumlah</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="foot">

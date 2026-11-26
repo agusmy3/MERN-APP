@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
  *
  * - post   : movement SALE (-qty) di gudang; HPP saat itu disimpan per baris (unitCost) -> cogs & laba kotor
  * - cancel : movement pembalik (+qty) dengan unitCost yang sama
- * Harga & qty dalam satuan dasar produk. Pajak (salinan System Settings saat dokumen dibuat):
+ * qty = satuan dasar (stok); qtyUom / hargaJual = satuan jual (kemasan, lihat helpers/packageHelper.js). Pajak (salinan System Settings saat dokumen dibuat):
  * - priceIncludesTax = false : dpp = subtotal - diskon dokumen, PPN = dpp x tarif, total = dpp + PPN
  * - priceIncludesTax = true  : total = subtotal - diskon dokumen, PPN = total x tarif / (100 + tarif), dpp = total - PPN
  * Pendapatan bersih = dpp (tanpa PPN, barang saja); laba kotor = dpp - cogs. Ongkir terpisah (shipping*).
@@ -17,13 +17,16 @@ const lineSchema = new mongoose.Schema({
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true },
   qty: { type: Number, required: true },
-  hargaJual: { type: Number, required: true },        // per satuan dasar
+  uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', default: null }, // satuan jual (null = satuan dasar, data lama)
+  konversi: { type: Number, default: 1 },        // isi satuan jual dalam satuan dasar
+  qtyUom: { type: Number, default: null },       // qty dalam satuan jual (null = qty); qty = satuan dasar
+  hargaJual: { type: Number, required: true },   // per satuan jual
   diskonPersen: { type: Number, default: 0 },
-  subtotal: { type: Number, required: true },         // qty x harga x (1 - diskon%)
+  subtotal: { type: Number, required: true },         // qtyUom x harga x (1 - diskon%)
   unitCost: { type: Number, default: null },          // HPP saat post (data biaya)
-  qtyReturned: { type: Number, default: 0 },          // total retur POSTED (Sales Return)
+  qtyReturned: { type: Number, default: 0 },          // total retur POSTED (Sales Return), satuan dasar
   note: { type: String },
-}, { _id: false });
+});  // _id per baris: dirujuk surat jalan (soLine) / retur (invoiceLine)
 
 const soAllocationSchema = new mongoose.Schema({
   salesOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder', required: true },

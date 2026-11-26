@@ -50,6 +50,7 @@ exports.listSku = async (req, res) => {
   try {
     const skus = await ProdukSku.find({ produk: req.params.id })
       .populate('variantValues.variant', 'code name')
+      .populate('packages.uom', 'code name')
       .populate('createdBy', 'name')
       .populate('updatedBy', 'name')
       .sort({ sku: 1 })
@@ -204,6 +205,93 @@ exports.bulkUpdateSku = async (req, res) => {
     });
 
     return successResponse(res, { updated: items.length }, `${items.length} SKU successfully updated`);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+const MAX_PACKAGES = 20;
+
+/** Kemasan dipakai dokumen penjualan / price list (tidak boleh dihapus, hanya dinonaktifkan) */
+const packageInUse = async (skuId, uomId) => {
+  const line = { lines: { $elemMatch: { sku: skuId, uom: uomId } } };
+  for (const name of ['SalesOrder', 'SalesInvoice', 'Quotation', 'DeliveryOrder']) {
+    if (await mongoose.model(name).exists(line)) return true;
+  }
+  return !!(await mongoose.model('PriceList').exists({ items: { $elemMatch: { sku: skuId, uom: uomId } } }));
+};
+
+/**
+ * PUT /api/produk/:id/sku/:skuId/packages  body: { packages: [{ uom, konversi, hargaJual, barcode, isActive }] }
+ * Mengganti daftar kemasan jual SKU (izin produk:update). Satuan unik & bukan satuan dasar, isi > 1 dan jenis
+ * satuan cocok (aturan konversi pembelian), harga kosong = isi x harga satuan dasar, barcode unik terhadap semua
+ * barcode SKU & kemasan. Kemasan yang sudah dipakai dokumen / price list tidak bisa dihapus.
+ */
+exports.updatePackages = async (req, res) => {
+  try {
+    const input = Array.isArray(req.body.packages) ? req.body.packages : null;
+    if (!input) return errorResponse(res, 'Invalid packages', 400);
+    if (input.length > MAX_PACKAGES) return errorResponse(res, `At most ${MAX_PACKAGES} packages per SKU`, 400);
+    if (!mongoose.isValidObjectId(req.params.skuId)) return errorResponse(res, 'SKU not found', 404);
+    const seenUom = new Set();
+    const barcodes = new Set();
+    const packages = [];
+    for (const [i, p] of input.entries()) {
+      const n = `Package ${i + 1}`;
+      if (!mongoose.isValidObjectId(p?.uom)) return errorResponse(res, `${n}: choose a unit`, 400);
+      if (seenUom.has(String(p.uom))) return errorResponse(res, `${n}: the same unit appears more than once`, 400);
+      seenUom.add(String(p.uom));
+      const err = checkAmount(p.konversi, `${n} content`, { min: 0, exclusive: true });
+      if (err) return errorResponse(res, err, 400);
+      const konversi = round2(p.konversi);
+      if (konversi <= 1) return errorResponse(res, `${n}: content must be more than 1 base unit`, 400);
+      let hargaJual = null;
+      if (p.hargaJual !== undefined && p.hargaJual !== null && p.hargaJual !== '') {
+        const perr = checkAmount(p.hargaJual, `${n} price`);
+        if (perr) return errorResponse(res, perr, 400);
+        hargaJual = round2(p.hargaJual);
+      }
+      let barcode = null;
+      if (p.barcode !== undefined && p.barcode !== null && String(p.barcode).trim()) {
+        barcode = String(p.barcode).trim();
+        if (barcode.length > 64 || /\s/.test(barcode)) return errorResponse(res, `${n}: barcode must be at most 64 characters without spaces`, 400);
+        if (barcodes.has(barcode)) return errorResponse(res, `Barcode ${barcode} is duplicated`, 400);
+        barcodes.add(barcode);
+      }
+      packages.push({ ...(mongoose.isValidObjectId(p._id) ? { _id: p._id } : {}), uom: String(p.uom), konversi, hargaJual, barcode, isActive: p.isActive !== false });
+    }
+
+    const sku = await runInTransaction(async () => {
+      await lock(ref('produk', req.params.id));
+      const sku = await ProdukSku.findOne({ _id: req.params.skuId, produk: req.params.id });
+      if (!sku) throw new HttpError('SKU not found', 404);
+      const produk = await Produk.findById(sku.produk).select('uom').lean();
+      await lock(packages.map((p) => ref('uom', p.uom)));
+      if (packages.some((p) => String(p.uom) === String(produk.uom))) throw new HttpError('The base unit is not a package; choose another unit', 400);
+      const { assertConvertible } = require('../helpers/uomHelper');
+      await assertConvertible(packages.map((p) => ({ purchaseId: p.uom, baseId: produk.uom, konversi: p.konversi, label: sku.sku })));
+      if (barcodes.size) {
+        const taken = await ProdukSku.findOne({
+          $or: [{ barcode: { $in: [...barcodes] } }, { _id: { $ne: sku._id }, 'packages.barcode': { $in: [...barcodes] } }],
+        }).select('sku').lean();
+        if (taken) throw new HttpError(`Barcode is already used by ${taken.sku}`, 400);
+      }
+      const keep = new Set(packages.map((p) => String(p.uom)));
+      for (const old of sku.packages) {
+        if (!keep.has(String(old.uom)) && await packageInUse(sku._id, old.uom)) {
+          throw new HttpError(`A package of ${sku.sku} is already used in sales documents or price lists. Deactivate it instead.`, 400);
+        }
+      }
+      const before = await audit.snap('produkSku', [sku]);
+      sku.packages = packages;
+      sku.updatedDate = new Date();
+      sku.updatedBy = req.user._id;
+      await sku.save();
+      await audit.logUpdate(req, 'produkSku', before, [sku]);
+      return sku;
+    });
+    const out = await ProdukSku.findById(sku._id).select('sku packages').populate('packages.uom', 'code name').lean();
+    return successResponse(res, out, `Packages of ${sku.sku} saved`);
   } catch (error) {
     return handleError(res, error);
   }

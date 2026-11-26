@@ -39,15 +39,13 @@ const parseDo = (body) => {
 
   const input = (Array.isArray(body.lines) ? body.lines : []).filter((l) => Number(l?.qty) !== 0);
   if (!input.length) throw new HttpError('Fill in the quantity to deliver for at least one item', 400);
-  const seen = new Set();
+  // baris: { soLine (id baris SO), qty (dalam satuan jual baris SO), note }; { sku } = baris SO satu-satunya untuk SKU tsb
   const lines = input.map((l, i) => {
     const n = `Line ${i + 1}`;
-    if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-    if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-    seen.add(String(l.sku));
+    if (l?.soLine ? !mongoose.isValidObjectId(l.soLine) : !mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid sales order line`, 400);
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true });
     if (err) throw new HttpError(`${n}: ${err}`, 400);
-    return { sku: String(l.sku), qty: round2(l.qty), note: trimText(l.note, 200) || undefined };
+    return { soLine: l.soLine ? String(l.soLine) : null, sku: l.sku ? String(l.sku) : null, qty: round2(l.qty), note: trimText(l.note, 200) || undefined };
   });
 
   return {
@@ -79,16 +77,37 @@ const skuCodes = async (so) => {
   return new Map(rows.map((r) => [String(r._id), r.sku]));
 };
 
-/** Baris DO dari baris SO (qty <= sisa SO) */
-const buildLines = (so, parsedLines, codes) => parsedLines.map((l) => {
-  const soLine = so.lines.find((x) => String(x.sku) === l.sku);
-  if (!soLine) throw new HttpError('One or more items do not belong to this sales order', 400);
-  const outstanding = soOutstanding(soLine);
-  if (l.qty > outstanding) {
-    throw new HttpError(`${codes.get(l.sku) || 'Item'}: delivering ${fmt(l.qty)} exceeds the outstanding quantity ${fmt(outstanding)}`, 400);
-  }
-  return { sku: soLine.sku, produk: soLine.produk, qty: l.qty, unitCost: null, note: l.note };
-});
+/** Baris SO untuk baris DO: per id baris (soLine), atau per SKU untuk DO lama / input tanpa soLine (harus unik) */
+const soLineOf = (so, l) => {
+  if (l.soLine) return so.lines.find((x) => String(x._id) === String(l.soLine)) || null;
+  const matches = so.lines.filter((x) => String(x.sku) === String(l.sku));
+  if (matches.length > 1) throw new HttpError('This item appears in several units on the sales order: choose the order line', 400);
+  return matches[0] || null;
+};
+
+/**
+ * Baris DO dari baris SO: kemasan sama dengan SO, qty input dalam kemasan tsb (bulat untuk kemasan),
+ * qty satuan dasar = qty x isi <= sisa SO. Baris SO unik per DO.
+ */
+const buildLines = (so, parsedLines, codes) => {
+  const seen = new Set();
+  return parsedLines.map((l) => {
+    const soLine = soLineOf(so, l);
+    if (!soLine) throw new HttpError('One or more items do not belong to this sales order', 400);
+    if (seen.has(String(soLine._id))) throw new HttpError(`${codes.get(String(soLine.sku)) || 'Item'} appears more than once`, 400);
+    seen.add(String(soLine._id));
+    const konversi = soLine.konversi || 1;
+    if (konversi > 1 && !Number.isInteger(l.qty)) throw new HttpError(`${codes.get(String(soLine.sku)) || 'Item'}: quantity must be a whole number of packages`, 400);
+    const qty = round2(l.qty * konversi);
+    const outstanding = soOutstanding(soLine);
+    if (qty > outstanding) {
+      throw new HttpError(`${codes.get(String(soLine.sku)) || 'Item'}: delivering ${fmt(l.qty)} exceeds the outstanding quantity ${fmt(round2(outstanding / konversi))}`, 400);
+    }
+    return {
+      soLine: soLine._id, sku: soLine.sku, produk: soLine.produk, uom: soLine.uom || null, konversi, qtyUom: l.qty, qty, unitCost: null, note: l.note,
+    };
+  });
+};
 
 const applyHeader = (doc, parsed, so) => {
   doc.date = parsed.date;
@@ -110,6 +129,7 @@ const populateDo = (query) => query
   .populate('invoice', 'no status total paymentStatus')
   .populate('lines.sku', 'sku variantValues isActive')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name')
   .populate('postedBy', 'name')
@@ -230,12 +250,15 @@ exports.getSoForDelivery = async (req, res) => {
       .populate('gudang', 'code name')
       .populate('lines.sku', 'sku variantValues')
       .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
       .lean();
     if (!so) return errorResponse(res, 'Sales order not found', 404);
     assertGudang(req, so.gudang?._id);
     const balances = await getBalances(so.gudang._id, so.lines.map((l) => l.sku?._id).filter(Boolean));
     so.lines.forEach((l) => {
-      l.outstanding = soOutstanding(l);
+      // dalam satuan jual baris (kemasan); outstandingBase = satuan dasar
+      l.outstandingBase = soOutstanding(l);
+      l.outstanding = round2(l.outstandingBase / (l.konversi || 1));
       l.currentQty = l.sku ? balances.get(String(l.sku._id)) || 0 : 0;
       delete l.hargaJual;
       delete l.diskonPersen;
@@ -258,15 +281,18 @@ exports.getDeliveryOrder = async (req, res) => {
     if (!doc) return errorResponse(res, 'Delivery order not found', 404);
     assertGudang(req, doc.gudang?._id);
     const so = await SalesOrder.findById(doc.salesOrder?._id).select('lines').lean();
-    const soLines = new Map((so?.lines || []).map((l) => [String(l.sku), l]));
+
     const balances = doc.status === 'DRAFT' ? await getBalances(doc.gudang._id, doc.lines.map((l) => l.sku?._id).filter(Boolean)) : null;
     const canSeeCost = canSeeCostOf(req);
     let value = 0;
     doc.lines.forEach((l) => {
-      const sl = soLines.get(String(l.sku?._id ?? l.sku));
-      l.ordered = sl?.qty ?? null;
-      l.delivered = sl?.qtyDelivered ?? null;
-      l.outstanding = sl ? soOutstanding(sl) : null;
+      let sl = null;
+      try { sl = so ? soLineOf(so, { soLine: l.soLine, sku: l.sku?._id ?? l.sku }) : null; } catch { sl = null; }
+      // dalam satuan jual baris (kemasan)
+      const k = l.konversi || 1;
+      l.ordered = sl ? round2(sl.qty / k) : null;
+      l.delivered = sl ? round2((sl.qtyDelivered || 0) / k) : null;
+      l.outstanding = sl ? round2(soOutstanding(sl) / k) : null;
       if (balances) l.currentQty = balances.get(String(l.sku?._id)) || 0;
       if (canSeeCost) value += l.qty * (l.unitCost || 0);
       else delete l.unitCost;
@@ -365,7 +391,7 @@ exports.postDeliveryOrder = async (req, res) => {
       if (!gudang) throw new HttpError('Warehouse no longer exists', 400);
       if (gudang.isActive === false) throw new HttpError(`Warehouse ${gudang.code} is inactive`, 400);
 
-      const lines = buildLines(so, doc.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, note: l.note })), await skuCodes(so));
+      const lines = buildLines(so, doc.lines.map((l) => ({ soLine: l.soLine, sku: String(l.sku), qty: l.qtyUom ?? l.qty, note: l.note })), await skuCodes(so));
       const batchId = audit.newBatchId();
       const before = await audit.snap('deliveryOrder', [doc]);
       const soBefore = await audit.snap('salesOrder', [so]);
@@ -381,7 +407,7 @@ exports.postDeliveryOrder = async (req, res) => {
       lines.forEach((l) => { l.unitCost = costOf.get(String(l.sku)) ?? null; });
 
       for (const l of lines) {
-        const sl = so.lines.find((x) => String(x.sku) === String(l.sku));
+        const sl = soLineOf(so, l);
         sl.qtyDelivered = round2((sl.qtyDelivered || 0) + l.qty);
       }
       so.status = deliveryStatus(so.lines);
@@ -434,7 +460,8 @@ exports.cancelDeliveryOrder = async (req, res) => {
       })), { refType: 'DeliveryOrder', refId: doc._id, refNo: doc.no, isReversal: true });
 
       for (const l of doc.lines) {
-        const sl = so.lines.find((x) => String(x.sku) === String(l.sku));
+        let sl = null;
+        try { sl = soLineOf(so, l); } catch { sl = null; }
         if (sl) sl.qtyDelivered = Math.max(round2((sl.qtyDelivered || 0) - l.qty), 0);
       }
       if (so.status !== 'CLOSED') so.status = deliveryStatus(so.lines);
@@ -509,34 +536,36 @@ const invoiceDeliveries = async (req, ids, { date, dueDate, note }) => {
   }
   const soById = new Map(orders.map((o) => [String(o._id), o]));
 
-  // baris digabung per SKU; asal harga dicatat untuk pesan bentrok
+  // baris digabung per SKU + kemasan + harga + diskon (beda harga / kemasan = baris terpisah)
   const merged = new Map();
   for (const d of dos) {
     const so = soById.get(String(d.salesOrder));
-    const soLine = new Map(so.lines.map((l) => [String(l.sku), l]));
     for (const l of d.lines) {
-      const sl = soLine.get(String(l.sku));
+      let sl = null;
+      try { sl = soLineOf(so, l); } catch { sl = null; }
       if (!sl) throw new HttpError(`${d.no}: delivery line no longer matches the sales order`, 400);
-      const key = String(l.sku);
+      const k = sl.konversi || 1;
+      const key = [String(l.sku), k > 1 ? String(sl.uom) : '', sl.hargaJual, sl.diskonPersen || 0].join('|');
       const cur = merged.get(key);
-      if (cur && (cur.hargaJual !== sl.hargaJual || cur.diskonPersen !== (sl.diskonPersen || 0))) {
-        const code = (await ProdukSku.findById(l.sku).select('sku').lean())?.sku || 'An item';
-        throw new HttpError(`${code} has a different price or discount in ${cur.soNo} and ${so.no}. Invoice them separately.`, 400);
-      }
+      const qtyUom = round2(l.qty / k);
       if (cur) {
         cur.qty = round2(cur.qty + l.qty);
+        cur.qtyUom = round2(cur.qtyUom + qtyUom);
         cur.cost += l.qty * (l.unitCost || 0);
         if (l.note && !cur.notes.includes(l.note)) cur.notes.push(l.note);
       } else {
         merged.set(key, {
-          sku: l.sku, produk: l.produk, qty: l.qty, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0,
-          cost: l.qty * (l.unitCost || 0), notes: l.note ? [l.note] : [], soNo: so.no,
+          sku: l.sku, produk: l.produk, uom: sl.uom || null, konversi: k, qty: l.qty, qtyUom, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0,
+          cost: l.qty * (l.unitCost || 0), notes: l.note ? [l.note] : [],
         });
       }
     }
   }
   const lines = [...merged.values()].map((m) => {
-    const line = { sku: m.sku, produk: m.produk, qty: m.qty, hargaJual: m.hargaJual, diskonPersen: m.diskonPersen, note: m.notes.join('; ').slice(0, 200) || undefined };
+    const line = {
+      sku: m.sku, produk: m.produk, uom: m.uom, konversi: m.konversi, qtyUom: m.qtyUom, qty: m.qty,
+      hargaJual: m.hargaJual, diskonPersen: m.diskonPersen, note: m.notes.join('; ').slice(0, 200) || undefined,
+    };
     line.subtotal = salesLineSubtotal(line);
     line.unitCost = m.qty ? round2(m.cost / m.qty) : 0;
     return line;
@@ -546,10 +575,9 @@ const invoiceDeliveries = async (req, ids, { date, dueDate, note }) => {
   const allocations = [];
   for (const so of orders) {
     const soDos = dos.filter((d) => String(d.salesOrder) === String(so._id));
-    const soLine = new Map(so.lines.map((l) => [String(l.sku), l]));
     const subtotal = round2(soDos.flatMap((d) => d.lines).reduce((sum, l) => {
-      const sl = soLine.get(String(l.sku));
-      return sum + salesLineSubtotal({ qty: l.qty, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0 });
+      const sl = soLineOf(so, l);
+      return sum + salesLineSubtotal({ qty: l.qty, qtyUom: round2(l.qty / (sl.konversi || 1)), hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0 });
     }, 0));
     const prior = await SalesInvoice.find({ 'soAllocations.salesOrder': so._id, status: { $ne: 'CANCELLED' } }).select('soAllocations').lean();
     const priorAlloc = prior.flatMap((p) => p.soAllocations).filter((a) => String(a.salesOrder) === String(so._id));
@@ -557,11 +585,15 @@ const invoiceDeliveries = async (req, ids, { date, dueDate, note }) => {
     if (so.discountAmount > 0 && so.subtotal > 0) {
       // qty yang sudah / akan ditagih per SKU = DO SO ini yang sudah ditagih + DO di invoice ini
       const billed = await DeliveryOrder.find({ salesOrder: so._id, status: 'POSTED', invoice: { $ne: null }, _id: { $nin: soDos.map((d) => d._id) } })
-        .select('lines.sku lines.qty').lean();
+        .select('lines.sku lines.soLine lines.qty').lean();
+      // qty ditagih per baris SO
       const invoicedQty = new Map();
-      [...billed.flatMap((d) => d.lines), ...soDos.flatMap((d) => d.lines)]
-        .forEach((l) => invoicedQty.set(String(l.sku), round2((invoicedQty.get(String(l.sku)) || 0) + l.qty)));
-      const completes = so.lines.every((l) => (invoicedQty.get(String(l.sku)) || 0) >= l.qty);
+      [...billed.flatMap((d) => d.lines), ...soDos.flatMap((d) => d.lines)].forEach((l) => {
+        let sl = null;
+        try { sl = soLineOf(so, l); } catch { sl = null; }
+        if (sl) invoicedQty.set(String(sl._id), round2((invoicedQty.get(String(sl._id)) || 0) + l.qty));
+      });
+      const completes = so.lines.every((l) => (invoicedQty.get(String(l._id)) || 0) >= l.qty);
       discountAmount = completes
         ? round2(so.discountAmount - priorAlloc.reduce((sum, a) => sum + (a.discountAmount || 0), 0))
         : round2(so.discountAmount * (subtotal / so.subtotal));

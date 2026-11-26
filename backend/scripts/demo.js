@@ -205,6 +205,19 @@ async function main() {
       gula: await makeProduct({ name: 'Gula Pasir', deskripsi: 'Dijual per kg, dibeli per sak 50 kg', kategori: kat.sembako, baseUom: uom.KG, priceFor: () => 18000 }),
     };
 
+    // ---------- kemasan jual (dijual per DUS / PACK selain per pcs) ----------
+    const setPackages = async (sku, packages) => {
+      const doc = await ProdukSku.findById(sku._id);
+      const before = await audit.snap('produkSku', [doc]);
+      doc.packages = packages.map(([u, konversi, hargaJual, barcode = null]) => ({ uom: u._id, konversi, hargaJual, barcode }));
+      await doc.save();
+      await audit.logUpdate(req, 'produkSku', before, [doc]);
+      sku.packages = doc.packages;
+    };
+    await setPackages(p.air.by('600 ml'), [[uom.PACK, 6, 22000], [uom.DUS, 24, 84000, '8990000600024']]); // hemat vs 24 x 4.000
+    await setPackages(p.air.by('1500 ml'), [[uom.DUS, 12, 78000]]);
+    for (const s of p.keripik.skus) await setPackages(s, [[uom.DUS, 24, 336000]]);
+
     // ---------- harga vendor (vendor utama) ----------
     const prices = [];
     const addPrice = (v, sku, uomBeli, konversi, hargaBeli, extra = {}) => prices.push({

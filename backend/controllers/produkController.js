@@ -226,6 +226,10 @@ exports.updateProduk = async (req, res) => {
       if (String(uom) !== String(produk.uom)) {
         const prices = await VendorPrice.find({ produk: produk._id }).select('uomBeli konversi').lean();
         await assertConvertible(prices.map((p) => ({ purchaseId: p.uomBeli, baseId: uom, konversi: p.konversi, label: 'Existing vendor price' })));
+        // isi kemasan jual dinyatakan dalam satuan dasar lama: kosongkan / sesuaikan kemasannya dulu
+        if (await ProdukSku.exists({ produk: produk._id, 'packages.0': { $exists: true } })) {
+          throw new HttpError('This product has selling packages. Remove them before changing the base unit', 400);
+        }
       }
 
       const before = await audit.snap('produk', [produk]);

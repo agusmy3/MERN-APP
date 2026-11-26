@@ -11,6 +11,10 @@ const { shipToSchema } = require('./SalesOrder');
 const lineSchema = new mongoose.Schema({
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true },
+  soLine: { type: mongoose.Schema.Types.ObjectId, default: null }, // _id baris SO (kemasan sama dengan SO)
+  uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', default: null }, // satuan jual baris SO
+  konversi: { type: Number, default: 1 },
+  qtyUom: { type: Number, default: null },     // qty dalam satuan jual (null = qty)
   qty: { type: Number, required: true },        // satuan dasar
   unitCost: { type: Number, default: null },    // HPP saat post (data biaya)
   note: { type: String },

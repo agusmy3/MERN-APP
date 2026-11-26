@@ -52,13 +52,13 @@ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); retur
  * Nilai SO yang BELUM ditagih (termasuk PPN): per baris qty yang masih akan ditagih x harga bersih,
  * dibagi proporsional seperti invoice (diskon dokumen & PPN), + ongkir jika belum ada invoice.
  * OPEN / PARTIAL: qty dipesan - sudah ditagih; DELIVERED / CLOSED: qty terkirim - sudah ditagih.
- * invoicedQty: Map skuId -> qty yang sudah ditagih (surat jalan ber-invoice); shippingBilled = ongkir sudah ditagih.
+ * invoicedQty: Map id baris SO (atau skuId untuk data lama) -> qty satuan dasar yang sudah ditagih (surat jalan ber-invoice); shippingBilled = ongkir sudah ditagih.
  */
 const soUninvoicedValue = (so, invoicedQty, shippingBilled) => {
   const ratio = so.subtotal ? goodsTotal(so) / so.subtotal : 0;
   const goods = so.lines.reduce((sum, l) => {
     const target = ['OPEN', 'PARTIAL'].includes(so.status) ? l.qty : (l.qtyDelivered || 0);
-    const qty = Math.max(target - (invoicedQty.get(String(l.sku)) || 0), 0);
+    const qty = Math.max(target - (invoicedQty.get(String(l._id)) ?? invoicedQty.get(String(l.sku)) ?? 0), 0);
     return sum + (l.qty ? (l.subtotal / l.qty) * qty * ratio : 0);
   }, 0);
   return round2(goods + (shippingBilled ? 0 : (so.shippingTotal || 0)));
@@ -104,18 +104,19 @@ const customerCredit = async (customerId, { excludeSo = null } = {}) => {
   };
   if (excludeSo) soFilter._id = { $ne: toId(excludeSo) };
   const orders = await SalesOrder.find(soFilter)
-    .select('status lines.sku lines.qty lines.qtyDelivered lines.subtotal subtotal total shippingTotal').lean();
+    .select('status lines._id lines.sku lines.qty lines.qtyDelivered lines.subtotal subtotal total shippingTotal').lean();
   let uninvoiced = 0;
   if (orders.length) {
     const soIds = orders.map((o) => o._id);
     // qty sudah ditagih per SO = surat jalan POSTED yang sudah punya invoice aktif
     const billed = await DeliveryOrder.find({ salesOrder: { $in: soIds }, status: 'POSTED', invoice: { $ne: null } })
-      .select('salesOrder lines.sku lines.qty').lean();
+      .select('salesOrder lines.sku lines.soLine lines.qty').lean();
     const bySo = new Map();
     billed.forEach((d) => {
       const key = String(d.salesOrder);
       const m = bySo.get(key) || new Map();
-      d.lines.forEach((l) => m.set(String(l.sku), (m.get(String(l.sku)) || 0) + l.qty));
+      // per baris SO (soLine); surat jalan lama tanpa soLine -> per SKU
+      d.lines.forEach((l) => { const k = String(l.soLine || l.sku); m.set(k, (m.get(k) || 0) + l.qty); });
       bySo.set(key, m);
     });
     // ongkir sudah ditagih jika ada invoice aktif yang membebankan ongkir SO tsb

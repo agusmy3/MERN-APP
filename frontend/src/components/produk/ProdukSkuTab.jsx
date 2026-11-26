@@ -8,6 +8,7 @@ import {
 import useToast from '../../hooks/useToast';
 import useConfirm from '../../hooks/useConfirm';
 import { calcMargin, formatNumber, formatRupiah, variantLabel } from '../../utils/formatHelper';
+import SkuPackagesDrawer from './SkuPackagesDrawer';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -40,6 +41,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
   const confirm = useConfirm();
   const { skus, canSeeCost } = skuData;
   const baseUom = produk.uom?.code || '';
+  const [packSkuId, setPackSkuId] = useState(null); // drawer kemasan jual
 
   // ---------- generator ----------
   const [selections, setSelections] = useState({});
@@ -311,6 +313,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                 <th className="px-3 py-2 border-b border-line font-semibold">Variant</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">Selling Price</th>
                 <th className="px-3 py-2 border-b border-line font-semibold w-28 text-right">Stock</th>
+                <th className="px-3 py-2 border-b border-line font-semibold w-40">Packages</th>
                 {canSeeCost && <th className="px-3 py-2 border-b border-line font-semibold w-36 text-right">HPP / {baseUom}</th>}
                 {canSeeCost && <th className="px-3 py-2 border-b border-line font-semibold w-24 text-right">Margin</th>}
                 <th className="px-3 py-2 border-b border-line font-semibold w-20 text-center">Active</th>
@@ -487,6 +490,18 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
                         </Link>
                       ) : <span className="px-2">{formatNumber(s?.stok)}</span>}
                     </td>
+                    <td className="px-3 py-1.5 border-t border-line-soft">
+                      <button type="button" onClick={() => setPackSkuId(r._id)} title="Kemasan jual (PAK, DUS, ...)"
+                        className="text-left text-xs hover:text-primary cursor-pointer">
+                        {(s?.packages || []).length
+                          ? s.packages.map((p) => (
+                            <span key={p._id} className={`inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded ${p.isActive === false ? 'bg-subtle text-muted line-through' : 'bg-primary-soft text-primary-soft-fg'}`}>
+                              {p.uom?.code} {formatNumber(p.konversi)}
+                            </span>
+                          ))
+                          : <span className="text-muted">{canUpdate ? '+ add' : '-'}</span>}
+                      </button>
+                    </td>
                     {canSeeCost && (
                       <td className="px-3 py-1.5 border-t border-line-soft text-right tabular-nums" title={costTitle}>
                         {cost === null ? <span className="text-muted">-</span> : (
@@ -529,7 +544,7 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-6 text-muted">
+                  <td colSpan={10} className="text-center py-6 text-muted">
                     Belum ada SKU.{canUpdate && hasVariants && ' Pilih nilai varian di atas lalu klik Generate.'}
                   </td>
                 </tr>
@@ -538,6 +553,8 @@ export default function ProdukSkuTab({ produk, skuData, canUpdate, canViewStock,
           </table>
         </div>
       </section>
+      <SkuPackagesDrawer open={!!packSkuId} sku={skus.find((x) => x._id === packSkuId)} produk={produk} canUpdate={canUpdate}
+        token={token} onClose={() => setPackSkuId(null)} onSaved={onChanged} />
     </div>
   );
 }

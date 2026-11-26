@@ -72,3 +72,9 @@ export const deleteProdukSku = async (produkId, skuId, token) => {
   const res = await axios.delete(`${API}/${produkId}/sku/${skuId}`, getHeaders(token));
   return res;
 };
+
+/** Kemasan jual 1 SKU: packages = [{ _id?, uom, konversi, hargaJual (null = isi x harga), barcode, isActive }] */
+export const updateSkuPackages = async (produkId, skuId, packages, token) => {
+  const res = await axios.put(`${API}/${produkId}/sku/${skuId}/packages`, { packages }, getHeaders(token));
+  return res;
+};

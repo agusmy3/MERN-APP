@@ -10,7 +10,8 @@ const mongoose = require('mongoose');
 const itemSchema = new mongoose.Schema({
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true },
-  price: { type: Number, required: true },
+  uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', default: null }, // kemasan jual; null = satuan dasar
+  price: { type: Number, required: true },                                    // per satuan / kemasan tsb
 }, { _id: false });
 
 const priceListSchema = new mongoose.Schema({

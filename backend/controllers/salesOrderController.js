@@ -16,6 +16,7 @@ const { checkAmount, round2 } = require('../helpers/number');
 const { salesLineSubtotal, salesTotals, netLineRevenue, soOutstanding } = require('../helpers/salesHelper');
 const { committedQty, customerCredit } = require('../helpers/salesOrderHelper');
 const { resolvePrices } = require('../helpers/priceHelper');
+const { loadUnits, applyUnits, resolveUnitPrices, priceForLine, unitKey, unitOptions } = require('../helpers/packageHelper');
 const { parseLocation } = require('../helpers/locationHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 const { MAX_LINES } = require('../config/stock');
@@ -88,18 +89,17 @@ const parseSo = (body) => {
   const input = Array.isArray(body.lines) ? body.lines : [];
   if (!input.length) throw new HttpError('Add at least one item', 400);
   if (input.length > MAX_LINES) throw new HttpError(`A sales order can have at most ${MAX_LINES} lines`, 400);
-  const seen = new Set();
   const lines = input.map((l, i) => {
     const n = `Line ${i + 1}`;
     if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-    if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-    seen.add(String(l.sku));
+    if (l.uom && !mongoose.isValidObjectId(l.uom)) throw new HttpError(`${n}: invalid unit`, 400);
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true })
       || checkAmount(l.diskonPersen ?? 0, 'Discount');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
     const diskonPersen = round2(l.diskonPersen ?? 0);
     if (diskonPersen > 100) throw new HttpError(`${n}: Discount must be <= 100`, 400);
-    return { sku: String(l.sku), qty: round2(l.qty), hargaJual: null, diskonPersen, qtyDelivered: 0, note: trimText(l.note, 200) || undefined };
+    // qty dalam satuan jual (uom; kosong = satuan dasar) -> applyUnits mengisi qty satuan dasar
+    return { sku: String(l.sku), uom: l.uom ? String(l.uom) : null, qty: round2(l.qty), hargaJual: null, diskonPersen, qtyDelivered: 0, note: trimText(l.note, 200) || undefined };
   });
 
   return {
@@ -143,8 +143,7 @@ const resolveRefs = async (parsed) => {
   if (skus.length !== new Set(skuIds).size) throw new HttpError('One or more SKUs no longer exist', 400);
   const inactive = skus.find((s) => s.isActive === false);
   if (inactive) throw new HttpError(`${inactive.sku} is inactive and cannot be sold`, 400);
-  const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
-  parsed.lines.forEach((l) => { l.produk = produkOf.get(l.sku); });
+  applyUnits(parsed.lines, await loadUnits(skuIds)); // satuan jual, isi, qty satuan dasar, produk
   return { customer };
 };
 
@@ -153,9 +152,10 @@ const resolveRefs = async (parsed) => {
  * quotePrices (Map skuId -> harga): SO dari quotation memakai harga penawaran untuk SKU-nya.
  */
 const applyPrices = async (parsed, quotePrices = null) => {
-  const prices = await resolvePrices(parsed.customer, parsed.lines.map((l) => l.sku));
+  const prices = await resolveUnitPrices(parsed.customer, parsed.lines.map((l) => ({ sku: l.sku, uom: l.uom })));
   parsed.lines.forEach((l) => {
-    l.hargaJual = round2(quotePrices?.has(l.sku) ? quotePrices.get(l.sku) : (prices.get(l.sku)?.price ?? 0));
+    const key = unitKey(l.sku, l.isPackage ? l.uom : null);
+    l.hargaJual = round2(quotePrices?.has(key) ? quotePrices.get(key) : (priceForLine(prices, l) ?? 0));
     l.subtotal = salesLineSubtotal(l);
   });
   const subtotal = round2(parsed.lines.reduce((s, l) => s + l.subtotal, 0));
@@ -226,11 +226,14 @@ const checkCredit = async (doc, req, settings) => {
   doc.creditOverrideDate = new Date();
 };
 
-/** Harga penawaran untuk SO hasil konversi quotation: Map skuId -> harga (null = tanpa quotation) */
+/** Harga penawaran: Map unitKey(sku, kemasan | null) -> harga */
+const quoteKeyMap = (q) => new Map(q.lines.map((l) => [unitKey(l.sku, (l.konversi || 1) > 1 ? l.uom : null), l.hargaJual]));
+
+/** Harga penawaran untuk SO hasil konversi quotation (null = tanpa quotation) */
 const quotationPrices = async (quotationId) => {
   if (!quotationId) return null;
-  const q = await require('../models/Quotation').findById(quotationId).select('lines.sku lines.hargaJual').lean();
-  return q ? new Map(q.lines.map((l) => [String(l.sku), l.hargaJual])) : null;
+  const q = await require('../models/Quotation').findById(quotationId).select('lines.sku lines.uom lines.konversi lines.hargaJual').lean();
+  return q ? quoteKeyMap(q) : null;
 };
 
 /**
@@ -251,11 +254,11 @@ exports.createDraftFromQuotation = async (req, q, customerId) => {
     discountAmount: q.discountAmount || 0,
     shippingCharge: q.deliveryMethod === 'PICKUP' ? 0 : (q.shippingCharge || 0),
     note: q.note || '',
-    lines: q.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, hargaJual: null, diskonPersen: l.diskonPersen || 0, qtyDelivered: 0, note: l.note })),
+    lines: q.lines.map((l) => ({ sku: String(l.sku), uom: l.uom ? String(l.uom) : null, qty: l.qtyUom ?? l.qty, hargaJual: null, diskonPersen: l.diskonPersen || 0, qtyDelivered: 0, note: l.note })),
   };
   assertGudang(req, parsed.gudang);
   const { customer } = await resolveRefs(parsed);
-  await applyPrices(parsed, new Map(q.lines.map((l) => [String(l.sku), l.hargaJual])));
+  await applyPrices(parsed, quoteKeyMap(q));
   const doc = new SalesOrder({ no: await nextDocNo('SO'), createdBy: req.user._id, quotation: q._id });
   fillSo(doc, parsed, await getSettings(), customer);
   await doc.save();
@@ -275,6 +278,7 @@ const populateSo = (query) => query
   .populate('gudang', 'code name isActive')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name')
   .populate('confirmedBy', 'name')
@@ -385,6 +389,7 @@ exports.getSalesOrder = async (req, res) => {
 
     // posisi kredit customer (tanpa SO ini) untuk peringatan sebelum konfirmasi
     if (doc.status === 'DRAFT' && doc.customer) doc.credit = await customerCredit(doc.customer._id, { excludeSo: doc._id });
+    if (doc.status === 'DRAFT') await attachUnits(doc);
 
     if (doc.status !== 'DRAFT') {
       doc.deliveries = await DeliveryOrder.find({ salesOrder: doc._id })
@@ -438,17 +443,18 @@ exports.searchSkus = async (req, res) => {
     if (!q) return successResponse(res, []);
     const rx = { $regex: escapeRegex(q), $options: 'i' };
     const produkIds = await Produk.find({ name: rx }).distinct('_id');
-    const skus = await ProdukSku.find({ isActive: true, $or: [{ sku: rx }, { barcode: q }, { produk: { $in: produkIds } }] })
-      .select('sku produk variantValues isActive hargaJual avgCost')
+    const skus = await ProdukSku.find({ isActive: true, $or: [{ sku: rx }, { barcode: q }, { 'packages.barcode': q }, { produk: { $in: produkIds } }] })
+      .select('sku produk variantValues isActive hargaJual avgCost packages.uom packages.barcode')
       .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
       .sort({ sku: 1 })
       .limit(20)
       .lean();
     const ids = skus.map((s) => s._id);
-    const [balances, committed, prices] = await Promise.all([
+    const [balances, committed, prices, units] = await Promise.all([
       validGudang ? getBalances(gudang, ids) : new Map(),
       validGudang ? committedQty(gudang, ids, { excludeSo: mongoose.isValidObjectId(req.query.exclude) ? req.query.exclude : null }) : new Map(),
       resolvePrices(req.query.customer, ids),
+      unitOptions(req.query.customer, ids),
     ]);
     const canSeeCost = canSeeCostOf(req);
     return successResponse(res, skus.map((s) => {
@@ -467,6 +473,8 @@ exports.searchSkus = async (req, res) => {
         available: round2(qty - com),
         hargaJual: prices.get(id)?.price ?? s.hargaJual ?? 0,
         priceSource: prices.get(id)?.source || 'default',
+        units: units.get(id) || [],   // satuan dasar + kemasan aktif dengan harga customer
+        matchedUom: (s.packages || []).find((p) => p.barcode === q)?.uom || null,
         ...(canSeeCost ? { avgCost: s.avgCost ?? null } : {}),
       };
     }));
@@ -513,6 +521,13 @@ exports.getCustomerShipTo = async (req, res) => {
   } catch (error) {
     return handleError(res, error);
   }
+};
+
+
+/** Draft: pilihan satuan jual (dasar + kemasan aktif, harga customer) per baris untuk form */
+const attachUnits = async (doc) => {
+  const opts = await unitOptions(doc.customer?._id ?? doc.customer, doc.lines.map((l) => l.sku?._id ?? l.sku));
+  doc.lines.forEach((l) => { l.units = opts.get(String(l.sku?._id ?? l.sku)) || []; });
 };
 
 // ---------------------------------------------------------------- draft / confirm
@@ -570,7 +585,7 @@ exports.confirmSalesOrder = async (req, res) => {
     const doc = await runInTransaction(async () => {
       const doc = await loadDraft(req, req.params.id);
       if (!doc.lines.length) throw new HttpError('Sales order has no lines', 400);
-      await resolveRefs({ customer: String(doc.customer), gudang: String(doc.gudang), lines: doc.lines.map((l) => ({ sku: String(l.sku) })) });
+      await resolveRefs({ customer: String(doc.customer), gudang: String(doc.gudang), lines: doc.lines.map((l) => ({ sku: String(l.sku), uom: l.uom, qty: l.qtyUom ?? l.qty })) });
       const before = await audit.snap('salesOrder', [doc]);
       await confirm(doc, req);
       await doc.save();

@@ -335,8 +335,11 @@ test('combined invoice from several delivery orders (across sales orders), rules
   const d2 = await deliver(so2, [{ sku: s.a._id, qty: 2 }]);
   const d3 = await deliver(so3, [{ sku: s.a._id, qty: 1 }]);
 
-  // harga beda (SO3 tanpa diskon baris) -> tagih terpisah
-  assert.match((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d3._id] })).message, /different price/);
+  // harga / diskon beda (SO3 tanpa diskon baris) -> baris terpisah untuk SKU yang sama
+  const mixed = ok(await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d3._id] }), 201);
+  const aLines = mixed.lines.filter((l) => String(l.sku) === String(s.a._id));
+  assert.deepEqual(aLines.map((l) => [l.qty, l.hargaJual, l.diskonPersen]).sort(), [[1, 100000, 0], [2, 100000, 10]]);
+  ok(await admin.post(`/api/sales-invoice/${mixed._id}/cancel`, { reason: 'Coba gabung' }));
   assert.equal((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [] })).status, 400);
   const staff = await t.loginAs({ deliveryOrder: ['view'], salesInvoice: ['view', 'create'] }, 'NoPost');
   assert.equal((await staff.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d2._id] })).status, 403);

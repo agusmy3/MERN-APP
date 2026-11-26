@@ -12,6 +12,7 @@ const mongoose = require('mongoose');
  *   amount = mengurangi tagihan (termasuk PPN), netAmount = mengurangi penjualan bersih (dpp).
  */
 const lineSchema = new mongoose.Schema({
+  invoiceLine: { type: mongoose.Schema.Types.ObjectId, default: null }, // _id baris invoice (null = data lama, dicocokkan per SKU)
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true },
   qty: { type: Number, required: true },

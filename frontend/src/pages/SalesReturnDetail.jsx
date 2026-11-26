@@ -34,8 +34,11 @@ const btnDanger = `${btn} border border-danger-line text-danger hover:bg-danger-
 
 const isBlank = (v) => v === '' || v === null || v === undefined;
 
-/** baris invoice -> baris form retur (qty = isian) */
+/** baris invoice -> baris form retur (qty = isian, SATUAN DASAR; baris kemasan menampilkan kemasannya) */
 const lineFromInvoice = (l, qty = '', note = '') => ({
+  key: String(l.invoiceLine || l._id || l.sku?._id),
+  invoiceLine: l.invoiceLine || l._id || null,
+  sellUnit: (l.konversi || 1) > 1 ? `${l.qtyUom} ${l.uom?.code || ''} x ${l.konversi}` : '',
   sku: { _id: l.sku?._id, sku: l.sku?.sku ?? '(deleted SKU)', produkName: l.produk?.name || '', variant: variantLabel(l.sku), uom: l.produk?.uom?.code || '' },
   sold: l.qty,
   returned: l.qtyReturned || 0,
@@ -49,7 +52,7 @@ const toPayload = (invoiceId, form, lines) => ({
   salesInvoice: invoiceId,
   date: form.date,
   reason: form.reason,
-  lines: lines.filter((l) => !isBlank(l.qty) && Number(l.qty) !== 0).map((l) => ({ sku: l.sku._id, qty: l.qty, note: l.note })),
+  lines: lines.filter((l) => !isBlank(l.qty) && Number(l.qty) !== 0).map((l) => ({ invoiceLine: l.invoiceLine, sku: l.sku._id, qty: l.qty, note: l.note })),
 });
 
 /** Pilih invoice POSTED yang masih bisa diretur (halaman /sales-return/new tanpa ?invoice=) */
@@ -138,9 +141,10 @@ export default function SalesReturnDetail() {
         inv = await getInvoiceForReturn(d.salesInvoice._id, user.token).catch(() => null);
       }
       if (inv) {
-        const qtyOf = new Map(d.lines.map((l) => [String(l.sku?._id), l]));
+        // isian draft per baris invoice (invoiceLine; retur lama per SKU)
+        const qtyOf = new Map(d.lines.map((l) => [String(l.invoiceLine || l.sku?._id), l]));
         ls = inv.lines.map((l) => {
-          const cur = qtyOf.get(String(l.sku?._id));
+          const cur = qtyOf.get(String(l._id)) || qtyOf.get(String(l.sku?._id));
           return lineFromInvoice(l, cur?.qty ?? '', cur?.note || '');
         });
       } else {
@@ -189,7 +193,7 @@ export default function SalesReturnDetail() {
   const payload = form && invoiceId ? toPayload(invoiceId, form, lines) : null;
   const dirty = editable && (isNew ? payload?.lines.length > 0 : JSON.stringify(payload) !== savedPayload);
 
-  const setLine = (skuId, field, value) => setLines((prev) => prev.map((l) => (l.sku._id === skuId ? { ...l, [field]: value } : l)));
+  const setLine = (key, field, value) => setLines((prev) => prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
   const fillAll = () => setLines((prev) => prev.map((l) => ({ ...l, qty: l.returnable || '' })));
   const clearAll = () => setLines((prev) => prev.map((l) => ({ ...l, qty: '' })));
 
@@ -435,11 +439,12 @@ export default function SalesReturnDetail() {
                     const over = editable && q > l.returnable;
                     const value = l.amount ?? (q ? round2(q * (l.unitAmount || 0)) : null);
                     return (
-                      <tr key={l.sku._id || index} className={over ? 'bg-danger-soft' : q ? '' : 'hover:bg-subtle'}>
+                      <tr key={l.key || index} className={over ? 'bg-danger-soft' : q ? '' : 'hover:bg-subtle'}>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right text-muted tabular-nums">{index + 1}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <div className="font-mono text-xs font-semibold text-fg">{l.sku.sku}</div>
                           <div className="text-xs text-muted truncate max-w-72">{l.sku.produkName} · {l.sku.variant}</div>
+                          {l.sellUnit && <div className="text-[10px] text-primary">dijual {l.sellUnit} · retur dalam {l.sku.uom}</div>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums text-muted">{l.sold === null || l.sold === undefined ? '-' : `${formatNumber(l.sold)} ${l.sku.uom}`}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums text-muted">{formatNumber(l.returned || 0)}</td>
@@ -447,13 +452,13 @@ export default function SalesReturnDetail() {
                           {editable ? (
                             <input aria-label={`Return qty ${l.sku.sku}`} type="number" min="0" max={l.returnable} step="0.01" value={l.qty} disabled={busy || !l.returnable}
                               placeholder={l.returnable ? `maks. ${formatNumber(l.returnable)}` : 'habis'}
-                              onChange={(e) => setLine(l.sku._id, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums ${over ? 'border-danger' : ''}`} />
+                              onChange={(e) => setLine(l.key, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums ${over ? 'border-danger' : ''}`} />
                           ) : <span className="tabular-nums font-medium">{formatNumber(l.qty)}</span>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">{value === null ? '-' : formatRupiah(value)}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <input aria-label={`Note ${l.sku.sku}`} value={l.note} maxLength={200} disabled={!editable || busy}
-                            onChange={(e) => setLine(l.sku._id, 'note', e.target.value)} className={cellInput} />
+                            onChange={(e) => setLine(l.key, 'note', e.target.value)} className={cellInput} />
                         </td>
                       </tr>
                     );

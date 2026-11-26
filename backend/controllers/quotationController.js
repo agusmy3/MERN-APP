@@ -11,7 +11,7 @@ const { nextDocNo } = require('../helpers/stockHelper');
 const { getSettings } = require('../helpers/settings');
 const { checkAmount, round2 } = require('../helpers/number');
 const { salesLineSubtotal, salesTotals } = require('../helpers/salesHelper');
-const { resolvePrices } = require('../helpers/priceHelper');
+const { loadUnits, applyUnits, resolveUnitPrices, priceForLine, unitOptions } = require('../helpers/packageHelper');
 const { MAX_LINES } = require('../config/stock');
 const { createDraftFromQuotation } = require('./salesOrderController');
 
@@ -68,17 +68,15 @@ const parseQuotation = (body) => {
   const input = Array.isArray(body.lines) ? body.lines : [];
   if (!input.length) throw new HttpError('Add at least one item', 400);
   if (input.length > MAX_LINES) throw new HttpError(`A quotation can have at most ${MAX_LINES} lines`, 400);
-  const seen = new Set();
   const lines = input.map((l, i) => {
     const n = `Line ${i + 1}`;
     if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-    if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-    seen.add(String(l.sku));
+    if (l.uom && !mongoose.isValidObjectId(l.uom)) throw new HttpError(`${n}: invalid unit`, 400);
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true }) || checkAmount(l.diskonPersen ?? 0, 'Discount');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
     const diskonPersen = round2(l.diskonPersen ?? 0);
     if (diskonPersen > 100) throw new HttpError(`${n}: Discount must be <= 100`, 400);
-    return { sku: String(l.sku), qty: round2(l.qty), hargaJual: null, diskonPersen, note: trimText(l.note, 200) || undefined };
+    return { sku: String(l.sku), uom: l.uom ? String(l.uom) : null, qty: round2(l.qty), hargaJual: null, diskonPersen, note: trimText(l.note, 200) || undefined };
   });
 
   return {
@@ -119,11 +117,10 @@ const resolveAndPrice = async (parsed) => {
   if (skus.length !== new Set(skuIds).size) throw new HttpError('One or more SKUs no longer exist', 400);
   const inactive = skus.find((s) => s.isActive === false);
   if (inactive) throw new HttpError(`${inactive.sku} is inactive and cannot be quoted`, 400);
-  const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
-  const prices = await resolvePrices(parsed.customer, skuIds);
+  applyUnits(parsed.lines, await loadUnits(skuIds));
+  const prices = await resolveUnitPrices(parsed.customer, parsed.lines.map((l) => ({ sku: l.sku, uom: l.uom })));
   parsed.lines.forEach((l) => {
-    l.produk = produkOf.get(l.sku);
-    l.hargaJual = round2(prices.get(l.sku)?.price ?? 0);
+    l.hargaJual = round2(priceForLine(prices, l) ?? 0);
     l.subtotal = salesLineSubtotal(l);
   });
   const subtotal = round2(parsed.lines.reduce((s, l) => s + l.subtotal, 0));
@@ -145,6 +142,7 @@ const populateQuotation = (query) => query
   .populate('gudang', 'code name isActive')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
   .populate('salesOrder', 'no status')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name')
@@ -232,6 +230,10 @@ exports.getQuotation = async (req, res) => {
     const doc = await populateQuotation(Quotation.findById(req.params.id)).lean();
     if (!doc) return errorResponse(res, 'Quotation not found', 404);
     doc.expired = isExpired(doc);
+    if (doc.status === 'DRAFT') {
+      const opts = await unitOptions(doc.customer?._id, doc.lines.map((l) => l.sku?._id ?? l.sku));
+      doc.lines.forEach((l) => { l.units = opts.get(String(l.sku?._id ?? l.sku)) || []; });
+    }
     return successResponse(res, doc);
   } catch (error) {
     return handleError(res, error);
@@ -327,7 +329,7 @@ exports.sendQuotation = transition(
     if (startOfDay(doc.validUntil) < startOfDay(new Date())) throw new HttpError('Valid-until date has passed. Change it first.', 400);
     const parsed = {
       customer: String(doc.customer), prospectName: doc.prospectName, prospectContact: doc.prospectContact, gudang: String(doc.gudang),
-      discountAmount: doc.discountAmount, lines: doc.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, diskonPersen: l.diskonPersen, note: l.note })),
+      discountAmount: doc.discountAmount, lines: doc.lines.map((l) => ({ sku: String(l.sku), uom: l.uom, qty: l.qtyUom ?? l.qty, diskonPersen: l.diskonPersen, note: l.note })),
     };
     await resolveAndPrice(parsed);
     doc.lines = parsed.lines;

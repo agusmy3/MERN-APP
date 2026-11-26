@@ -23,7 +23,7 @@ import DeliveryInvoicePanel from '../components/sales/DeliveryInvoicePanel';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
-import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper';
+import { formatNumber, formatRupiah, round2, variantLabel } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
 import { DO_STATUS_META, SO_STATUS_META, INVOICE_STATUS_META, PAYMENT_STATUS_META, DELIVERY_METHODS, addressLine } from '../utils/salesMeta';
 import { printDeliveryNote } from '../utils/documentPrint';
@@ -36,34 +36,45 @@ const btnGhost = `${btn} border border-line hover:bg-subtle`;
 const btnPrimary = `${btn} bg-primary hover:bg-primary-hover text-primary-fg`;
 const btnDanger = `${btn} border border-danger-line text-danger hover:bg-danger-soft`;
 
-// baris form dari baris SO (+ isian DO jika ada)
-const lineFromSo = (sl, dl) => ({
-  sku: sl.sku?._id,
-  code: sl.sku?.sku ?? '(deleted SKU)',
-  produkName: sl.produk?.name || '',
-  variant: variantLabel(sl.sku),
-  uom: sl.produk?.uom?.code || '',
-  ordered: sl.qty,
-  delivered: sl.qtyDelivered || 0,
-  outstanding: sl.outstanding,
-  currentQty: sl.currentQty ?? null,
-  qty: dl ? dl.qty : '',
-  note: dl?.note || '',
-  unitCost: null,
-});
+// baris form dari baris SO (+ isian DO jika ada). Qty dalam satuan jual baris SO (kemasan), stok dalam satuan dasar.
+const lineFromSo = (sl, dl) => {
+  const k = sl.konversi || 1;
+  return {
+    key: String(sl._id),
+    soLine: sl._id,
+    sku: sl.sku?._id,
+    code: sl.sku?.sku ?? '(deleted SKU)',
+    produkName: sl.produk?.name || '',
+    variant: variantLabel(sl.sku),
+    uom: sl.uom?.code || sl.produk?.uom?.code || '',
+    baseUom: sl.produk?.uom?.code || '',
+    konversi: k,
+    ordered: sl.qtyUom ?? sl.qty,
+    delivered: round2((sl.qtyDelivered || 0) / k),
+    outstanding: sl.outstanding,
+    currentQty: sl.currentQty ?? null,
+    qty: dl ? (dl.qtyUom ?? dl.qty) : '',
+    note: dl?.note || '',
+    unitCost: null,
+  };
+};
 
 // baris DO yang sudah diposting / dibatalkan
 const lineFromDo = (l) => ({
+  key: String(l._id || l.soLine || l.sku?._id),
+  soLine: l.soLine,
+  konversi: l.konversi || 1,
+  baseUom: l.produk?.uom?.code || '',
   sku: l.sku?._id,
   code: l.sku?.sku ?? '(deleted SKU)',
   produkName: l.produk?.name || '',
   variant: variantLabel(l.sku),
-  uom: l.produk?.uom?.code || '',
+  uom: l.uom?.code || l.produk?.uom?.code || '',
   ordered: l.ordered,
   delivered: l.delivered,
   outstanding: l.outstanding,
   currentQty: null,
-  qty: l.qty,
+  qty: l.qtyUom ?? l.qty,
   note: l.note || '',
   unitCost: l.unitCost ?? null,
 });
@@ -79,7 +90,7 @@ const toPayload = (form, lines) => ({
   trackingNo: form.trackingNo,
   pickedUpBy: form.pickedUpBy,
   note: form.note,
-  lines: lines.filter((l) => l.qty !== '' && Number(l.qty) !== 0).map((l) => ({ sku: l.sku, qty: l.qty, note: l.note })),
+  lines: lines.filter((l) => l.qty !== '' && Number(l.qty) !== 0).map((l) => ({ soLine: l.soLine, sku: l.sku, qty: l.qty, note: l.note })),
 });
 
 /** Pilih SO yang bisa dikirim (OPEN / PARTIAL) */
@@ -157,7 +168,7 @@ export default function DeliveryOrderDetail() {
       }
       setSo(s);
       setForm({ ...EMPTY_HEADER, date: toDateInput(), salesOrder: s._id });
-      setLines(s.lines.filter((l) => l.outstanding > 0).map((l) => ({ ...lineFromSo(l), qty: Math.min(l.outstanding, Math.max(l.currentQty, 0)) })));
+      setLines(s.lines.filter((l) => l.outstanding > 0).map((l) => ({ ...lineFromSo(l), qty: Math.min(l.outstanding, Math.max(Math.floor(l.currentQty / (l.konversi || 1)), 0)) })));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load sales order');
     }
@@ -175,8 +186,10 @@ export default function DeliveryOrderDetail() {
       if (d.status === 'DRAFT') {
         const s = await getSoForDelivery(d.salesOrder._id, user.token);
         setSo(s);
-        const bySku = new Map(d.lines.map((l) => [String(l.sku?._id), l]));
-        ls = s.lines.filter((l) => l.outstanding > 0 || bySku.has(String(l.sku?._id))).map((l) => lineFromSo(l, bySku.get(String(l.sku?._id))));
+        // isian draft per baris SO (soLine; DO lama per SKU)
+        const byLine = new Map(d.lines.map((l) => [String(l.soLine || l.sku?._id), l]));
+        const draftOf = (sl) => byLine.get(String(sl._id)) || byLine.get(String(sl.sku?._id));
+        ls = s.lines.filter((l) => l.outstanding > 0 || draftOf(l)).map((l) => lineFromSo(l, draftOf(l)));
       } else {
         setSo(null);
         ls = d.lines.map(lineFromDo);
@@ -216,12 +229,12 @@ export default function DeliveryOrderDetail() {
   const pickup = method === 'PICKUP';
   const shipTo = so?.shipTo || doc?.shipTo;
 
-  const setLine = (sku, patch) => setLines((prev) => prev.map((l) => (l.sku === sku ? { ...l, ...patch } : l)));
+  const setLine = (key, patch) => setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const summary = useMemo(() => {
     const filled = lines.filter((l) => l.qty !== '' && Number(l.qty) > 0);
     const over = lines.filter((l) => isDraft && l.qty !== '' && Number(l.qty) > l.outstanding);
-    const short = lines.filter((l) => isDraft && l.currentQty !== null && Number(l.qty) > l.currentQty);
-    return { filled: filled.length, over: over.length, short: short.length, qty: filled.reduce((s, l) => s + Number(l.qty), 0) };
+    const short = lines.filter((l) => isDraft && l.currentQty !== null && Number(l.qty) * (l.konversi || 1) > l.currentQty);
+    return { filled: filled.length, over: over.length, short: short.length, qty: filled.reduce((s, l) => s + Number(l.qty) * (l.konversi || 1), 0) };
   }, [lines, isDraft]);
 
   // ---------- aksi ----------
@@ -510,9 +523,9 @@ export default function DeliveryOrderDetail() {
                   {lines.map((l, index) => {
                     const qty = l.qty === '' ? null : Number(l.qty);
                     const over = isDraft && qty !== null && qty > l.outstanding;
-                    const short = isDraft && qty !== null && l.currentQty !== null && qty > l.currentQty;
+                    const short = isDraft && qty !== null && l.currentQty !== null && qty * (l.konversi || 1) > l.currentQty;
                     return (
-                      <tr key={l.sku || index} className={over || short ? 'bg-danger-soft' : 'hover:bg-subtle'}>
+                      <tr key={l.key || index} className={over || short ? 'bg-danger-soft' : 'hover:bg-subtle'}>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <div className="font-mono text-xs font-semibold">{l.code}</div>
                           <div className="text-xs text-muted truncate max-w-64">{l.produkName} · {l.variant}</div>
@@ -520,11 +533,11 @@ export default function DeliveryOrderDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">{l.ordered === null || l.ordered === undefined ? '-' : `${formatNumber(l.ordered)} ${l.uom}`}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums text-muted">{l.delivered === null || l.delivered === undefined ? '-' : formatNumber(l.delivered)}</td>
                         {isDraft && <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">{formatNumber(l.outstanding)}</td>}
-                        {isDraft && <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums ${short ? 'text-danger font-semibold' : 'text-muted'}`}>{l.currentQty === null ? '-' : formatNumber(l.currentQty)}</td>}
+                        {isDraft && <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums ${short ? 'text-danger font-semibold' : 'text-muted'}`}>{l.currentQty === null ? '-' : `${formatNumber(l.currentQty)} ${l.baseUom}`}</td>}
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
-                            <input aria-label={`Deliver ${l.code}`} type="number" min="0" max={l.outstanding} step="0.01" data-qty-index={index}
-                              value={l.qty} disabled={busy} onChange={(e) => setLine(l.sku, { qty: e.target.value })}
+                            <input aria-label={`Deliver ${l.code}`} type="number" min="0" max={l.outstanding} step={l.konversi > 1 ? 1 : 0.01} data-qty-index={index}
+                              value={l.qty} disabled={busy} onChange={(e) => setLine(l.key, { qty: e.target.value })}
                               onKeyDown={(e) => {
                                 if (e.key !== 'Enter') return;
                                 e.preventDefault();
@@ -532,6 +545,7 @@ export default function DeliveryOrderDetail() {
                               }}
                               className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums font-medium">{formatNumber(l.qty)} {l.uom}</span>}
+                          {l.konversi > 1 && Number(l.qty) > 0 && <div className="text-[10px] text-muted">= {formatNumber(round2(Number(l.qty) * l.konversi))} {l.baseUom}</div>}
                           {over && <div className="text-[10px] text-danger mt-0.5">melebihi sisa SO</div>}
                           {!over && short && <div className="text-[10px] text-danger mt-0.5">stok kurang</div>}
                         </td>
@@ -539,7 +553,7 @@ export default function DeliveryOrderDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           {editable ? (
                             <input aria-label={`Note ${l.code}`} value={l.note} maxLength={200} disabled={busy}
-                              onChange={(e) => setLine(l.sku, { note: e.target.value })} className={cellInput} />
+                              onChange={(e) => setLine(l.key, { note: e.target.value })} className={cellInput} />
                           ) : <span className="text-muted">{l.note}</span>}
                         </td>
                       </tr>

@@ -46,6 +46,7 @@ const ENTITIES = {
       variantValues: { label: 'Variant', format: 'variantValues' },
       hargaJual: { label: 'Selling Price', format: 'money' },
       barcode: { label: 'Barcode' },
+      packages: { label: 'Selling Package', format: 'packages' },
       isActive: { label: 'Active', format: 'bool' },
     },
     label: (doc) => doc.sku,
@@ -539,10 +540,12 @@ const resolveRefs = async (entity, docs) => {
       if (def.format === 'variantValues') {
         (doc[field] || []).forEach((vv) => add('Variant', 'code', idOf(vv.variant)));
       }
+      if (def.format === 'packages') (doc[field] || []).forEach((p) => add('Uom', 'code', idOf(p.uom)));
       if (['stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines'].includes(def.format)) {
         (doc[field] || []).forEach((l) => {
           add('ProdukSku', 'sku', idOf(l.sku));
           if (l.uomBeli) add('Uom', 'code', idOf(l.uomBeli));
+          if (l.uom) add('Uom', 'code', idOf(l.uom));
         });
       }
     }
@@ -608,17 +611,24 @@ const normalizeValue = (def, value, texts) => {
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
     return (value || []).map((m) => `${m.type} ${num(m.amount)} · ${m.reason}`);
   }
+  if (def.format === 'packages') {
+    // mis. "DUS = 24 @ 78,000 · 899001 (inactive)"
+    const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return (value || []).map((p) => `${texts.get(`Uom:${idOf(p.uom)}`) ?? '?'} = ${num(p.konversi)}`
+      + `${p.hargaJual === null || p.hargaJual === undefined ? '' : ` @ ${num(p.hargaJual)}`}${p.barcode ? ` · ${p.barcode}` : ''}${p.isActive === false ? ' (inactive)' : ''}`);
+  }
   if (def.format === 'priceLines') {
     // mis. "KAOS-M: 75,000"
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
-    return (value || []).map((l) => `${texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)'}: ${num(l.price)}`);
+    return (value || []).map((l) => `${texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)'}${l.uom ? ` ${texts.get(`Uom:${idOf(l.uom)}`) ?? ''}` : ''}: ${num(l.price)}`);
   }
   if (def.format === 'salesLines') {
     // mis. "KAOS-M: 2 x 75,000 -10%"
     const num = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
     return (value || []).map((l) => {
       const sku = texts.get(`ProdukSku:${idOf(l.sku)}`) ?? '(deleted)';
-      return `${sku}: ${num(l.qty)} x ${num(l.hargaJual)}${l.diskonPersen ? ` -${num(l.diskonPersen)}%` : ''}${l.note ? ` · ${l.note}` : ''}`;
+      const unit = l.konversi > 1 ? ` ${texts.get(`Uom:${idOf(l.uom)}`) ?? ''}` : '';
+      return `${sku}: ${num(l.qtyUom ?? l.qty)}${unit} x ${num(l.hargaJual)}${l.diskonPersen ? ` -${num(l.diskonPersen)}%` : ''}${l.note ? ` · ${l.note}` : ''}`;
     });
   }
   if (def.format === 'revalLines') {
@@ -669,7 +679,7 @@ const snap = async (entity, docs) => {
 };
 
 // format yang disimpan sebagai daftar teks (ditampilkan + ditambah / - dihapus)
-const LIST_FORMATS = ['list', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines', 'cashMoves'];
+const LIST_FORMATS = ['list', 'packages', 'stockLines', 'poLines', 'grLines', 'revalLines', 'trfLines', 'salesLines', 'priceLines', 'cashMoves'];
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const sameRef = (a, b) => {

@@ -167,6 +167,10 @@ exports.deleteUom = async (req, res) => {
       const produkCount = await Produk.countDocuments({ uom: uom._id });
       const priceCount = await VendorPrice.countDocuments({ uomBeli: uom._id });
       const poCount = await require('../models/PurchaseOrder').countDocuments({ 'lines.uomBeli': uom._id });
+      const pkgCount = await require('../models/ProdukSku').countDocuments({ 'packages.uom': uom._id })
+        + await require('../models/SalesInvoice').countDocuments({ 'lines.uom': uom._id })
+        + await require('../models/SalesOrder').countDocuments({ 'lines.uom': uom._id });
+      if (pkgCount) throw new HttpError('UoM is used as a selling package or in sales documents', 400);
       if (produkCount || priceCount || poCount) {
         throw new HttpError(`UoM is still used by ${produkCount} product(s), ${priceCount} vendor price(s) and ${poCount} purchase order(s)`, 400);
       }

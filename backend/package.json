@@ -16,6 +16,7 @@
     "migrate:avg-cost": "node scripts/migrate-avg-cost.js",
     "migrate:uom-type": "node scripts/migrate-uom-type.js",
     "migrate:invoice-deliveries": "node scripts/migrate-invoice-deliveries.js",
+    "migrate:sales-lines": "node scripts/migrate-sales-lines.js",
     "seed:defaults": "node scripts/seed-defaults.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",

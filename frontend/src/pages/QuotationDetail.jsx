@@ -17,6 +17,8 @@ import StatusBadge from '../components/stock/StatusBadge';
 import ReasonPanel from '../components/stock/ReasonPanel';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
+import UnitCell from '../components/sales/UnitCell';
+import { unitFieldsFromDoc, unitFieldsFromSearch, nextUnitFor, withUnit, payloadUnit, priceItems, priceKey, baseQty } from '../utils/salesLines';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
@@ -48,9 +50,10 @@ const lineFromDoc = (l) => ({
   hargaJual: l.hargaJual ?? '',
   diskonPersen: l.diskonPersen || 0,
   note: l.note || '',
+  ...unitFieldsFromDoc(l),
 });
 
-const lineFromSearch = (s) => ({
+const lineFromSearch = (s, unit) => ({
   sku: { _id: s._id, sku: s.sku, produkName: s.produk?.name || '', variant: s.variant, uom: s.uom, isActive: s.isActive },
   qty: 1,
   hargaJual: s.hargaJual ?? '',
@@ -58,6 +61,7 @@ const lineFromSearch = (s) => ({
   note: '',
   available: s.available ?? s.qty,
   priceSource: s.priceSource || 'default',
+  ...unitFieldsFromSearch(s, unit),
 });
 
 const toPayload = (form, lines) => ({
@@ -75,7 +79,7 @@ const toPayload = (form, lines) => ({
   discountAmount: form.discountAmount || 0,
   shippingCharge: form.deliveryMethod === 'DELIVERY' ? (form.shippingCharge || 0) : 0,
   // harga tidak dikirim: backend mengisinya dari price list / harga jual SKU (dibekukan, dikunci saat dikirim)
-  lines: lines.map((l) => ({ sku: l.sku._id, qty: l.qty, diskonPersen: l.diskonPersen || 0, note: l.note })),
+  lines: lines.map((l) => ({ sku: l.sku._id, uom: payloadUnit(l), qty: l.qty, diskonPersen: l.diskonPersen || 0, note: l.note })),
 });
 
 /** Panel konversi ke Sales Order; quotation walk-in wajib memilih customer bernama */
@@ -219,12 +223,21 @@ export default function QuotationDetail() {
   // ---------- baris ----------
   const existing = useMemo(() => new Set(lines.map((l) => l.sku._id)), [lines]);
   const addLines = (skus) => {
-    const fresh = skus.filter((s) => !existing.has(s._id));
-    if (!fresh.length) return toast.info('SKU tersebut sudah ada di quotation.');
-    setLines((prev) => [...prev, ...fresh.map(lineFromSearch)]);
+    const next = [...lines];
+    let added = 0;
+    skus.forEach((s) => {
+      const unit = nextUnitFor(s, next); // SKU sama boleh beberapa satuan (DUS + PCS)
+      if (unit) {
+        next.push(lineFromSearch(s, unit));
+        added += 1;
+      }
+    });
+    if (!added) return toast.info('Semua satuan SKU tersebut sudah ada di dokumen.');
+    setLines(next);
   };
-  const setLine = (skuId, field, value) => setLines((prev) => prev.map((l) => (l.sku._id === skuId ? { ...l, [field]: value } : l)));
-  const removeLine = (skuId) => setLines((prev) => prev.filter((l) => l.sku._id !== skuId));
+  const setLine = (key, field, value) => setLines((prev) => prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
+  const setUnit = (key, uomId) => setLines((prev) => prev.map((l) => (l.key === key ? withUnit(l, uomId) : l)));
+  const removeLine = (key) => setLines((prev) => prev.filter((l) => l.key !== key));
   const searchFn = useCallback(
     (token, params) => searchQuotationSkus(token, { ...params, customer: form?.customer || undefined }),
     [form?.customer],
@@ -235,10 +248,10 @@ export default function QuotationDetail() {
     setForm((f) => ({ ...f, customer: cust }));
     if (!cust || !lines.length) return;
     try {
-      const prices = await getQuotationSkuPrices(user.token, cust, lines.map((l) => l.sku._id));
+      const prices = await getQuotationSkuPrices(user.token, cust, priceItems(lines));
       let changed = 0;
       setLines((prev) => prev.map((l) => {
-        const p = prices[l.sku._id];
+        const p = prices[priceKey(l)];
         if (!p) return l;
         if (Number(l.hargaJual) !== p.price) changed++;
         return { ...l, hargaJual: p.price, priceSource: p.source };
@@ -262,6 +275,8 @@ export default function QuotationDetail() {
     if (!lines.length) return 'Tambahkan minimal 1 SKU.';
     const bad = lines.find((l) => isBlank(l.qty) || Number(l.qty) <= 0);
     if (bad) return `${bad.sku.sku}: isi qty (> 0).`;
+    const frac = lines.find((l) => (l.konversi || 1) > 1 && !Number.isInteger(Number(l.qty)));
+    if (frac) return `${frac.sku.sku}: qty ${frac.uomCode} harus bilangan bulat.`;
     const disc = lines.find((l) => Number(l.diskonPersen) < 0 || Number(l.diskonPersen) > 100);
     if (disc) return `${disc.sku.sku}: diskon 0 – 100%.`;
     if (Number(form.discountAmount) > totals.subtotal) return 'Diskon dokumen tidak boleh melebihi subtotal.';
@@ -505,6 +520,7 @@ export default function QuotationDetail() {
                     <th className="px-2 py-2 border-b border-line font-semibold">SKU</th>
                     {editable && <th className="px-2 py-2 border-b border-line font-semibold w-28 text-right" title="Stok − dipesan SO (informasi)">Available</th>}
                     <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">Qty</th>
+                    <th className="px-2 py-2 border-b border-line font-semibold w-28">Unit</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">Price</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-20 text-right">Disc %</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">Subtotal</th>
@@ -514,7 +530,7 @@ export default function QuotationDetail() {
                 </thead>
                 <tbody>
                   {lines.map((l, index) => (
-                    <tr key={l.sku._id || index} className="align-top hover:bg-subtle">
+                    <tr key={l.key} className="align-top hover:bg-subtle">
                       <td className="px-2 py-1.5 border-t border-line-soft text-right text-muted tabular-nums">{index + 1}</td>
                       <td className="px-2 py-1.5 border-t border-line-soft">
                         <div className="font-mono text-xs font-semibold text-fg">
@@ -524,16 +540,19 @@ export default function QuotationDetail() {
                         <div className="text-xs text-muted truncate max-w-64">{l.sku.produkName} · {l.sku.variant}</div>
                       </td>
                       {editable && (
-                        <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums ${hasValue(l.available) && Number(l.qty) > l.available ? 'text-warning-fg font-semibold' : 'text-muted'}`}>
+                        <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums ${hasValue(l.available) && baseQty(l) > l.available ? 'text-warning-fg font-semibold' : 'text-muted'}`}>
                           {hasValue(l.available) ? `${formatNumber(l.available)} ${l.sku.uom}` : '-'}
                         </td>
                       )}
                       <td className="px-2 py-1.5 border-t border-line-soft text-right">
                         {editable ? (
                           <input aria-label={`Qty ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.qty} disabled={busy}
-                            onChange={(e) => setLine(l.sku._id, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
-                        ) : <span className="tabular-nums">{formatNumber(l.qty)} {l.sku.uom}</span>}
+                            onChange={(e) => setLine(l.key, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                        ) : <span className="tabular-nums">{formatNumber(l.qty)}</span>}
                       </td>
+                        <td className="px-2 py-1.5 border-t border-line-soft">
+                          <UnitCell line={l} lines={lines} editable={editable} disabled={busy} onChange={(uomId) => setUnit(l.key, uomId)} />
+                        </td>
                       <td className="px-2 py-1.5 border-t border-line-soft text-right">
                         <span className={`tabular-nums ${editable ? 'inline-block py-1' : ''}`}>{formatRupiah(l.hargaJual)}</span>
                         {editable && l.priceSource === 'list' && <div className="text-[10px] text-primary mt-0.5">price list</div>}
@@ -541,17 +560,17 @@ export default function QuotationDetail() {
                       <td className="px-2 py-1.5 border-t border-line-soft text-right">
                         {editable ? (
                           <input aria-label={`Discount ${l.sku.sku}`} type="number" min="0" max="100" step="0.01" value={l.diskonPersen} disabled={busy}
-                            onChange={(e) => setLine(l.sku._id, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                            onChange={(e) => setLine(l.key, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                         ) : <span className="tabular-nums">{l.diskonPersen ? formatNumber(l.diskonPersen) : '-'}</span>}
                       </td>
                       <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums font-medium">{formatRupiah(salesLineSubtotal(l))}</td>
                       <td className="px-2 py-1.5 border-t border-line-soft">
                         <input aria-label={`Note ${l.sku.sku}`} value={l.note} maxLength={200} disabled={!editable || busy}
-                          onChange={(e) => setLine(l.sku._id, 'note', e.target.value)} className={cellInput} />
+                          onChange={(e) => setLine(l.key, 'note', e.target.value)} className={cellInput} />
                       </td>
                       {editable && (
                         <td className="px-2 py-1.5 border-t border-line-soft text-center">
-                          <button type="button" title="Remove line" aria-label={`Remove ${l.sku.sku}`} onClick={() => removeLine(l.sku._id)}
+                          <button type="button" title="Remove line" aria-label={`Remove ${l.sku.sku}`} onClick={() => removeLine(l.key)}
                             className="w-8 h-8 rounded-md text-muted hover:text-danger hover:bg-danger-soft cursor-pointer">
                             <i className="fa fa-xmark"></i>
                           </button>
@@ -560,7 +579,7 @@ export default function QuotationDetail() {
                     </tr>
                   ))}
                   {lines.length === 0 && (
-                    <tr><td colSpan={9} className="text-center py-8 text-muted">Belum ada SKU.{editable && ' Cari SKU di atas.'}</td></tr>
+                    <tr><td colSpan={10} className="text-center py-8 text-muted">Belum ada SKU.{editable && ' Cari SKU di atas.'}</td></tr>
                   )}
                 </tbody>
               </table>

@@ -3,8 +3,11 @@
  */
 const { round2 } = require('./number');
 
-/** Subtotal 1 baris: qty x harga x (1 - diskon%) */
-const salesLineSubtotal = ({ qty, hargaJual, diskonPersen = 0 }) => round2(qty * hargaJual * (1 - (diskonPersen || 0) / 100));
+/**
+ * Subtotal 1 baris: qty satuan jual x harga satuan jual x (1 - diskon%).
+ * qtyUom = qty dalam kemasan jual (null / tidak ada = qty, satuan dasar).
+ */
+const salesLineSubtotal = ({ qty, qtyUom, hargaJual, diskonPersen = 0 }) => round2((qtyUom ?? qty) * hargaJual * (1 - (diskonPersen || 0) / 100));
 
 /**
  * Total dokumen dari subtotal baris, diskon dokumen (nominal), ongkir & pajak.
@@ -77,6 +80,9 @@ const returnLineValues = (invLine, qty, inv) => {
   return { subtotal, amount: ratio(goodsTotal(inv)), netAmount: ratio(inv.dpp) };
 };
 
+/** Sisa SO per baris dalam satuan jual (kemasan) */
+const soOutstandingUom = (line) => round2(soOutstanding(line) / (line.konversi || 1));
+
 /** Sisa SO per baris (satuan dasar) */
 const soOutstanding = (line) => round2(Math.max((line.qty || 0) - (line.qtyDelivered || 0), 0));
 
@@ -87,4 +93,4 @@ const deliveryStatus = (lines) => {
   return 'OPEN';
 };
 
-module.exports = { salesLineSubtotal, salesTotals, goodsTotal, netLineRevenue, invoiceBalance, returnLineValues, soOutstanding, deliveryStatus };
+module.exports = { salesLineSubtotal, salesTotals, goodsTotal, netLineRevenue, invoiceBalance, returnLineValues, soOutstanding, soOutstandingUom, deliveryStatus };

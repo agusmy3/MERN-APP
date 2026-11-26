@@ -27,6 +27,8 @@ import ReasonPanel from '../components/stock/ReasonPanel';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import InvoicePayments from '../components/sales/InvoicePayments';
 import { AuditDetail } from '../components/AuditInfo';
+import UnitCell from '../components/sales/UnitCell';
+import { unitFieldsFromDoc, unitFieldsFromSearch, nextUnitFor, withUnit, payloadUnit, priceItems, priceKey, baseQty } from '../utils/salesLines';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, round2, variantLabel } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
@@ -55,12 +57,13 @@ const lineFromDoc = (l) => ({
   hargaJual: l.hargaJual ?? '',
   diskonPersen: l.diskonPersen || 0,
   note: l.note || '',
+  ...unitFieldsFromDoc(l),
   currentQty: l.currentQty ?? null,
   unitCost: l.unitCost ?? null,
   qtyReturned: l.qtyReturned || 0,
 });
 
-const lineFromSearch = (s) => ({
+const lineFromSearch = (s, unit) => ({
   sku: { _id: s._id, sku: s.sku, produkName: s.produk?.name || '', variant: s.variant, uom: s.uom, isActive: s.isActive },
   qty: 1,
   hargaJual: s.hargaJual ?? '',
@@ -69,6 +72,7 @@ const lineFromSearch = (s) => ({
   currentQty: s.qty,
   unitCost: s.avgCost ?? null,
   priceSource: s.priceSource || 'default',
+  ...unitFieldsFromSearch(s, unit),
 });
 
 const toPayload = (form, lines) => ({
@@ -81,7 +85,7 @@ const toPayload = (form, lines) => ({
   priceIncludesTax: form.priceIncludesTax,
   discountAmount: form.discountAmount || 0,
   // harga tidak dikirim: backend mengisinya dari price list / harga jual SKU (dibekukan)
-  lines: lines.map((l) => ({ sku: l.sku._id, qty: l.qty, diskonPersen: l.diskonPersen || 0, note: l.note })),
+  lines: lines.map((l) => ({ sku: l.sku._id, uom: payloadUnit(l), qty: l.qty, diskonPersen: l.diskonPersen || 0, note: l.note })),
 });
 
 /**
@@ -208,12 +212,21 @@ export default function SalesInvoiceDetail() {
   // ---------- baris ----------
   const existing = useMemo(() => new Set(lines.map((l) => l.sku._id)), [lines]);
   const addLines = (skus) => {
-    const fresh = skus.filter((s) => !existing.has(s._id));
-    if (!fresh.length) return toast.info('SKU tersebut sudah ada di invoice.');
-    setLines((prev) => [...prev, ...fresh.map(lineFromSearch)]);
+    const next = [...lines];
+    let added = 0;
+    skus.forEach((s) => {
+      const unit = nextUnitFor(s, next); // SKU sama boleh beberapa satuan (DUS + PCS)
+      if (unit) {
+        next.push(lineFromSearch(s, unit));
+        added += 1;
+      }
+    });
+    if (!added) return toast.info('Semua satuan SKU tersebut sudah ada di dokumen.');
+    setLines(next);
   };
-  const setLine = (skuId, field, value) => setLines((prev) => prev.map((l) => (l.sku._id === skuId ? { ...l, [field]: value } : l)));
-  const removeLine = (skuId) => setLines((prev) => prev.filter((l) => l.sku._id !== skuId));
+  const setLine = (key, field, value) => setLines((prev) => prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
+  const setUnit = (key, uomId) => setLines((prev) => prev.map((l) => (l.key === key ? withUnit(l, uomId) : l)));
+  const removeLine = (key) => setLines((prev) => prev.filter((l) => l.key !== key));
 
   // cari SKU dengan harga untuk customer terpilih (price list)
   const searchWithPrice = useCallback(
@@ -226,10 +239,10 @@ export default function SalesInvoiceDetail() {
     setForm((f) => ({ ...f, customer }));
     if (!customer || !lines.length) return;
     try {
-      const prices = await getSalesSkuPrices(user.token, customer, lines.map((l) => l.sku._id));
+      const prices = await getSalesSkuPrices(user.token, customer, priceItems(lines));
       let changed = 0;
       setLines((prev) => prev.map((l) => {
-        const p = prices[l.sku._id];
+        const p = prices[priceKey(l)];
         if (!p) return l;
         if (Number(l.hargaJual) !== p.price) changed++;
         return { ...l, hargaJual: p.price, priceSource: p.source };
@@ -259,7 +272,7 @@ export default function SalesInvoiceDetail() {
     let cost = 0;
     let costMissing = false;
     for (const l of lines) {
-      const q = Number(l.qty) || 0;
+      const q = baseQty(l);
       if (isDraft && hasValue(l.currentQty) && q > l.currentQty) over++;
       if (hasValue(l.unitCost)) {
         cost += q * l.unitCost;
@@ -280,6 +293,8 @@ export default function SalesInvoiceDetail() {
     if (!lines.length) return 'Tambahkan minimal 1 SKU.';
     const bad = lines.find((l) => isBlank(l.qty) || Number(l.qty) <= 0);
     if (bad) return `${bad.sku.sku}: isi qty (> 0).`;
+    const frac = lines.find((l) => (l.konversi || 1) > 1 && !Number.isInteger(Number(l.qty)));
+    if (frac) return `${frac.sku.sku}: qty ${frac.uomCode} harus bilangan bulat.`;
     const disc = lines.find((l) => Number(l.diskonPersen) < 0 || Number(l.diskonPersen) > 100);
     if (disc) return `${disc.sku.sku}: diskon 0 – 100%.`;
     if (Number(form.discountAmount) > totals.subtotal) return 'Diskon dokumen tidak boleh melebihi subtotal.';
@@ -428,7 +443,7 @@ export default function SalesInvoiceDetail() {
                 <i className="fa fa-check"></i> {dirty || isNew ? 'Save & Post' : 'Post'}
               </button>
             )}
-            {status === 'POSTED' && returnPerm.canCreate && lines.some((l) => Number(l.qty) > (l.qtyReturned || 0)) && (
+            {status === 'POSTED' && returnPerm.canCreate && lines.some((l) => baseQty(l) > (l.qtyReturned || 0)) && (
               <button type="button" onClick={() => navigate(`/sales-return/new?invoice=${doc._id}`)} disabled={busy} className={btnGhost}>
                 <i className="fa fa-rotate-left"></i> Return
               </button>
@@ -521,6 +536,7 @@ export default function SalesInvoiceDetail() {
                     <th className="px-2 py-2 border-b border-line font-semibold">SKU</th>
                     {isDraft && <th className="px-2 py-2 border-b border-line font-semibold w-28 text-right" title="Saldo saat ini di gudang">Available</th>}
                     <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">Qty</th>
+                    <th className="px-2 py-2 border-b border-line font-semibold w-28">Unit</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">Price</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-20 text-right">Disc %</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">Subtotal</th>
@@ -536,14 +552,14 @@ export default function SalesInvoiceDetail() {
                 </thead>
                 <tbody>
                   {lines.map((l, index) => {
-                    const q = Number(l.qty) || 0;
+                    const q = baseQty(l);
                     const over = isDraft && hasValue(l.currentQty) && q > l.currentQty;
                     const sub = salesLineSubtotal(l);
                     const cost = hasValue(l.unitCost) ? round2(q * l.unitCost) : null;
                     const margin = cost === null ? null : round2(sub * ratio - cost);
                     const below = hasValue(l.unitCost) && q > 0 && sub / q < l.unitCost;
                     return (
-                      <tr key={l.sku._id || index} className={`align-top ${over ? 'bg-danger-soft' : 'hover:bg-subtle'}`}>
+                      <tr key={l.key} className={`align-top ${over ? 'bg-danger-soft' : 'hover:bg-subtle'}`}>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right text-muted tabular-nums">{index + 1}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <div className="font-mono text-xs font-semibold text-fg">
@@ -560,9 +576,12 @@ export default function SalesInvoiceDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
                             <input aria-label={`Qty ${l.sku.sku}`} type="number" min="0.01" step="0.01" value={l.qty} disabled={busy}
-                              onChange={(e) => setLine(l.sku._id, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                              onChange={(e) => setLine(l.key, 'qty', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{formatNumber(l.qty)}</span>}
-                          {l.qtyReturned > 0 && <div className="text-[10px] text-danger mt-0.5">returned {formatNumber(l.qtyReturned)}</div>}
+                          {l.qtyReturned > 0 && <div className="text-[10px] text-danger mt-0.5">returned {formatNumber(l.qtyReturned)} {l.baseCode}</div>}
+                        </td>
+                        <td className="px-2 py-1.5 border-t border-line-soft">
+                          <UnitCell line={l} lines={lines} editable={editable} disabled={busy} onChange={(uomId) => setUnit(l.key, uomId)} />
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right"
                           title={editable ? 'Harga dari price list customer / harga jual SKU (tidak bisa diubah; pakai kolom diskon)' : undefined}>
@@ -573,7 +592,7 @@ export default function SalesInvoiceDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
                             <input aria-label={`Discount ${l.sku.sku}`} type="number" min="0" max="100" step="0.01" value={l.diskonPersen} disabled={busy}
-                              onChange={(e) => setLine(l.sku._id, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                              onChange={(e) => setLine(l.key, 'diskonPersen', e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{l.diskonPersen ? formatNumber(l.diskonPersen) : '-'}</span>}
                         </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums font-medium">{formatRupiah(sub)}</td>
@@ -589,11 +608,11 @@ export default function SalesInvoiceDetail() {
                         )}
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <input aria-label={`Note ${l.sku.sku}`} value={l.note} maxLength={200} disabled={!editable || busy}
-                            onChange={(e) => setLine(l.sku._id, 'note', e.target.value)} className={cellInput} />
+                            onChange={(e) => setLine(l.key, 'note', e.target.value)} className={cellInput} />
                         </td>
                         {editable && (
                           <td className="px-2 py-1.5 border-t border-line-soft text-center">
-                            <button type="button" title="Remove line" aria-label={`Remove ${l.sku.sku}`} onClick={() => removeLine(l.sku._id)}
+                            <button type="button" title="Remove line" aria-label={`Remove ${l.sku.sku}`} onClick={() => removeLine(l.key)}
                               className="w-8 h-8 rounded-md text-muted hover:text-danger hover:bg-danger-soft cursor-pointer">
                               <i className="fa fa-xmark"></i>
                             </button>

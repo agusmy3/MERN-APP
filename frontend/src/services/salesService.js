@@ -74,7 +74,7 @@ export const createPriceList = (data, token) => axios.post(PL, data, getHeaders(
 export const updatePriceList = (id, data, token) => axios.put(`${PL}/${id}`, data, getHeaders(token));
 export const deletePriceList = (id, token) => axios.delete(`${PL}/${id}`, getHeaders(token));
 /** harga jual untuk customer: { skuId: { price, source: list|default } } */
-export const getSalesSkuPrices = async (token, customer, skus) => (await axios.post(`${INV}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
+export const getSalesSkuPrices = async (token, customer, items) => (await axios.post(`${INV}/skus/prices`, { customer, items }, getHeaders(token))).data.data;
 
 // ---------- Sales Order ----------
 
@@ -86,7 +86,7 @@ export const getQuotations = async (token, params) => (await axios.get(QUO, { ..
 export const getQuotation = async (id, token) => (await axios.get(`${QUO}/${id}`, getHeaders(token))).data.data;
 /** sama dengan SKU Sales Order: params { gudang, customer, search } (+ stok, harga, priceSource) */
 export const searchQuotationSkus = async (token, params) => (await axios.get(`${QUO}/skus`, { ...getHeaders(token), params })).data.data;
-export const getQuotationSkuPrices = async (token, customer, skus) => (await axios.post(`${QUO}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
+export const getQuotationSkuPrices = async (token, customer, items) => (await axios.post(`${QUO}/skus/prices`, { customer, items }, getHeaders(token))).data.data;
 export const createQuotation = (data, token) => axios.post(QUO, data, getHeaders(token));
 export const updateQuotation = (id, data, token) => axios.put(`${QUO}/${id}`, data, getHeaders(token));
 export const deleteQuotation = (id, token) => axios.delete(`${QUO}/${id}`, getHeaders(token));
@@ -104,7 +104,7 @@ export const getSalesOrder = async (id, token) => (await axios.get(`${SO}/${id}`
 export const searchSoSkus = async (token, params) => (await axios.get(`${SO}/skus`, { ...getHeaders(token), params })).data.data;
 /** { gudang, skus, exclude } -> { skuId: { qty, committed, available } } */
 export const getSoSkuAvailability = async (token, gudang, skus, exclude) => (await axios.post(`${SO}/skus/availability`, { gudang, skus, exclude }, getHeaders(token))).data.data;
-export const getSoSkuPrices = async (token, customer, skus) => (await axios.post(`${SO}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
+export const getSoSkuPrices = async (token, customer, items) => (await axios.post(`${SO}/skus/prices`, { customer, items }, getHeaders(token))).data.data;
 /** alamat kirim default customer -> { shipTo, termDays } */
 /** -> { shipTo, termDays, credit } (credit tanpa SO `exclude`) */
 export const getSoCustomerShipTo = async (customerId, token, exclude) => (await axios.get(`${SO}/ship-to/${customerId}`, { ...getHeaders(token), params: { exclude } })).data.data;

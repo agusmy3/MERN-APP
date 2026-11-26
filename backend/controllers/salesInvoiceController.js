@@ -16,6 +16,7 @@ const SalesReturn = require('../models/SalesReturn');
 const SalesPayment = require('../models/SalesPayment');
 const DeliveryOrder = require('../models/DeliveryOrder');
 const { resolvePrices } = require('../helpers/priceHelper');
+const { loadUnits, applyUnits, resolveUnitPrices, priceForLine, unitOptions, pricesResponse } = require('../helpers/packageHelper');
 
 const DAY = 24 * 60 * 60 * 1000;
 const PAYMENT_FILTERS = ['UNPAID', 'PARTIAL', 'PAID', 'OVERPAID', 'OPEN', 'OVERDUE'];
@@ -70,13 +71,12 @@ const parseInvoice = (body) => {
   if (!input.length) throw new HttpError('Add at least one item', 400);
   if (input.length > MAX_LINES) throw new HttpError(`An invoice can have at most ${MAX_LINES} lines`, 400);
 
-  const seen = new Set();
   const lines = input.map((l, i) => {
     const n = `Line ${i + 1}`;
     if (!mongoose.isValidObjectId(l?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-    if (seen.has(String(l.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-    seen.add(String(l.sku));
+    if (l.uom && !mongoose.isValidObjectId(l.uom)) throw new HttpError(`${n}: invalid unit`, 400);
     // harga TIDAK diambil dari input (dibekukan): diisi applyPrices dari price list / harga default
+    // qty = dalam satuan jual (uom; kosong = satuan dasar); unik per SKU + satuan dicek applyUnits
     const err = checkAmount(l.qty, 'Quantity', { min: 0, exclusive: true })
       || checkAmount(l.diskonPersen ?? 0, 'Discount');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
@@ -84,6 +84,7 @@ const parseInvoice = (body) => {
     if (diskonPersen > 100) throw new HttpError(`${n}: Discount must be <= 100`, 400);
     return {
       sku: String(l.sku),
+      uom: l.uom ? String(l.uom) : null,
       qty: round2(l.qty),
       hargaJual: null,       // diisi applyPrices
       diskonPersen,
@@ -136,20 +137,19 @@ const resolveRefs = async (parsed) => {
   if (skus.length !== new Set(skuIds).size) throw new HttpError('One or more SKUs no longer exist', 400);
   const inactive = skus.find((s) => s.isActive === false);
   if (inactive) throw new HttpError(`${inactive.sku} is inactive and cannot be sold`, 400);
-  const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
-  parsed.lines.forEach((l) => { l.produk = produkOf.get(l.sku); });
+  applyUnits(parsed.lines, await loadUnits(skuIds)); // satuan jual, isi, qty satuan dasar, produk
   return { customer };
 };
 
 /**
- * Harga jual baris = price list customer (aktif & SKU ada) atau harga jual SKU. Harga dibekukan:
+ * Harga jual baris (per satuan jual) = price list customer / harga kemasan / harga jual SKU. Harga dibekukan:
  * user tidak bisa mengubahnya, pengurangan hanya lewat diskon baris / dokumen. Dihitung ulang setiap
  * draft disimpan (di dalam transaksi); dokumen POSTED menyimpan harga saat itu.
  */
 const applyPrices = async (parsed) => {
-  const prices = await resolvePrices(parsed.customer, parsed.lines.map((l) => l.sku));
+  const prices = await resolveUnitPrices(parsed.customer, parsed.lines.map((l) => ({ sku: l.sku, uom: l.uom })));
   parsed.lines.forEach((l) => {
-    l.hargaJual = round2(prices.get(l.sku)?.price ?? 0);
+    l.hargaJual = round2(priceForLine(prices, l) ?? 0);
     l.subtotal = salesLineSubtotal(l);
   });
   const subtotal = round2(parsed.lines.reduce((s, l) => s + l.subtotal, 0));
@@ -180,6 +180,7 @@ const populateDoc = (query) => query
   .populate('deliveryOrders', 'no date')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+  .populate('lines.uom', 'code')
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name')
   .populate('postedBy', 'name')
@@ -291,6 +292,7 @@ exports.getInvoice = async (req, res) => {
     assertGudang(req, doc.gudang?._id ?? doc.gudang);
 
     const skuIds = doc.lines.map((l) => l.sku?._id).filter(Boolean);
+    if (doc.status === 'DRAFT') await attachUnits(doc);
     if (doc.status === 'DRAFT' && doc.gudang) {
       const balances = await getBalances(doc.gudang._id, skuIds);
       doc.lines.forEach((l) => { l.currentQty = l.sku ? (balances.get(String(l.sku._id)) || 0) : null; });
@@ -357,16 +359,19 @@ exports.searchSkus = async (req, res) => {
     if (!q) return successResponse(res, []);
     const rx = { $regex: escapeRegex(q), $options: 'i' };
     const produkIds = await Produk.find({ name: rx }).distinct('_id');
-    const skus = await ProdukSku.find({ isActive: true, $or: [{ sku: rx }, { produk: { $in: produkIds } }] })
-      .select('sku produk variantValues isActive hargaJual avgCost')
+    const skus = await ProdukSku.find({ isActive: true, $or: [{ sku: rx }, { barcode: q }, { 'packages.barcode': q }, { produk: { $in: produkIds } }] })
+      .select('sku produk variantValues isActive hargaJual avgCost packages.uom packages.barcode')
       .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
       .sort({ sku: 1 })
       .limit(20)
       .lean();
     const balances = gudang && mongoose.isValidObjectId(gudang) ? await getBalances(gudang, skus.map((s) => s._id)) : new Map();
     const prices = await resolvePrices(req.query.customer, skus.map((s) => s._id));
+    const units = await unitOptions(req.query.customer, skus.map((s) => s._id));
     const canSeeCost = canSeeCostOf(req);
     return successResponse(res, skus.map((s) => ({
+      units: units.get(String(s._id)) || [],   // satuan dasar + kemasan aktif dengan harga customer
+      matchedUom: (s.packages || []).find((p) => p.barcode === q)?.uom || null, // scan barcode kemasan
       _id: s._id,
       sku: s.sku,
       isActive: s.isActive !== false,
@@ -384,18 +389,23 @@ exports.searchSkus = async (req, res) => {
 };
 
 /**
- * POST /api/sales-invoice/skus/prices  body: { customer, skus: [id] } -> { skuId: { price, source } }
+ * POST /api/sales-invoice/skus/prices  body: { customer, items: [{ sku, uom }] } -> { 'sku:uom': { price, source } }
+ * (uom kosong = satuan dasar, kunci 'sku:'); body lama { customer, skus } -> { skuId: { price, source } }
  * Harga jual untuk customer (dipakai saat customer draft diganti).
  */
 exports.skuPrices = async (req, res) => {
   try {
-    const ids = (Array.isArray(req.body.skus) ? req.body.skus : []).filter((id) => mongoose.isValidObjectId(id));
-    if (ids.length > MAX_LINES) return errorResponse(res, `At most ${MAX_LINES} SKUs`, 400);
-    const prices = await resolvePrices(req.body.customer, ids);
-    return successResponse(res, Object.fromEntries([...prices.entries()].map(([id, p]) => [id, { price: p.price, source: p.source }])));
+    return successResponse(res, await pricesResponse(req.body || {}, MAX_LINES));
   } catch (error) {
     return handleError(res, error);
   }
+};
+
+
+/** Draft: pilihan satuan jual (dasar + kemasan aktif, harga customer) per baris untuk form */
+const attachUnits = async (doc) => {
+  const opts = await unitOptions(doc.customer?._id ?? doc.customer, doc.lines.map((l) => l.sku?._id ?? l.sku));
+  doc.lines.forEach((l) => { l.units = opts.get(String(l.sku?._id ?? l.sku)) || []; });
 };
 
 // ---------------------------------------------------------------- draft
@@ -477,7 +487,7 @@ exports.postInvoice = async (req, res) => {
       await resolveRefs({
         customer: String(doc.customer),
         gudang: String(doc.gudang),
-        lines: doc.lines.map((l) => ({ sku: String(l.sku) })),
+        lines: doc.lines.map((l) => ({ sku: String(l.sku), uom: l.uom, qty: l.qtyUom ?? l.qty })),
       });
 
       const before = await audit.snap('salesInvoice', [doc]);

@@ -9,6 +9,19 @@ const variantValueSchema = new mongoose.Schema({
  * SKU = unit yang distok & dijual: 1 kombinasi nilai varian dari sebuah Produk.
  * Harga jual & stok dalam satuan dasar produk (Produk.uom).
  */
+/**
+ * Kemasan jual (mis. PAK isi 6, DUS isi 24): satuan selain satuan dasar untuk dokumen penjualan.
+ * hargaJual null = isi x harga satuan dasar. Barcode unik terhadap semua barcode SKU & kemasan.
+ * Kemasan yang sudah dipakai dokumen / price list tidak bisa dihapus (nonaktifkan).
+ */
+const packageSchema = new mongoose.Schema({
+  uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', required: true },
+  konversi: { type: Number, required: true },        // isi dalam satuan dasar (> 1)
+  hargaJual: { type: Number, default: null, min: 0 },
+  barcode: { type: String, trim: true, default: null },
+  isActive: { type: Boolean, default: true },
+});
+
 const produkSkuSchema = new mongoose.Schema({
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true, index: true },
   sku: { type: String, required: true, unique: true, uppercase: true, trim: true }, // mis. KAOS-POLOS-MERAH-M
@@ -17,6 +30,7 @@ const produkSkuSchema = new mongoose.Schema({
   comboKey: { type: String, default: '' },
   hargaJual: { type: Number, default: 0, min: 0 },
   barcode: { type: String, trim: true },  // opsional, unik (EAN/UPC/internal) untuk scanner POS
+  packages: { type: [packageSchema], default: [] }, // kemasan jual selain satuan dasar
   // total saldo semua gudang (cache dari StockBalance/StockMovement). JANGAN diubah langsung:
   // stok hanya berubah lewat dokumen stok (helpers/stockHelper.js applyMovements).
   stok: { type: Number, default: 0, min: 0 },
@@ -32,5 +46,6 @@ const produkSkuSchema = new mongoose.Schema({
 
 produkSkuSchema.index({ produk: 1, comboKey: 1 }, { unique: true });
 produkSkuSchema.index({ barcode: 1 }, { unique: true, partialFilterExpression: { barcode: { $type: 'string' } } });
+produkSkuSchema.index({ 'packages.barcode': 1 });
 
 module.exports = mongoose.model('ProdukSku', produkSkuSchema);

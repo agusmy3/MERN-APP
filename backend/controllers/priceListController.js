@@ -37,7 +37,7 @@ const parseHeader = (body, isNew) => {
   return out;
 };
 
-/** items: [{ sku, price }] -> divalidasi & diisi produk (di dalam transaksi, produk dikunci) */
+/** items: [{ sku, uom?, price }] (uom kosong = satuan dasar; selain itu kemasan jual SKU) -> divalidasi & diisi produk */
 const parseItems = async (input) => {
   if (!Array.isArray(input)) throw new HttpError('Items must be a list', 400);
   if (input.length > MAX_ITEMS) throw new HttpError(`A price list can have at most ${MAX_ITEMS} items`, 400);
@@ -45,16 +45,25 @@ const parseItems = async (input) => {
   const items = input.map((it, i) => {
     const n = `Item ${i + 1}`;
     if (!mongoose.isValidObjectId(it?.sku)) throw new HttpError(`${n}: invalid SKU`, 400);
-    if (seen.has(String(it.sku))) throw new HttpError(`${n}: the same SKU appears more than once`, 400);
-    seen.add(String(it.sku));
+    if (it.uom && !mongoose.isValidObjectId(it.uom)) throw new HttpError(`${n}: invalid unit`, 400);
     const err = checkAmount(it.price, 'Price');
     if (err) throw new HttpError(`${n}: ${err}`, 400);
-    return { sku: String(it.sku), price: round2(it.price) };
+    return { sku: String(it.sku), uom: it.uom ? String(it.uom) : null, price: round2(it.price) };
   });
-  const skus = await ProdukSku.find({ _id: { $in: items.map((i) => i.sku) } }).select('produk').lean();
-  if (skus.length !== items.length) throw new HttpError('One or more SKUs no longer exist', 400);
-  await lock([...new Set(skus.map((s) => String(s.produk)))].map((id) => ref('produk', id))); // bentrok dengan hapus SKU/produk
-  const produkOf = new Map(skus.map((s) => [String(s._id), s.produk]));
+  const skus = await ProdukSku.find({ _id: { $in: items.map((i) => i.sku) } }).select('sku produk packages').populate('produk', 'uom').lean();
+  if (skus.length !== new Set(items.map((i) => i.sku)).size) throw new HttpError('One or more SKUs no longer exist', 400);
+  const skuById = new Map(skus.map((s) => [String(s._id), s]));
+  items.forEach((it, i) => {
+    const s = skuById.get(it.sku);
+    if (it.uom && String(it.uom) === String(s.produk?.uom)) it.uom = null; // satuan dasar
+    if (it.uom && !(s.packages || []).some((p) => String(p.uom) === String(it.uom))) throw new HttpError(`Item ${i + 1}: ${s.sku} has no selling package with that unit`, 400);
+    const key = `${it.sku}:${it.uom || ''}`;
+    if (seen.has(key)) throw new HttpError(`Item ${i + 1}: ${s.sku} appears more than once for the same unit`, 400);
+    seen.add(key);
+  });
+  const owners = skus.map((s) => ({ _id: s._id, produk: s.produk?._id }));
+  await lock([...new Set(owners.map((s) => String(s.produk)))].map((id) => ref('produk', id))); // bentrok dengan hapus SKU/produk
+  const produkOf = new Map(owners.map((s) => [String(s._id), s.produk]));
   items.forEach((i) => { i.produk = produkOf.get(i.sku); });
   return items;
 };
@@ -105,14 +114,21 @@ exports.getPriceList = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return errorResponse(res, 'Price list not found', 404);
     const doc = await PriceList.findById(req.params.id)
-      .populate('items.sku', 'sku variantValues isActive hargaJual avgCost')
+      .populate({ path: 'items.sku', select: 'sku variantValues isActive hargaJual avgCost packages', populate: { path: 'packages.uom', select: 'code' } })
       .populate({ path: 'items.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+      .populate('items.uom', 'code')
       .populate('createdBy', 'name')
       .populate('updatedBy', 'name')
       .lean();
     if (!doc) return errorResponse(res, 'Price list not found', 404);
     const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
-    doc.items.forEach((it) => { if (!canSeeCost && it.sku) delete it.sku.avgCost; });
+    doc.items.forEach((it) => {
+      if (!canSeeCost && it.sku) delete it.sku.avgCost;
+      // kemasan: isi & harga default kemasan (kosong = isi x harga jual)
+      const pkg = it.uom ? (it.sku?.packages || []).find((p) => String(p.uom?._id ?? p.uom) === String(it.uom._id)) : null;
+      it.konversi = pkg?.konversi ?? 1;
+      it.defaultPrice = pkg ? (pkg.hargaJual ?? round2((it.sku?.hargaJual || 0) * pkg.konversi)) : (it.sku?.hargaJual ?? 0);
+    });
     doc.items.sort((a, b) => String(a.sku?.sku).localeCompare(String(b.sku?.sku)));
     doc.customers = await Customer.find({ priceList: doc._id }).select('code name isActive').sort({ name: 1 }).lean();
     doc.canSeeCost = canSeeCost;
@@ -144,8 +160,9 @@ exports.searchSkus = async (req, res) => {
     }
     const canSeeCost = hasPermission(req.user, 'vendorPrice', 'view');
     const skus = await ProdukSku.find(filter)
-      .select('sku produk variantValues isActive hargaJual avgCost')
+      .select('sku produk variantValues isActive hargaJual avgCost packages')
       .populate({ path: 'produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+      .populate('packages.uom', 'code')
       .sort({ sku: 1 })
       .limit(limit)
       .lean();
@@ -157,6 +174,9 @@ exports.searchSkus = async (req, res) => {
       produk: s.produk ? { _id: s.produk._id, name: s.produk.name } : null,
       uom: s.produk?.uom?.code || '',
       hargaJual: s.hargaJual ?? 0,
+      // kemasan jual aktif: [{ uom: { _id, code }, konversi, defaultPrice }]
+      packages: (s.packages || []).filter((p) => p.isActive !== false)
+        .map((p) => ({ uom: p.uom, konversi: p.konversi, defaultPrice: p.hargaJual ?? round2((s.hargaJual || 0) * p.konversi) })),
       ...(canSeeCost ? { avgCost: s.avgCost ?? null } : {}),
     })));
   } catch (error) {

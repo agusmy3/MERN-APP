@@ -13,12 +13,15 @@ const lineSchema = new mongoose.Schema({
   sku: { type: mongoose.Schema.Types.ObjectId, ref: 'ProdukSku', required: true },
   produk: { type: mongoose.Schema.Types.ObjectId, ref: 'Produk', required: true },
   qty: { type: Number, required: true },
-  hargaJual: { type: Number, required: true },
+  uom: { type: mongoose.Schema.Types.ObjectId, ref: 'Uom', default: null }, // satuan jual (null = satuan dasar, data lama)
+  konversi: { type: Number, default: 1 },        // isi satuan jual dalam satuan dasar
+  qtyUom: { type: Number, default: null },       // qty dalam satuan jual (null = qty); qty = satuan dasar
+  hargaJual: { type: Number, required: true },   // per satuan jual
   diskonPersen: { type: Number, default: 0 },
   subtotal: { type: Number, required: true },
   qtyDelivered: { type: Number, default: 0 },   // total DO POSTED
   note: { type: String },
-}, { _id: false });
+});  // _id per baris: dirujuk surat jalan (soLine) / retur (invoiceLine)
 
 // alamat kirim (salinan; default dari alamat customer)
 const shipToSchema = new mongoose.Schema({

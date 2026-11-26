@@ -219,3 +219,27 @@ test('allocateFifo: oldest first, capped by balance; payment batch receipt print
   assert.match(html, /INV-1/);
   assert.match(html, /1\.000\.000/);
 });
+
+test('selling packages: line helpers & printed units', async () => {
+  const { nextUnitFor, withUnit, payloadUnit, priceKey, baseQty, qtyText, selectableUnits } = await import('../src/utils/salesLines.js');
+  const units = [{ uom: { _id: 'pcs', code: 'PCS' }, konversi: 1, price: 3500, isBase: true }, { uom: { _id: 'dus', code: 'DUS' }, konversi: 24, price: 78000 }];
+  const s = { _id: 'sku1', units, matchedUom: 'dus' };
+  assert.equal(nextUnitFor(s, []).uom.code, 'DUS'); // hasil scan barcode kemasan
+  const line = { key: 'a', sku: { _id: 'sku1' }, uomId: 'dus', uomCode: 'DUS', baseCode: 'PCS', konversi: 24, units, qty: 2 };
+  assert.equal(nextUnitFor({ ...s, matchedUom: null }, [line]).uom.code, 'PCS');
+  assert.equal(nextUnitFor(s, [line, { ...line, key: 'b', uomId: 'pcs', konversi: 1 }]), null);
+  assert.equal(baseQty(line), 48);
+  assert.equal(payloadUnit(line), 'dus');
+  assert.equal(priceKey(line), 'sku1:dus');
+  assert.equal(priceKey({ ...line, uomId: 'pcs', konversi: 1 }), 'sku1:');
+  assert.equal(withUnit(line, 'pcs').hargaJual, 3500);
+  assert.equal(selectableUnits(line, [line, { ...line, key: 'b', uomId: 'pcs', konversi: 1 }]).length, 1);
+  assert.equal(qtyText(2, line, String), '2 DUS (48 PCS)');
+  const { salesLineSubtotal } = await import('../src/utils/salesMeta.js');
+  assert.equal(salesLineSubtotal({ qty: 2, hargaJual: 78000 }), 156000);
+  const { invoiceHtml } = await import('../src/utils/documentPrint.js');
+  const html = invoiceHtml({ no: 'INV-9', status: 'POSTED', customer: { name: 'X' }, subtotal: 156000, total: 156000,
+    lines: [{ qty: 48, qtyUom: 2, konversi: 24, uom: { code: 'DUS' }, hargaJual: 78000, subtotal: 156000, sku: { sku: 'AIR' }, produk: { name: 'Air', uom: { code: 'PCS' } } }] }, {});
+  assert.match(html, />2<\/td>/);
+  assert.match(html, /DUS <span class="m">\(48 PCS\)/);
+});

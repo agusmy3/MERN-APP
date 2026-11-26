@@ -30,19 +30,32 @@ const btnDanger = `${btn} border border-danger-line text-danger hover:bg-danger-
 
 const hasValue = (v) => v !== null && v !== undefined && v !== '';
 
+// item per SKU + satuan: uomId null = satuan dasar; packages = kemasan aktif SKU [{ uom, konversi, defaultPrice }]
+const itemKey = (skuId, uomId) => `${skuId}:${uomId || ''}`;
 const itemFromDoc = (it) => ({
+  key: itemKey(it.sku?._id, it.uom?._id),
   sku: { _id: it.sku?._id, sku: it.sku?.sku ?? '(deleted SKU)', produkName: it.produk?.name || '', variant: variantLabel(it.sku), uom: it.produk?.uom?.code || '' },
-  defaultPrice: it.sku?.hargaJual ?? null,
+  uomId: it.uom?._id || null,
+  uomCode: it.uom?.code || it.produk?.uom?.code || '',
+  konversi: it.konversi || 1,
+  packages: (it.sku?.packages || []).filter((pk) => pk.isActive !== false)
+    .map((pk) => ({ uom: pk.uom, konversi: pk.konversi, defaultPrice: pk.hargaJual ?? round2((it.sku?.hargaJual || 0) * pk.konversi) })),
+  defaultPrice: it.defaultPrice ?? it.sku?.hargaJual ?? null,
   avgCost: it.sku?.avgCost ?? null,
   price: it.price,
 });
-const itemFromSearch = (s) => ({
+const itemFromSearch = (s, pkg = null) => ({
+  key: itemKey(s._id, pkg?.uom?._id),
   sku: { _id: s._id, sku: s.sku, produkName: s.produk?.name || '', variant: s.variant, uom: s.uom },
-  defaultPrice: s.hargaJual ?? null,
+  uomId: pkg?.uom?._id || null,
+  uomCode: pkg?.uom?.code || s.uom,
+  konversi: pkg?.konversi || 1,
+  packages: s.packages || [],
+  defaultPrice: pkg ? pkg.defaultPrice : (s.hargaJual ?? null),
   avgCost: s.avgCost ?? null,
-  price: s.hargaJual ?? '',
+  price: pkg ? pkg.defaultPrice : (s.hargaJual ?? ''),
 });
-const toPayload = (form, items) => ({ ...form, items: items.map((i) => ({ sku: i.sku._id, price: i.price })) });
+const toPayload = (form, items) => ({ ...form, items: items.map((i) => ({ sku: i.sku._id, uom: i.uomId, price: i.price })) });
 
 /** Tambah semua SKU dari 1 produk / kategori */
 function BulkAdd({ token, onLoad }) {
@@ -138,15 +151,28 @@ export default function PriceListDetail() {
   const payload = form ? toPayload(form, items) : null;
   const dirty = editable && (isNew || JSON.stringify(payload) !== saved);
 
-  const existing = useMemo(() => new Set(items.map((i) => i.sku._id)), [items]);
+  const existing = useMemo(() => new Set(items.filter((i) => !i.uomId).map((i) => i.sku._id)), [items]);
   const addItems = (skus) => {
     const fresh = skus.filter((s) => !existing.has(s._id));
     if (!fresh.length) return toast.info('SKU tersebut sudah ada di price list.');
-    setItems((prev) => [...prev, ...fresh.map(itemFromSearch)]);
+    setItems((prev) => [...prev, ...fresh.map((x) => itemFromSearch(x))]);
     if (skus.length > 1) toast.success(`${fresh.length} SKU ditambahkan${fresh.length < skus.length ? ` (${skus.length - fresh.length} sudah ada)` : ''}.`);
   };
-  const setPrice = (skuId, price) => setItems((prev) => prev.map((i) => (i.sku._id === skuId ? { ...i, price } : i)));
-  const removeItem = (skuId) => setItems((prev) => prev.filter((i) => i.sku._id !== skuId));
+  const setPrice = (key, price) => setItems((prev) => prev.map((i) => (i.key === key ? { ...i, price } : i)));
+  const removeItem = (key) => setItems((prev) => prev.filter((i) => i.key !== key));
+  // tambah harga kemasan untuk SKU yang sudah ada (kemasan yang belum punya harga di list)
+  const freePackages = (i) => (i.packages || []).filter((pk) => !items.some((x) => x.key === itemKey(i.sku._id, pk.uom?._id)));
+  const addPackage = (i) => {
+    const pk = freePackages(i)[0];
+    if (!pk) return;
+    const base = { _id: i.sku._id, sku: i.sku.sku, produk: { name: i.sku.produkName }, variant: i.sku.variant, uom: i.sku.uom, packages: i.packages, avgCost: i.avgCost };
+    setItems((prev) => {
+      const idx = prev.findIndex((x) => x.key === i.key);
+      const next = [...prev];
+      next.splice(idx + 1, 0, itemFromSearch(base, pk));
+      return next;
+    });
+  };
   const applyPct = () => {
     const p = Number(pct);
     if (!(p >= 0 && p <= 100)) return toast.warning('Isi persentase 0 – 100.');
@@ -270,6 +296,7 @@ export default function PriceListDetail() {
                   <tr>
                     <th className="px-2 py-2 border-b border-line font-semibold w-10 text-right">#</th>
                     <th className="px-2 py-2 border-b border-line font-semibold">SKU</th>
+                    <th className="px-2 py-2 border-b border-line font-semibold w-28">Unit</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">Default price</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-36 text-right">List price</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">vs default</th>
@@ -281,19 +308,27 @@ export default function PriceListDetail() {
                   {shown.map((i, index) => {
                     const p = Number(i.price);
                     const diff = hasValue(i.defaultPrice) && i.defaultPrice > 0 && hasValue(i.price) ? round2(((p - i.defaultPrice) / i.defaultPrice) * 100) : null;
-                    const margin = canSeeCost && hasValue(i.avgCost) && p > 0 ? round2(((p - i.avgCost) / p) * 100) : null;
+                    const margin = canSeeCost && hasValue(i.avgCost) && p > 0 ? round2(((p - i.avgCost * (i.konversi || 1)) / p) * 100) : null; // HPP per satuan dasar x isi
                     return (
-                      <tr key={i.sku._id || index} className="hover:bg-subtle">
+                      <tr key={i.key || index} className="hover:bg-subtle">
                         <td className="px-2 py-1.5 border-t border-line-soft text-right text-muted tabular-nums">{index + 1}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           <div className="font-mono text-xs font-semibold text-fg">{i.sku.sku}</div>
                           <div className="text-xs text-muted truncate max-w-72">{i.sku.produkName} · {i.sku.variant}</div>
                         </td>
+                        <td className="px-2 py-1.5 border-t border-line-soft">
+                          {i.uomCode}{i.konversi > 1 && <span className="block text-[10px] text-muted">isi {formatNumber(i.konversi)} {i.sku.uom}</span>}
+                          {editable && freePackages(i).length > 0 && (
+                            <button type="button" onClick={() => addPackage(i)} className="block text-[11px] text-primary hover:underline cursor-pointer" title="Tambah harga per kemasan">
+                              + {freePackages(i)[0].uom?.code}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums text-muted">{hasValue(i.defaultPrice) ? formatRupiah(i.defaultPrice) : '-'}</td>
                         <td className="px-2 py-1.5 border-t border-line-soft text-right">
                           {editable ? (
                             <input aria-label={`Price ${i.sku.sku}`} type="number" min="0" step="0.01" value={i.price} disabled={busy}
-                              onChange={(e) => setPrice(i.sku._id, e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                              onChange={(e) => setPrice(i.key, e.target.value)} className={`${cellInput} text-right tabular-nums`} />
                           ) : <span className="tabular-nums">{formatRupiah(i.price)}</span>}
                         </td>
                         <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums ${diff < 0 ? 'text-danger' : 'text-muted'}`}>
@@ -306,7 +341,7 @@ export default function PriceListDetail() {
                         )}
                         {editable && (
                           <td className="px-2 py-1.5 border-t border-line-soft text-center">
-                            <button type="button" title="Remove" aria-label={`Remove ${i.sku.sku}`} onClick={() => removeItem(i.sku._id)}
+                            <button type="button" title="Remove" aria-label={`Remove ${i.sku.sku}`} onClick={() => removeItem(i.key)}
                               className="w-8 h-8 rounded-md text-muted hover:text-danger hover:bg-danger-soft cursor-pointer">
                               <i className="fa fa-xmark"></i>
                             </button>
@@ -316,7 +351,7 @@ export default function PriceListDetail() {
                     );
                   })}
                   {shown.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-8 text-muted">{items.length ? 'Tidak ada yang cocok.' : 'Belum ada harga.'}</td></tr>
+                    <tr><td colSpan={8} className="text-center py-8 text-muted">{items.length ? 'Tidak ada yang cocok.' : 'Belum ada harga.'}</td></tr>
                   )}
                 </tbody>
               </table>

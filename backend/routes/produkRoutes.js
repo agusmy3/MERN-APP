@@ -12,6 +12,7 @@ const {
   listSku,
   generateSku,
   bulkUpdateSku,
+  updatePackages,
   deleteSku
 } = require('../controllers/produkSkuController');
 const Produk = require('../models/Produk');
@@ -33,6 +34,7 @@ router.delete('/:id', protect, authorize('produk', 'delete'), deleteProduk);
 router.get('/:id/sku', protect, authorize('produk', 'view'), listSku);
 router.post('/:id/sku/generate', protect, authorize('produk', 'update'), generateSku);
 router.put('/:id/sku', protect, authorize('produk', 'update'), bulkUpdateSku);
+router.put('/:id/sku/:skuId/packages', protect, authorize('produk', 'update'), updatePackages);
 router.delete('/:id/sku/:skuId', protect, authorize('produk', 'update'), deleteSku);
 
 module.exports = router;
