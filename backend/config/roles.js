@@ -48,7 +48,7 @@ const ROLE_TEMPLATES = [
   {
     key: 'warehouseSupervisor',
     name: 'Warehouse Supervisor',
-    deskripsi: 'Warehouse Staff + posting dokumen stok & surat jalan, cost revaluation, nilai persediaan, atur reorder',
+    deskripsi: 'Warehouse Staff + posting dokumen stok, surat jalan & retur pembelian, cost revaluation, nilai persediaan, atur reorder',
     permissions: {
       produk: ['view'], gudang: ['view'],
       stockAdjustment: DOC,
@@ -58,17 +58,20 @@ const ROLE_TEMPLATES = [
       costRevaluation: DOC,
       vendorPrice: ['view'],
       deliveryOrder: DOC,
+      purchaseReturn: DOC,
     },
   },
   {
     key: 'purchasing',
     name: 'Purchasing',
-    deskripsi: 'Purchase order, penerimaan barang, vendor & harga beli, reorder',
+    deskripsi: 'Purchase order, penerimaan barang, tagihan vendor, draft retur pembelian, vendor & harga beli, reorder',
     permissions: {
       produk: ['view'], gudang: ['view'],
       vendor: ALL, vendorPrice: ALL,
       purchaseOrder: ALL,
       goodsReceipt: DOC,
+      purchaseInvoice: ['view', 'create', 'update'],
+      purchaseReturn: ['view', 'create', 'update', 'delete'],
       reorder: ['view', 'update'],
       stockMovement: ['view'],
     },
@@ -91,7 +94,7 @@ const ROLE_TEMPLATES = [
   {
     key: 'finance',
     name: 'Finance',
-    deskripsi: 'Pembayaran & refund, batas kredit customer & persetujuan SO melewati batas, laporan penjualan & umur piutang, nilai persediaan',
+    deskripsi: 'Pembayaran & refund (customer & vendor), hutang vendor, batas kredit customer & persetujuan SO melewati batas, laporan penjualan & umur piutang, nilai persediaan',
     permissions: {
       customer: ['view', 'update'],
       salesOrder: ['view', 'approve'],
@@ -101,6 +104,8 @@ const ROLE_TEMPLATES = [
       salesPayment: ['view', 'create', 'update'],
       salesReport: ['view'],
       vendorPrice: ['view'],
+      purchaseInvoice: ['view'],
+      vendorPayment: ['view', 'create', 'update'],
     },
   },
   {

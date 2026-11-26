@@ -44,6 +44,12 @@ const RESOURCES = [
   { key: 'purchaseOrder', label: 'Purchase Order', group: 'Purchasing' },
   // Penerimaan barang: create/update/delete = draft; post = posting & pembatalan (mengubah stok & HPP)
   { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // tagihan vendor (hutang): create = buat tagihan dari GR (langsung berlaku); update = batalkan. Butuh juga vendorPrice:view
+  { key: 'purchaseInvoice', label: 'Vendor Bill', group: 'Purchasing', actions: ['view', 'create', 'update'] },
+  // pembayaran ke vendor / refund dari vendor: create = catat; update = batalkan. Butuh juga vendorPrice:view
+  { key: 'vendorPayment', label: 'Vendor Payment', group: 'Purchasing', actions: ['view', 'create', 'update'] },
+  // retur ke vendor: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali)
+  { key: 'purchaseReturn', label: 'Purchase Return', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // Quotation / penawaran harga: create = draft; update = ubah draft, kirim, revisi, tolak, konversi ke SO
   // (konversi butuh juga salesOrder:create); delete = hapus draft
   { key: 'quotation', label: 'Quotation', group: 'Sales' },

@@ -117,12 +117,22 @@ exports.getSingleVendor = async (req, res) => {
     }
 };
 
+/** Termin bayar ke vendor (hari, 0 = tunai); undefined = tidak diubah */
+const parseTerm = (body) => {
+  if (body.termDays === undefined || body.termDays === null || body.termDays === '') return {};
+  const n = Number(body.termDays);
+  if (!Number.isInteger(n) || n < 0 || n > 365) throw new HttpError('Payment term must be a whole number of days (0 - 365)', 400);
+  return { termDays: n };
+};
+
 // POST tambah vendor
 exports.createVendor = async (req, res) => {
   try {
     const region = parseRegion(req.body);
+    const term = parseTerm(req.body);
     const vendor = await runInTransaction(async () => {
       const vendor = await Vendor.create({
+        ...term,
         companyName: req.body.companyName,
         picName: req.body.picName,
         picContact: req.body.picContact,
@@ -147,12 +157,13 @@ exports.createVendor = async (req, res) => {
 exports.updateVendor = async (req, res) => {
   try {
     const region = parseRegion(req.body);
+    const term = parseTerm(req.body);
     const vendor = await runInTransaction(async () => {
       const vendor = await Vendor.findById(req.params.id);
       if (!vendor) throw new HttpError('Vendor not found', 404);
 
       const before = await audit.snap('vendor', [vendor]);
-      Object.assign(vendor, region);
+      Object.assign(vendor, region, term);
       vendor.companyName = req.body.companyName || vendor.companyName;
       vendor.picName = req.body.picName || vendor.picName;
       vendor.picContact = req.body.picContact || vendor.picContact;
@@ -181,6 +192,9 @@ exports.deleteVendor = async (req, res) => {
       // vendor yang masih punya daftar harga produk tidak boleh dihapus
       const poCount = await require('../models/PurchaseOrder').countDocuments({ vendor: vendor._id });
       if (poCount) throw new HttpError(`Vendor already has ${poCount} purchase order(s) and cannot be deleted`, 400);
+      const freightCount = await require('../models/GoodsReceipt').countDocuments({ freightVendor: vendor._id })
+        + await require('../models/PurchaseInvoice').countDocuments({ vendor: vendor._id });
+      if (freightCount) throw new HttpError('Vendor is used by goods receipts (freight) or vendor bills and cannot be deleted', 400);
       const priceCount = await VendorPrice.countDocuments({ vendor: vendor._id });
       if (priceCount > 0) {
         throw new HttpError(

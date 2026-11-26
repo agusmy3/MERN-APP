@@ -18,7 +18,7 @@ export function MovementRef({ m }) {
       </Link>
     );
   }
-  const routes = { StockTransfer: '/stock-transfer', SalesInvoice: '/sales-invoice', SalesReturn: '/sales-return', DeliveryOrder: '/delivery-order' };
+  const routes = { StockTransfer: '/stock-transfer', SalesInvoice: '/sales-invoice', SalesReturn: '/sales-return', DeliveryOrder: '/delivery-order', PurchaseReturn: '/purchase-return' };
   if (routes[m.refType] && m.refId) {
     return (
       <Link to={`${routes[m.refType]}/${m.refId}`} className="font-mono text-xs font-semibold text-primary hover:underline">

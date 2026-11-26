@@ -33,6 +33,7 @@ const MOVEMENT_TYPES = {
   TRANSFER_IN: 'Transfer In',         // terima dari gudang lain (HPP saat dikirim)
   SALE: 'Sale',                       // penjualan (Sales Invoice); pembalik = invoice dibatalkan
   SALE_RETURN: 'Sales Return',        // retur penjualan (masuk dengan HPP saat dijual)
+  PURCHASE_RETURN: 'Purchase Return', // retur ke vendor (keluar dengan HPP penerimaan, HPP rata-rata dihitung ulang)
 };
 
 // batas baris per dokumen (opname 1 gudang bisa ratusan SKU)

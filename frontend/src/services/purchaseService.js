@@ -43,3 +43,37 @@ export const updateGoodsReceipt = (id, data, token) => axios.put(`${GR}/${id}`, 
 export const deleteGoodsReceipt = (id, token) => axios.delete(`${GR}/${id}`, getHeaders(token));
 export const postGoodsReceipt = (id, updateVendorPrice, token) => axios.post(`${GR}/${id}/post`, { updateVendorPrice }, getHeaders(token));
 export const cancelGoodsReceipt = (id, reason, token) => axios.post(`${GR}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Vendor Bill (hutang) ----------
+
+const BILL = '/api/purchase-invoice';
+/** params { search, status, paymentStatus (OPEN|OVERDUE|...), vendor, from, to, paginasi } -> { dataPurchaseInvoice, totalData } */
+export const getVendorBills = async (token, params) => (await axios.get(BILL, { ...getHeaders(token), params })).data.data;
+export const getVendorBill = async (id, token) => (await axios.get(`${BILL}/${id}`, getHeaders(token))).data.data;
+/** -> { vendor, goods: [{ _id, no, date, gudang, purchaseOrder, taxRate, amount, hasDraftReturn }], freight: [{ _id, no, amount, supplier }] } */
+export const getBillable = async (vendor, token) => (await axios.get(`${BILL}/billable`, { ...getHeaders(token), params: { vendor } })).data.data;
+export const getPayablesAging = async (token, params) => (await axios.get(`${BILL}/aging`, { ...getHeaders(token), params })).data.data;
+/** { vendor, goodsReceipts: [id], freightReceipts: [id], vendorInvoiceNo, date, dueDate, note } */
+export const createVendorBill = (data, token) => axios.post(BILL, data, getHeaders(token));
+export const cancelVendorBill = (id, reason, token) => axios.post(`${BILL}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Vendor Payment ----------
+
+const VPAY = '/api/vendor-payment';
+export const getVendorPayments = async (token, params) => (await axios.get(VPAY, { ...getHeaders(token), params })).data.data;
+/** { purchaseInvoice, type (PAYMENT|REFUND), date, method, amount, reference, note } */
+export const createVendorPayment = (data, token) => axios.post(VPAY, data, getHeaders(token));
+export const cancelVendorPayment = (id, reason, token) => axios.post(`${VPAY}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Purchase Return ----------
+
+const PRT = '/api/purchase-return';
+export const getPurchaseReturns = async (token, params) => (await axios.get(PRT, { ...getHeaders(token), params })).data.data;
+export const getPurchaseReturn = async (id, token) => (await axios.get(`${PRT}/${id}`, getHeaders(token))).data.data;
+export const getReturnableGrs = async (token, search) => (await axios.get(`${PRT}/gr-options`, { ...getHeaders(token), params: { search } })).data.data;
+export const getGrForReturn = async (grId, token) => (await axios.get(`${PRT}/from-gr/${grId}`, getHeaders(token))).data.data;
+export const createPurchaseReturn = (data, token) => axios.post(PRT, data, getHeaders(token));
+export const updatePurchaseReturn = (id, data, token) => axios.put(`${PRT}/${id}`, data, getHeaders(token));
+export const deletePurchaseReturn = (id, token) => axios.delete(`${PRT}/${id}`, getHeaders(token));
+export const postPurchaseReturn = (id, token) => axios.post(`${PRT}/${id}/post`, {}, getHeaders(token));
+export const cancelPurchaseReturn = (id, reason, token) => axios.post(`${PRT}/${id}/cancel`, { reason }, getHeaders(token));

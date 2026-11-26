@@ -11,6 +11,7 @@ import {
   cancelGoodsReceipt,
 } from '../services/purchaseService';
 import { useAuth } from '../context/AuthContext';
+import { getVendorDropdown } from '../services/vendorService';
 import usePermission from '../hooks/usePermission';
 import useToast from '../hooks/useToast';
 import useConfirm from '../hooks/useConfirm';
@@ -73,7 +74,7 @@ const toPayload = (form, lines) => ({
   deliveryNoteNo: form.deliveryNoteNo,
   note: form.note,
   // biaya angkut hanya dikirim user dengan akses biaya (lainnya: nilai lama dipertahankan backend)
-  ...(form.freightCharge === undefined ? {} : { freightCharge: form.freightCharge || 0, freightNote: form.freightNote }),
+  ...(form.freightCharge === undefined ? {} : { freightCharge: form.freightCharge || 0, freightNote: form.freightNote, freightVendor: form.freightVendor || null }),
   lines: lines.filter((l) => l.qty !== '' && Number(l.qty) !== 0).map((l) => ({ poLine: l.poLine, qty: l.qty, note: l.note })),
 });
 
@@ -141,6 +142,12 @@ export default function GoodsReceiptDetail() {
   const [updatePrices, setUpdatePrices] = useState(false);
 
   const canSeeCost = pricePerm.canView;
+  const retPerm = usePermission('purchaseReturn');
+  const billPerm = usePermission('purchaseInvoice');
+  const [vendorList, setVendorList] = useState([]);
+  useEffect(() => {
+    if (canSeeCost) getVendorDropdown(user.token).then(setVendorList).catch(console.error);
+  }, [canSeeCost, user.token]);
   const canUpdatePrices = pricePerm.canCreate && pricePerm.canUpdate;
 
   // GR baru dari PO: semua baris PO yang masih punya sisa, qty default = sisa
@@ -152,7 +159,7 @@ export default function GoodsReceiptDetail() {
         return;
       }
       setPo(p);
-      setForm({ purchaseOrder: p._id, date: toDateInput(), deliveryNoteNo: '', note: '', ...(canSeeCost ? { freightCharge: 0, freightNote: '' } : {}) });
+      setForm({ purchaseOrder: p._id, date: toDateInput(), deliveryNoteNo: '', note: '', ...(canSeeCost ? { freightCharge: 0, freightNote: '', freightVendor: '' } : {}) });
       setLines(p.lines.filter((l) => l.outstanding > 0).map((l) => ({ ...lineFromPo(l), qty: l.outstanding })));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load purchase order');
@@ -165,7 +172,7 @@ export default function GoodsReceiptDetail() {
       const d = await getGoodsReceipt(id, user.token);
       const f = {
         purchaseOrder: d.purchaseOrder?._id, date: toDateInput(d.date), deliveryNoteNo: d.deliveryNoteNo || '', note: d.note || '',
-        ...(d.canSeeCost ? { freightCharge: d.freightCharge || 0, freightNote: d.freightNote || '' } : {}),
+        ...(d.canSeeCost ? { freightCharge: d.freightCharge || 0, freightNote: d.freightNote || '', freightVendor: d.freightVendor?._id || '' } : {}),
       };
       let ls;
       if (d.status === 'DRAFT') {
@@ -347,6 +354,16 @@ export default function GoodsReceiptDetail() {
               <i className="fa fa-check-double"></i> {dirty ? 'Save & Post' : 'Post'}
             </button>
           )}
+          {status === 'POSTED' && retPerm.canCreate && (
+            <button type="button" onClick={() => navigate(`/purchase-return/new?gr=${doc._id}`)} disabled={busy} className={btnGhost}>
+              <i className="fa fa-truck-arrow-right"></i> Return
+            </button>
+          )}
+          {status === 'POSTED' && !doc.purchaseInvoice && billPerm.canCreate && canSeeCost && (
+            <button type="button" onClick={() => navigate(`/purchase-invoice/new?vendor=${doc.vendor?._id}`)} disabled={busy} className={btnGhost}>
+              <i className="fa fa-file-invoice-dollar"></i> Bill
+            </button>
+          )}
           {status === 'POSTED' && perm.canPost && (
             <button type="button" onClick={() => setCancelOpen((o) => !o)} disabled={busy} className={btnDanger}>
               <i className="fa fa-ban"></i> Cancel GR
@@ -414,6 +431,12 @@ export default function GoodsReceiptDetail() {
                     hint="Biaya angkut kedatangan ini (tanpa PPN yang bisa dikreditkan); dibagi ke baris menurut nilai & menambah HPP.">
                     <input id="gr-freight" type="number" min="0" step="0.01" value={form.freightCharge}
                       onChange={(e) => setForm((f) => ({ ...f, freightCharge: e.target.value }))} className={inputClass} />
+                  </FormField>
+                  <FormField label="Freight billed by" htmlFor="gr-freight-vendor" hint="Vendor yang menagih biaya angkut (mis. ekspedisi). Kosong = vendor PO.">
+                    <select id="gr-freight-vendor" value={form.freightVendor || ''} onChange={(e) => setForm((f) => ({ ...f, freightVendor: e.target.value }))} className={inputClass}>
+                      <option value="">Vendor PO</option>
+                      {vendorList.map((v) => <option key={v._id} value={v._id}>{v.companyName}</option>)}
+                    </select>
                   </FormField>
                   <FormField label="Freight note" htmlFor="gr-freight-note">
                     <input id="gr-freight-note" value={form.freightNote} maxLength={200} placeholder="Ekspedisi / no. tagihan"
@@ -543,6 +566,42 @@ export default function GoodsReceiptDetail() {
                 <dt className="text-muted">Status</dt><dd><StatusBadge status={doc.status} meta={GR_STATUS_META} /></dd>
                 <dt className="text-muted">Warehouse</dt><dd>{doc.gudang?.code} — {doc.gudang?.name}</dd>
                 {doc.postedDate && (<><dt className="text-muted">Posted</dt><dd>{formatDate2(doc.postedDate)} · {doc.postedBy?.name || '-'}</dd></>)}
+                {doc.status === 'POSTED' && canSeeCost && (
+                  <>
+                    <dt className="text-muted">Vendor bill</dt>
+                    <dd>
+                      {doc.purchaseInvoice
+                        ? (billPerm.canView ? <Link to={`/purchase-invoice/${doc.purchaseInvoice._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{doc.purchaseInvoice.no}</Link> : <span className="font-mono text-xs">{doc.purchaseInvoice.no}</span>)
+                        : <span className="text-xs px-1.5 py-0.5 rounded bg-warning-soft text-warning-fg">Belum ditagih</span>}
+                    </dd>
+                  </>
+                )}
+                {canSeeCost && doc.freightCharge > 0 && (
+                  <>
+                    <dt className="text-muted">Freight</dt>
+                    <dd>
+                      {formatRupiah(doc.freightCharge)} · {doc.freightVendor?.companyName || doc.vendor?.companyName}
+                      <div className="text-xs">
+                        {doc.freightInvoice
+                          ? <Link to={`/purchase-invoice/${doc.freightInvoice._id}`} className="font-mono text-primary hover:underline">{doc.freightInvoice.no}</Link>
+                          : doc.status === 'POSTED' && <span className="text-warning-fg">belum ditagih</span>}
+                      </div>
+                    </dd>
+                  </>
+                )}
+                {doc.returns?.length > 0 && (
+                  <>
+                    <dt className="text-muted">Returns</dt>
+                    <dd className="space-y-0.5">
+                      {doc.returns.map((r) => (
+                        <div key={r._id}>
+                          <Link to={`/purchase-return/${r._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{r.no}</Link>
+                          <span className="text-xs text-muted"> · {GR_STATUS_META[r.status]?.label}</span>
+                        </div>
+                      ))}
+                    </dd>
+                  </>
+                )}
                 {doc.cancelledDate && (<><dt className="text-muted">Cancelled</dt><dd>{formatDate2(doc.cancelledDate)} · {doc.cancelledBy?.name || '-'}</dd></>)}
                 {doc.cancelReason && (<><dt className="text-muted">Reason</dt><dd className="break-words">{doc.cancelReason}</dd></>)}
               </dl>

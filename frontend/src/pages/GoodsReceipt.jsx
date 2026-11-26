@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { getGoodsReceipts } from '../services/purchaseService';
 import { getVendorDropdown } from '../services/vendorService';
 import { getMyGudangDropdown } from '../services/gudangService';
@@ -16,16 +16,21 @@ import { formatDay } from '../utils/dateHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { GR_STATUS_META } from '../utils/purchaseMeta';
 
-const EMPTY_FILTERS = { status: '', vendor: '', gudang: '', from: '', to: '' };
+const EMPTY_FILTERS = { status: '', billed: '', vendor: '', gudang: '', from: '', to: '' };
+const BILLED_FILTERS = { false: 'Belum ditagih', true: 'Sudah ditagih' };
 const selectClass = `${inputClass} sm:w-auto`;
 
-/** Daftar Goods Receipt (penerimaan barang dari PO). */
+/** Daftar Goods Receipt (penerimaan barang dari PO). Query URL awal: ?billed=false (dari dashboard). */
 export default function GoodsReceipt() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const perm = usePermission('goodsReceipt');
   const poPerm = usePermission('purchaseOrder');
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const billPerm = usePermission('purchaseInvoice');
+  const pricePerm = usePermission('vendorPrice');
+  const canSeeBill = billPerm.canView && pricePerm.canView;
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => ({ ...EMPTY_FILTERS, billed: BILLED_FILTERS[searchParams.get('billed')] ? searchParams.get('billed') : '' }));
   const [vendors, setVendors] = useState([]);
   const [gudangList, setGudangList] = useState([]);
 
@@ -70,6 +75,14 @@ export default function GoodsReceipt() {
     { key: 'deliveryNoteNo', header: 'Delivery Note', width: 150 },
     { key: 'lineCount', header: 'Items', width: 70, className: 'text-right tabular-nums' },
     { key: 'status', header: 'Status', width: 120, render: (d) => <StatusBadge status={d.status} meta={GR_STATUS_META} /> },
+    ...(canSeeBill ? [{
+      key: 'bill',
+      header: 'Vendor bill',
+      width: 150,
+      render: (d) => (d.status !== 'POSTED' ? '' : d.purchaseInvoice
+        ? <Link to={`/purchase-invoice/${d.purchaseInvoice._id}`} className="font-mono text-xs text-primary hover:underline">{d.purchaseInvoice.no}</Link>
+        : <span className="text-xs px-1.5 py-0.5 rounded bg-warning-soft text-warning-fg">Belum ditagih</span>),
+    }] : []),
     {
       key: 'audit',
       header: 'Last Modified',
@@ -111,6 +124,12 @@ export default function GoodsReceipt() {
             <option value="">All status</option>
             {Object.entries(GR_STATUS_META).map(([key, m]) => <option key={key} value={key}>{m.label}</option>)}
           </select>
+          {canSeeBill && (
+            <select aria-label="Billing" value={filters.billed} onChange={(e) => setFilter('billed', e.target.value)} className={selectClass}>
+              <option value="">All billing</option>
+              {Object.entries(BILLED_FILTERS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          )}
           <select aria-label="Vendor" value={filters.vendor} onChange={(e) => setFilter('vendor', e.target.value)} className={`${selectClass} max-w-52`}>
             <option value="">All vendors</option>
             {vendors.map((v) => <option key={v._id} value={v._id}>{v.companyName}</option>)}

@@ -39,3 +39,15 @@ export const allocateFreight = (lines, freight) => {
     return { ...l, freightCost, unitCost: r2((l.baseUnitCost || 0) + (l.qtyBase ? freightCost / l.qtyBase : 0)) };
   });
 };
+
+/** Tagihan vendor: langsung POSTED, bisa dibatalkan */
+export const BILL_STATUS_META = {
+  POSTED: { label: 'Posted', icon: 'fa-check', tone: 'bg-success-soft text-success-fg' },
+  CANCELLED: { label: 'Cancelled', icon: 'fa-ban', tone: 'bg-danger-soft text-danger' },
+};
+export const VENDOR_PAYMENT_METHODS = { CASH: 'Cash', TRANSFER: 'Transfer', OTHER: 'Other' };
+/** Retur pembelian: penyelesaian */
+export const RETURN_RESOLUTIONS = {
+  CREDIT: { label: 'Potong tagihan', hint: 'Hutang ke vendor berkurang; PO tidak berubah.' },
+  REPLACE: { label: 'Minta ganti barang', hint: 'Hutang berkurang dan PO terbuka lagi; barang pengganti diterima lewat Goods Receipt baru.' },
+};

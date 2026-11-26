@@ -75,6 +75,8 @@ export default function Dashboard() {
     ['soToDeliver', 'Sales orders to deliver', '/sales-order?status=ACTIVE', 'fa-truck-fast'],
     ['deliveryOrder', 'Delivery order drafts', '/delivery-order?status=DRAFT', 'fa-truck-ramp-box'],
     ['doToInvoice', 'Deliveries to invoice', '/delivery-order?invoiced=false', 'fa-file-invoice-dollar'],
+    ['grToBill', 'Goods receipts not billed', '/goods-receipt?billed=false', 'fa-file-invoice-dollar'],
+    ['purchaseReturn', 'Purchase return drafts', '/purchase-return', 'fa-truck-arrow-right'],
   ].filter(([k]) => d?.pending?.[k] !== undefined).map(([k, label, to, icon]) => ({ key: k, label, to, icon, count: d.pending[k] })) : [];
   if (d?.poDrafts !== undefined) pendingItems.push({ key: 'poDrafts', label: 'Purchase order drafts', to: '/purchase-order', icon: 'fa-file-invoice', count: d.poDrafts });
 
@@ -105,6 +107,12 @@ export default function Dashboard() {
                 to={d.receivables.overdueCount ? '/sales-invoice?paymentStatus=OVERDUE' : '/sales-invoice?paymentStatus=OPEN'}
                 sub={`${d.receivables.count} invoice${d.receivables.overdueCount ? ` · ${formatRupiahCompact(d.receivables.overdue)} overdue (${d.receivables.overdueCount})` : ''}`}
                 tone={d.receivables.overdueCount ? 'border-danger-line bg-danger-soft' : ''} />
+            )}
+            {d.payables && (
+              <Kpi label="Payables" icon="fa-money-check-dollar" value={formatRupiahCompact(d.payables.outstanding)}
+                to={d.payables.overdueCount ? '/purchase-invoice?paymentStatus=OVERDUE' : '/purchase-invoice?paymentStatus=OPEN'}
+                sub={`${d.payables.count} bill${d.payables.overdueCount ? ` · ${formatRupiahCompact(d.payables.overdue)} overdue (${d.payables.overdueCount})` : ''}${d.payables.dueSoon ? ` · ${formatRupiahCompact(d.payables.dueSoon)} due ≤ 7 days` : ''}`}
+                tone={d.payables.overdueCount ? 'border-danger-line bg-danger-soft' : ''} />
             )}
             {d.inventoryValue !== undefined && (
               <Kpi label="Inventory value" icon="fa-sack-dollar" value={formatRupiahCompact(d.inventoryValue)} to="/stock-valuation"

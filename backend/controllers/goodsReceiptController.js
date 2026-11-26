@@ -57,15 +57,29 @@ const parseGr = (body) => {
   return {
     date, deliveryNoteNo: trimText(body.deliveryNoteNo, 100), note: trimText(body.note), lines,
     freightCharge, freightNote: body.freightNote === undefined ? undefined : trimText(body.freightNote, 200),
+    // penagih biaya angkut: undefined = tidak diubah, kosong = vendor PO
+    freightVendor: body.freightVendor === undefined ? undefined
+      : (body.freightVendor ? (mongoose.isValidObjectId(body.freightVendor) ? String(body.freightVendor) : 'invalid') : null),
   };
 };
 
 const canSeeCostOf = (req) => hasPermission(req.user, 'vendorPrice', 'view');
 
 /** Biaya angkut dari body hanya dipakai jika user boleh melihat data biaya; selain itu nilai lama dipertahankan */
-const freightFrom = (req, parsed, current = { freightCharge: 0, freightNote: '' }) => (canSeeCostOf(req)
-  ? { freightCharge: parsed.freightCharge ?? current.freightCharge ?? 0, freightNote: parsed.freightNote ?? current.freightNote ?? '' }
-  : { freightCharge: current.freightCharge || 0, freightNote: current.freightNote || '' });
+const freightFrom = async (req, parsed, current = { freightCharge: 0, freightNote: '', freightVendor: null }) => {
+  if (!canSeeCostOf(req)) return { freightCharge: current.freightCharge || 0, freightNote: current.freightNote || '', freightVendor: current.freightVendor || null };
+  const freightVendor = parsed.freightVendor === undefined ? (current.freightVendor || null) : parsed.freightVendor;
+  if (freightVendor === 'invalid') throw new HttpError('Invalid freight vendor', 400);
+  if (freightVendor) {
+    await lock(ref('vendor', freightVendor)); // bentrok dengan hapus vendor
+    if (!(await mongoose.model('Vendor').exists({ _id: freightVendor }))) throw new HttpError('Freight vendor not found', 400);
+  }
+  return {
+    freightCharge: parsed.freightCharge ?? current.freightCharge ?? 0,
+    freightNote: parsed.freightNote ?? current.freightNote ?? '',
+    freightVendor,
+  };
+};
 
 /**
  * PO yang bisa diterima (OPEN / PARTIAL), dikunci: bentrok dengan cancel/close PO & GR lain.
@@ -115,6 +129,9 @@ const skuCodes = async (po) => {
 const populateGr = (query) => query
   .populate('purchaseOrder', 'no status date isPKP taxRate')
   .populate('vendor', 'companyName')
+  .populate('freightVendor', 'companyName')
+  .populate('purchaseInvoice', 'no status')
+  .populate('freightInvoice', 'no status')
   .populate('gudang', 'code name')
   .populate('lines.sku', 'sku variantValues isActive')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
@@ -141,6 +158,8 @@ exports.getGoodsReceipts = async (req, res) => {
       filter.$or = [{ no: rx }, { deliveryNoteNo: rx }, { note: rx }, { purchaseOrder: { $in: poIds } }];
     }
     if (STATUSES.includes(req.query.status)) filter.status = req.query.status;
+    if (req.query.billed === 'false') Object.assign(filter, { status: 'POSTED', purchaseInvoice: null });
+    if (req.query.billed === 'true') filter.purchaseInvoice = { $ne: null };
     applyGudangFilter(req, filter, req.query.gudang); // hanya gudang yang boleh diakses
     for (const key of ['vendor', 'purchaseOrder']) {
       if (!req.query[key]) continue;
@@ -159,6 +178,7 @@ exports.getGoodsReceipts = async (req, res) => {
       GoodsReceipt.find(filter)
         .select('-lines')
         .populate('purchaseOrder', 'no')
+        .populate('purchaseInvoice', 'no')
         .populate('vendor', 'companyName')
         .populate('gudang', 'code name')
         .populate('createdBy', 'name')
@@ -256,6 +276,8 @@ exports.getGoodsReceipt = async (req, res) => {
     });
     gr.canSeeCost = canSeeCostOf(req);
     if (!gr.canSeeCost) delete gr.freightCharge;
+    gr.returns = await mongoose.model('PurchaseReturn').find({ goodsReceipt: gr._id, status: { $ne: 'CANCELLED' } })
+      .select('no date status resolution').sort({ createdDate: 1 }).lean();
     return successResponse(res, gr);
   } catch (error) {
     return handleError(res, error);
@@ -271,7 +293,7 @@ exports.createGoodsReceipt = async (req, res) => {
     const gr = await runInTransaction(async () => {
       const po = await loadReceivablePo(req.body.purchaseOrder);
       assertGudang(req, po.gudang);
-      const freight = freightFrom(req, parsed);
+      const freight = await freightFrom(req, parsed);
       const lines = buildLines(po, parsed.lines, await skuCodes(po), freight.freightCharge);
       const doc = await GoodsReceipt.create({
         ...parsed,
@@ -312,7 +334,7 @@ exports.updateGoodsReceipt = async (req, res) => {
       doc.date = parsed.date;
       doc.deliveryNoteNo = parsed.deliveryNoteNo;
       doc.note = parsed.note;
-      Object.assign(doc, freightFrom(req, parsed, doc));
+      Object.assign(doc, await freightFrom(req, parsed, doc));
       doc.lines = buildLines(po, parsed.lines, await skuCodes(po), doc.freightCharge);
       doc.updatedDate = new Date();
       doc.updatedBy = req.user._id;
@@ -469,6 +491,13 @@ exports.cancelGoodsReceipt = async (req, res) => {
       if (!doc) throw new HttpError('Goods receipt not found', 404);
       assertGudang(req, doc.gudang);
       if (doc.status !== 'POSTED') throw new HttpError('Only posted goods receipts can be cancelled', 400);
+      await lock(ref('goodsReceipt', doc._id));
+      if (doc.purchaseInvoice || doc.freightInvoice) {
+        const bill = await mongoose.model('PurchaseInvoice').findById(doc.purchaseInvoice || doc.freightInvoice).select('no').lean();
+        throw new HttpError(`${doc.no} is billed (${bill?.no || 'vendor bill'}). Cancel the vendor bill first.`, 400);
+      }
+      const ret = await mongoose.model('PurchaseReturn').findOne({ goodsReceipt: doc._id, status: { $in: ['DRAFT', 'POSTED'] } }).select('no').lean();
+      if (ret) throw new HttpError(`${doc.no} has purchase return ${ret.no}. Cancel or delete it first.`, 400);
 
       await lock(ref('purchaseOrder', doc.purchaseOrder));
       const po = await PurchaseOrder.findById(doc.purchaseOrder);

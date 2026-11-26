@@ -36,6 +36,9 @@ const MENU_TARGET = [
     children: [
       leaf('/purchase-order', 'Purchase Order', 'fa-solid fa-file-invoice', 'purchaseOrder', 'Pesanan pembelian ke vendor'),
       leaf('/goods-receipt', 'Goods Receipt', 'fa-solid fa-truck-ramp-box', 'goodsReceipt', 'Penerimaan barang dari PO: stok & HPP bertambah saat diposting'),
+      leaf('/purchase-invoice', 'Vendor Bill', 'fa-solid fa-file-invoice-dollar', 'purchaseInvoice', 'Tagihan vendor dari penerimaan barang & biaya angkut: hutang'),
+      leaf('/vendor-payment', 'Vendor Payment', 'fa-solid fa-money-check-dollar', 'vendorPayment', 'Pembayaran hutang ke vendor & refund dari vendor'),
+      leaf('/purchase-return', 'Purchase Return', 'fa-solid fa-truck-arrow-right', 'purchaseReturn', 'Retur ke vendor: stok keluar, hutang berkurang / barang diganti'),
     ],
   },
   {

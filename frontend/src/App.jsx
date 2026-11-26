@@ -40,6 +40,11 @@ import PurchaseOrder from './pages/PurchaseOrder';
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
 import GoodsReceipt from './pages/GoodsReceipt';
 import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
+import PurchaseInvoice from './pages/PurchaseInvoice';
+import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail';
+import VendorPayment from './pages/VendorPayment';
+import PurchaseReturn from './pages/PurchaseReturn';
+import PurchaseReturnDetail from './pages/PurchaseReturnDetail';
 import Settings from './pages/Settings';
 import StockValuation from './pages/StockValuation';
 import Reorder from './pages/Reorder';
@@ -93,6 +98,13 @@ function App() {
         <Route path="/goods-receipt" element={guard('goodsReceipt', <GoodsReceipt />)} />
         {/* :id = 'new' (?po=<poId>) atau id dokumen */}
         <Route path="/goods-receipt/:id" element={guard('goodsReceipt', <GoodsReceiptDetail />)} />
+        <Route path="/purchase-invoice" element={guard('purchaseInvoice', <PurchaseInvoice />)} />
+        {/* :id = 'new' (?vendor=) atau id tagihan */}
+        <Route path="/purchase-invoice/:id" element={guard('purchaseInvoice', <PurchaseInvoiceDetail />)} />
+        <Route path="/vendor-payment" element={guard('vendorPayment', <VendorPayment />)} />
+        <Route path="/purchase-return" element={guard('purchaseReturn', <PurchaseReturn />)} />
+        {/* :id = 'new' (?gr=) atau id dokumen */}
+        <Route path="/purchase-return/:id" element={guard('purchaseReturn', <PurchaseReturnDetail />)} />
         <Route path="/quotation" element={guard('quotation', <Quotation />)} />
         {/* :id = 'new' atau id dokumen */}
         <Route path="/quotation/:id" element={guard('quotation', <QuotationDetail />)} />

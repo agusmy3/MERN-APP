@@ -32,6 +32,9 @@ const ENTITY_RESOURCE = {
   salesInvoice: 'salesInvoice',
   salesOrder: 'salesOrder',
   quotation: 'quotation',
+  purchaseInvoice: 'purchaseInvoice',
+  vendorPayment: 'vendorPayment',
+  purchaseReturn: 'purchaseReturn',
   deliveryOrder: 'deliveryOrder',
   salesReturn: 'salesReturn',
   salesPayment: 'salesPayment',
@@ -43,13 +46,17 @@ const ENTITY_RESOURCE = {
 };
 
 // entity yang punya histori per record (tombol/tab History)
-const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift', 'salesOrder', 'deliveryOrder', 'quotation'];
+const HISTORY_ENTITIES = ['produk', 'role', 'user', 'kategori', 'vendor', 'uom', 'variant', 'menu', 'gudang', 'stockAdjustment', 'stockTransfer', 'purchaseOrder', 'goodsReceipt', 'costRevaluation', 'customer', 'salesInvoice', 'salesReturn', 'priceList', 'outlet', 'posShift', 'salesOrder', 'deliveryOrder', 'quotation', 'purchaseInvoice', 'purchaseReturn'];
 
 // scope tab History produk -> entity log
 const PRODUK_SCOPES = { info: 'produk', sku: 'produkSku', prices: 'vendorPrice' };
 
-const visibleEntities = (user) => Object.keys(ENTITY_RESOURCE)
-  .filter((entity) => hasPermission(user, ENTITY_RESOURCE[entity], 'view'));
+// log tagihan & pembayaran vendor berisi harga beli: butuh juga vendorPrice:view
+const COST_ENTITIES = ['purchaseInvoice', 'vendorPayment'];
+const canSeeEntity = (user, entity) => hasPermission(user, ENTITY_RESOURCE[entity], 'view')
+  && (!COST_ENTITIES.includes(entity) || hasPermission(user, 'vendorPrice', 'view'));
+
+const visibleEntities = (user) => Object.keys(ENTITY_RESOURCE).filter((entity) => canSeeEntity(user, entity));
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -82,7 +89,7 @@ exports.getHistory = async (req, res) => {
     const { entity, id, scope } = req.query;
     if (!HISTORY_ENTITIES.includes(entity)) return errorResponse(res, 'Invalid entity', 400);
     if (!mongoose.isValidObjectId(id)) return errorResponse(res, 'Invalid id', 400);
-    if (!hasPermission(req.user, ENTITY_RESOURCE[entity], 'view')) {
+    if (!canSeeEntity(req.user, entity)) {
       return errorResponse(res, "You don't have permission to view this history", 403);
     }
 
@@ -98,7 +105,7 @@ exports.getHistory = async (req, res) => {
       if (scope && PRODUK_SCOPES[scope]) {
         filter.entity = allowed.includes(PRODUK_SCOPES[scope]) ? PRODUK_SCOPES[scope] : '__none__';
       }
-    } else if (entity === 'purchaseOrder' || entity === 'salesInvoice' || entity === 'salesOrder') {
+    } else if (['purchaseOrder', 'salesInvoice', 'salesOrder', 'purchaseInvoice'].includes(entity)) {
       // PO + penerimaan barangnya / invoice + retur & pembayarannya / SO + pengirimannya (hanya entity yang boleh dilihat)
       filter = {
         entity: { $in: allowed },

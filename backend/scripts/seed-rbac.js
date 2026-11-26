@@ -41,6 +41,9 @@ const ROUTE_RESOURCE = {
   '/reorder': 'reorder',
   '/purchase-order': 'purchaseOrder',
   '/goods-receipt': 'goodsReceipt',
+  '/purchase-invoice': 'purchaseInvoice',
+  '/vendor-payment': 'vendorPayment',
+  '/purchase-return': 'purchaseReturn',
   '/settings': 'setting',
   '/customer': 'customer',
   '/quotation': 'quotation',
@@ -75,6 +78,9 @@ const SALES_MENUS = [
 const PURCHASING_MENUS = [
   { menu: 'Purchase Order', component: '/purchase-order', icon: 'fa-solid fa-file-invoice', resource: 'purchaseOrder', deskripsi: 'Pesanan pembelian ke vendor' },
   { menu: 'Goods Receipt', component: '/goods-receipt', icon: 'fa-solid fa-truck-ramp-box', resource: 'goodsReceipt', deskripsi: 'Penerimaan barang dari PO: stok & HPP bertambah saat diposting' },
+  { menu: 'Vendor Bill', component: '/purchase-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'purchaseInvoice', deskripsi: 'Tagihan vendor dari penerimaan barang & biaya angkut: hutang' },
+  { menu: 'Vendor Payment', component: '/vendor-payment', icon: 'fa-solid fa-money-check-dollar', resource: 'vendorPayment', deskripsi: 'Pembayaran hutang ke vendor & refund dari vendor' },
+  { menu: 'Purchase Return', component: '/purchase-return', icon: 'fa-solid fa-truck-arrow-right', resource: 'purchaseReturn', deskripsi: 'Retur ke vendor: stok keluar, hutang berkurang / barang diganti' },
 ];
 
 const INVENTORY_MENUS = [

@@ -17,6 +17,7 @@ const lineSchema = new mongoose.Schema({
   konversi: { type: Number, required: true },
   qty: { type: Number, required: true },        // diterima, dalam uomBeli
   qtyBase: { type: Number, required: true },    // qty x konversi (masuk stok)
+  qtyReturned: { type: Number, default: 0 },    // diretur ke vendor (Purchase Return POSTED), dalam uomBeli
   baseUnitCost: { type: Number, default: null },  // HPP dari harga PO saja, per satuan dasar
   freightCost: { type: Number, default: 0 },      // bagian biaya angkut baris ini (total, bukan per unit)
   unitCost: { type: Number, required: true },   // per satuan dasar (HPP masuk = base + angkut / qtyBase)
@@ -34,6 +35,9 @@ const goodsReceiptSchema = new mongoose.Schema({
   // menambah HPP. Hanya diisi / dilihat user dengan vendorPrice:view.
   freightCharge: { type: Number, default: 0 },
   freightNote: { type: String, default: '' },
+  freightVendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', default: null }, // penagih biaya angkut (null = vendor PO)
+  purchaseInvoice: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseInvoice', default: null }, // tagihan barang (aktif)
+  freightInvoice: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseInvoice', default: null },  // tagihan biaya angkut (aktif)
   status: { type: String, required: true, enum: ['DRAFT', 'POSTED', 'CANCELLED'], default: 'DRAFT' },
   lines: { type: [lineSchema], default: [] },
   note: { type: String },
@@ -51,5 +55,7 @@ const goodsReceiptSchema = new mongoose.Schema({
 goodsReceiptSchema.index({ purchaseOrder: 1, status: 1 });
 goodsReceiptSchema.index({ status: 1, createdDate: -1 });
 goodsReceiptSchema.index({ 'lines.sku': 1 });
+goodsReceiptSchema.index({ vendor: 1, status: 1, purchaseInvoice: 1 });
+goodsReceiptSchema.index({ freightVendor: 1, status: 1, freightInvoice: 1 });
 
 module.exports = mongoose.model('GoodsReceipt', goodsReceiptSchema);

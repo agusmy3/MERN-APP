@@ -27,6 +27,7 @@ const EMPTY_FORM = {
   ...EMPTY_REGION,
   picName: '',
   picContact: '',
+  termDays: 0,
 };
 
 export default function Vendor() {
@@ -50,6 +51,7 @@ export default function Vendor() {
       ...regionFrom(row),
       picName: row.picName,
       picContact: row.picContact,
+      termDays: row.termDays ?? 0,
     }),
     getLabel: (row) => row.companyName,
     // validasi ringan di client (penegakan di backend)
@@ -75,6 +77,7 @@ export default function Vendor() {
     { key: 'companyAddress', header: 'Address', width: 320, render: (row) => addressLine({ ...row, alamat: row.companyAddress }) },
     { key: 'picName', header: 'PIC', sortField: 'picName', width: 180 },
     { key: 'picContact', header: 'PIC Contact', width: 160 },
+    { key: 'termDays', header: 'Term', width: 90, className: 'text-right tabular-nums', render: (row) => (row.termDays ? `${row.termDays} d` : 'Cash') },
     auditColumn(table.sortField),
     actionColumn(crud),
   ];
@@ -149,6 +152,10 @@ export default function Vendor() {
             className={inputClass}
             required
           />
+        </FormField>
+
+        <FormField label="Payment term (days)" htmlFor="vendor-term" hint="Jatuh tempo tagihan vendor = tanggal faktur + termin. 0 = tunai.">
+          <input id="vendor-term" name="termDays" type="number" min="0" max="365" step="1" value={form.termDays} onChange={crud.handleChange} className={inputClass} />
         </FormField>
 
         {editingRow && crud.mode !== 'create' && (

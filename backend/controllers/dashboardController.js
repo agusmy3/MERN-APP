@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ProdukSku = require('../models/ProdukSku');
 const StockBalance = require('../models/StockBalance');
 const StockMovement = require('../models/StockMovement');
@@ -157,6 +158,32 @@ const salesWidgets = async (tz, withCost, g) => {
   };
 };
 
+/** Hutang vendor: sisa tagihan POSTED belum lunas + lewat jatuh tempo + jatuh tempo 7 hari ke depan */
+const payablesWidget = async (scoped) => {
+  const PurchaseInvoice = require('../models/PurchaseInvoice');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const week = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const match = { status: 'POSTED', paymentStatus: { $in: ['UNPAID', 'PARTIAL'] } };
+  if (scoped) match.gudangs = { $in: scoped.$in.map((id) => new mongoose.Types.ObjectId(String(id))) };
+  const rows = await PurchaseInvoice.aggregate([
+    { $match: match },
+    { $project: { balance: { $subtract: [{ $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] }, { $ifNull: ['$paidAmount', 0] }] }, overdue: { $lt: ['$dueDate', today] }, dueSoon: { $and: [{ $gte: ['$dueDate', today] }, { $lt: ['$dueDate', week] }] } } },
+    {
+      $group: {
+        _id: null,
+        outstanding: { $sum: '$balance' },
+        count: { $sum: 1 },
+        overdue: { $sum: { $cond: ['$overdue', '$balance', 0] } },
+        overdueCount: { $sum: { $cond: ['$overdue', 1, 0] } },
+        dueSoon: { $sum: { $cond: ['$dueSoon', '$balance', 0] } },
+      },
+    },
+  ]);
+  const r = rows[0] || {};
+  return { outstanding: round2(r.outstanding || 0), count: r.count || 0, overdue: round2(r.overdue || 0), overdueCount: r.overdueCount || 0, dueSoon: round2(r.dueSoon || 0) };
+};
+
 /** Piutang: sisa tagihan invoice POSTED yang belum lunas + yang lewat jatuh tempo */
 const receivablesWidget = async (g) => {
   const today = new Date();
@@ -308,11 +335,14 @@ exports.getDashboard = async (req, res) => {
     if (can('purchaseOrder')) jobs.push(purchaseOrderWidgets(gAgg).then((w) => Object.assign(data, w)));
     if (can('salesInvoice')) jobs.push(salesWidgets(tz, canSeeCost, gAgg).then((w) => Object.assign(data, w)));
     if (can('salesInvoice')) jobs.push(receivablesWidget(gAgg).then((w) => { data.receivables = w; }));
+    if (can('purchaseInvoice') && canSeeCost) jobs.push(payablesWidget(scoped).then((w) => { data.payables = w; }));
 
     // pekerjaan tertunda: draft yang menunggu diposting
     const pending = {};
     if (can('stockAdjustment')) jobs.push(StockAdjustment.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.stockAdjustment = n; }));
     if (can('goodsReceipt')) jobs.push(GoodsReceipt.countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.goodsReceipt = n; }));
+    if (can('purchaseInvoice') && canSeeCost) jobs.push(GoodsReceipt.countDocuments({ status: 'POSTED', purchaseInvoice: null, ...g }).then((n) => { pending.grToBill = n; }));
+    if (can('purchaseReturn')) jobs.push(require('../models/PurchaseReturn').countDocuments({ status: 'DRAFT', ...g }).then((n) => { pending.purchaseReturn = n; }));
     if (can('stockTransfer')) {
       // draft yang menunggu dikirim (gudang asal) & kiriman yang menunggu diterima (gudang tujuan)
       const from = scoped ? { fromGudang: scoped } : {};

@@ -10,11 +10,16 @@ import { PAYMENT_METHODS } from '../../utils/salesMeta';
 const btn = 'px-3 py-1.5 rounded text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
- * Pembayaran & refund di halaman invoice POSTED: daftar, catat baru (default = sisa tagihan / kelebihan
- * bayar), batalkan dengan alasan. Izin resource salesPayment (create = catat, update = batalkan).
+ * Pembayaran & refund di halaman invoice / tagihan POSTED: daftar, catat baru (default = sisa tagihan / kelebihan
+ * bayar), batalkan dengan alasan. Default = invoice penjualan (izin salesPayment); tagihan vendor memakai
+ * resource 'vendorPayment', invoiceKey 'purchaseInvoice', createFn / cancelFn & methods sendiri.
  */
-export default function InvoicePayments({ doc, token, onChanged }) {
-  const perm = usePermission('salesPayment');
+export default function InvoicePayments({
+  doc, token, onChanged, resource = 'salesPayment', invoiceKey = 'salesInvoice',
+  createFn = createSalesPayment, cancelFn = cancelSalesPayment, methods = PAYMENT_METHODS,
+  refundText = 'dikembalikan ke customer',
+}) {
+  const perm = usePermission(resource);
   const toast = useToast();
   const refund = doc.balance < 0;
   const [open, setOpen] = useState(false);
@@ -39,7 +44,7 @@ export default function InvoicePayments({ doc, token, onChanged }) {
     if (amount > Math.abs(doc.balance)) return toast.warning(`Maksimal ${formatRupiah(Math.abs(doc.balance))}.`);
     setBusy(true);
     try {
-      const res = await createSalesPayment({ ...form, amount, salesInvoice: doc._id, type: refund ? 'REFUND' : 'PAYMENT' }, token);
+      const res = await createFn({ ...form, amount, [invoiceKey]: doc._id, type: refund ? 'REFUND' : 'PAYMENT' }, token);
       toast.success(res.data.message);
       setOpen(false);
       await onChanged();
@@ -54,7 +59,7 @@ export default function InvoicePayments({ doc, token, onChanged }) {
     if (!cancelReason.trim()) return toast.warning('Isi alasan pembatalan.');
     setBusy(true);
     try {
-      const res = await cancelSalesPayment(cancelId, cancelReason.trim(), token);
+      const res = await cancelFn(cancelId, cancelReason.trim(), token);
       toast.success(res.data.message);
       setCancelId(null);
       setCancelReason('');
@@ -80,7 +85,7 @@ export default function InvoicePayments({ doc, token, onChanged }) {
       {open && form && (
         <form onSubmit={submit} className="mb-3 p-3 rounded border border-line bg-subtle space-y-2">
           <div className="text-xs text-muted">
-            {refund ? `Kelebihan bayar ${formatRupiah(-doc.balance)} dikembalikan ke customer.` : `Sisa tagihan ${formatRupiah(doc.balance)}.`}
+            {refund ? `Kelebihan bayar ${formatRupiah(-doc.balance)} ${refundText}.` : `Sisa tagihan ${formatRupiah(doc.balance)}.`}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-muted">Date
@@ -88,7 +93,7 @@ export default function InvoicePayments({ doc, token, onChanged }) {
             </label>
             <label className="text-xs text-muted">Method
               <select value={form.method} onChange={(e) => setForm((f) => ({ ...f, method: e.target.value }))} className={inputClass}>
-                {Object.entries(PAYMENT_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(methods).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
           </div>
@@ -124,7 +129,7 @@ export default function InvoicePayments({ doc, token, onChanged }) {
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                  <span>{formatDay(p.date)} · {PAYMENT_METHODS[p.method] || p.method}{p.type === 'REFUND' ? ' · refund' : ''}{p.reference ? ` · ${p.reference}` : ''}</span>
+                  <span>{formatDay(p.date)} · {methods[p.method] || p.method}{p.type === 'REFUND' ? ' · refund' : ''}{p.reference ? ` · ${p.reference}` : ''}</span>
                   {cancelled ? <span className="text-danger" title={p.cancelReason}>cancelled</span>
                     : perm.canUpdate && cancelId !== p._id && (
                       <button type="button" onClick={() => { setCancelId(p._id); setCancelReason(''); }} className="hover:text-danger cursor-pointer">cancel</button>

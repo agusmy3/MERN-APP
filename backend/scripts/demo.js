@@ -159,8 +159,8 @@ async function main() {
       sembako: await create(Kategori, 'kategori', { name: 'Sembako', deskripsi: 'Kebutuhan pokok, dijual per berat' }),
     };
     const vendor = {
-      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1', provinsi: 'Jawa Barat', kota: 'Bandung', kecamatan: 'Coblong', kodePos: '40132' }),
-      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2', provinsi: 'DKI Jakarta', kota: 'Jakarta Utara', kecamatan: 'Penjaringan', kodePos: '14440' }),
+      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1', provinsi: 'Jawa Barat', kota: 'Bandung', kecamatan: 'Coblong', kodePos: '40132', termDays: 30 }),
+      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2', provinsi: 'DKI Jakarta', kota: 'Jakarta Utara', kecamatan: 'Penjaringan', kodePos: '14440', termDays: 14 }),
       pangan: await create(Vendor, 'vendor', { companyName: 'UD Pangan Jaya (Demo)', picName: 'Andi', picContact: '0812-0000-0003', companyAddress: 'Jl. Contoh No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Genteng', kodePos: '60275' }),
     };
 
