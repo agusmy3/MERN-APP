@@ -23,10 +23,12 @@ mongoose.set('transactionAsyncLocalStorage', true);
 
 /** Error bisnis dengan status HTTP; di-throw dari dalam transaksi untuk membatalkannya. */
 class HttpError extends Error {
-  constructor(message, status = 400) {
+  /** details (opsional) dikirim ke klien sebagai `data` (mis. rincian blokir kredit SO) */
+  constructor(message, status = 400, details = undefined) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
+    this.details = details;
   }
 }
 

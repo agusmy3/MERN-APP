@@ -213,17 +213,18 @@ export default function Reorder() {
         </div>
 
         <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: poPerm.canCreate ? 1280 : 900 }}>
+          <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: poPerm.canCreate ? 1380 : 1000 }}>
             <thead className="bg-head text-head-fg text-left sticky top-0 z-10">
               <tr>
                 {poPerm.canCreate && <th className="px-2 py-2 border-b border-line w-9"></th>}
                 <th className="px-2 py-2 border-b border-line font-semibold">SKU</th>
                 <th className="px-2 py-2 border-b border-line font-semibold w-20">Whs.</th>
                 <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">Stock</th>
+                <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right" title="Sisa Sales Order (OPEN / PARTIAL) yang belum dikirim dari gudang ini">Reserved</th>
                 <th className="px-2 py-2 border-b border-line font-semibold w-28 text-right">Min / Max</th>
                 <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">On order</th>
                 <th className="px-2 py-2 border-b border-line font-semibold w-32">Status</th>
-                <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right" title="Saran dalam satuan dasar = max − (stok + sedang dipesan)">Need</th>
+                <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right" title="Saran dalam satuan dasar = max − (stok − dipesan customer + sedang dipesan)">Need</th>
                 {poPerm.canCreate && (
                   <>
                     <th className="px-2 py-2 border-b border-line font-semibold w-48">Vendor</th>
@@ -253,6 +254,9 @@ export default function Reorder() {
                     </td>
                     <td className="px-2 py-1.5 border-t border-line-soft">{r.gudang.code}</td>
                     <td className={`px-2 py-1.5 border-t border-line-soft text-right tabular-nums font-semibold ${r.onHand <= 0 ? 'text-danger' : ''}`}>{formatNumber(r.onHand)} {r.uom}</td>
+                    <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums" title={r.committed ? `Tersedia ${formatNumber(r.available)}` : undefined}>
+                      {r.committed ? <span className={r.available <= r.minQty ? 'text-danger' : ''}>{formatNumber(r.committed)}</span> : <span className="text-muted">-</span>}
+                    </td>
                     <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums text-muted">{formatNumber(r.minQty)} / {formatNumber(r.maxQty)}</td>
                     <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">{r.onOrder ? formatNumber(r.onOrder) : '-'}</td>
                     <td className="px-2 py-1.5 border-t border-line-soft"><StatusBadge status={r.status} meta={REORDER_STATUS} /></td>
@@ -289,7 +293,7 @@ export default function Reorder() {
                 );
               })}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={13} className="text-center py-8 text-muted">
+                <tr><td colSpan={14} className="text-center py-8 text-muted">
                   Tidak ada SKU yang perlu perhatian. Atur batas min/max di tab <b>Stock</b> detail produk.
                 </td></tr>
               )}

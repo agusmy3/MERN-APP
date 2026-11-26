@@ -25,6 +25,8 @@ import FormField from '../components/FormField';
 import SkuPicker from '../components/stock/SkuPicker';
 import StatusBadge from '../components/stock/StatusBadge';
 import ReasonPanel from '../components/stock/ReasonPanel';
+import CreditSummary from '../components/sales/CreditSummary';
+import { printSalesOrder } from '../utils/documentPrint';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
@@ -127,6 +129,13 @@ export default function SalesOrderDetail() {
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [panel, setPanel] = useState(null); // 'cancel' | 'close'
+  const [credit, setCredit] = useState(null);           // posisi kredit customer (tanpa SO ini)
+  const [creditBlock, setCreditBlock] = useState(null); // rincian 409 CREDIT_BLOCK saat konfirmasi
+  const [blockOverdue, setBlockOverdue] = useState(true);
+
+  useEffect(() => {
+    getSettings(user.token).then(({ values }) => setBlockOverdue(values['sales.blockOverdue'] !== false)).catch(console.error);
+  }, [user.token]);
 
   useEffect(() => {
     getGudangDropdown(user.token).then(setGudangList).catch(console.error);
@@ -150,6 +159,8 @@ export default function SalesOrderDetail() {
     };
     const ls = d.lines.map(lineFromDoc);
     setDoc(d);
+    setCredit(d.credit || null);
+    setCreditBlock(null);
     setForm(f);
     setLines(ls);
     setSavedPayload(JSON.stringify(toPayload(f, ls)));
@@ -174,6 +185,8 @@ export default function SalesOrderDetail() {
     setDoc(null);
     setLines([]);
     setSavedPayload(null);
+    setCredit(null);
+    setCreditBlock(null);
     setForm({
       customer: '', gudang: '', date: toDateInput(), requestedDate: '', customerPoNo: '', deliveryMethod: 'DELIVERY',
       shipTo: { ...EMPTY_SHIP }, note: '', taxRate: 0, priceIncludesTax: false, discountAmount: 0, shippingCharge: 0,
@@ -223,10 +236,15 @@ export default function SalesOrderDetail() {
   // ganti customer: alamat kirim default + harga baris mengikuti price list customer baru
   const changeCustomer = async (customer) => {
     setForm((f) => ({ ...f, customer }));
-    if (!customer) return;
+    setCreditBlock(null);
+    if (!customer) {
+      setCredit(null);
+      return;
+    }
     try {
-      const { shipTo } = await getSoCustomerShipTo(customer, user.token);
+      const { shipTo, credit: c } = await getSoCustomerShipTo(customer, user.token, isNew ? undefined : id);
       setForm((f) => ({ ...f, shipTo: shipFrom(shipTo) }));
+      setCredit(c || null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load customer address');
     }
@@ -291,7 +309,19 @@ export default function SalesOrderDetail() {
     return null;
   };
 
-  const save = async ({ confirmIt = false } = {}) => {
+  // 409 CREDIT_BLOCK: tampilkan panel persetujuan (atau info jika tidak berhak menyetujui)
+  const handleCreditBlock = (err) => {
+    const data = err.response?.data;
+    if (err.response?.status !== 409 || data?.data?.code !== 'CREDIT_BLOCK') return false;
+    setCreditBlock(data.data);
+    setCredit(data.data.credit);
+    setPanel(null);
+    if (data.data.canApprove) toast.warning('Pemeriksaan kredit gagal: isi alasan persetujuan untuk tetap mengonfirmasi.');
+    else toast.error(data.message);
+    return true;
+  };
+
+  const save = async ({ confirmIt = false, override = null } = {}) => {
     const error = validate();
     if (error) {
       toast.warning(error);
@@ -299,13 +329,29 @@ export default function SalesOrderDetail() {
     }
     setBusy(true);
     try {
-      const body = { ...payload, confirm: confirmIt };
+      const body = { ...payload, confirm: confirmIt, ...(override ? { creditOverride: { reason: override } } : {}) };
       const res = isNew ? await createSalesOrder(body, user.token) : await updateSalesOrder(id, body, user.token);
       toast.success(res.data.message);
+      setCreditBlock(null);
       if (isNew) navigate(`/sales-order/${res.data.data._id}`, { replace: true });
       else await load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save sales order');
+      if (!handleCreditBlock(err)) toast.error(err.response?.data?.message || 'Failed to save sales order');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doConfirm = async (override = null) => {
+    if (dirty || isNew) return save({ confirmIt: true, override });
+    setBusy(true);
+    try {
+      const res = await confirmSalesOrder(id, user.token, override ? { creditOverride: { reason: override } } : {});
+      toast.success(res.data.message);
+      setCreditBlock(null);
+      await load();
+    } catch (err) {
+      if (!handleCreditBlock(err)) toast.error(err.response?.data?.message || 'Failed to confirm sales order');
     } finally {
       setBusy(false);
     }
@@ -322,17 +368,7 @@ export default function SalesOrderDetail() {
       confirmLabel: dirty || isNew ? 'Save & Confirm' : 'Confirm',
     });
     if (!ok) return;
-    if (dirty || isNew) return save({ confirmIt: true });
-    setBusy(true);
-    try {
-      const res = await confirmSalesOrder(id, user.token);
-      toast.success(res.data.message);
-      await load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to confirm sales order');
-    } finally {
-      setBusy(false);
-    }
+    return doConfirm();
   };
 
   const removeDraft = async () => {
@@ -360,6 +396,18 @@ export default function SalesOrderDetail() {
     } finally {
       setBusy(false);
     }
+  };
+
+
+  // cetak dengan kop perusahaan (System Settings company.*)
+  const printDoc = async () => {
+    let company = {};
+    try {
+      company = (await getSettings(user.token)).values;
+    } catch (err) {
+      console.error(err);
+    }
+    printSalesOrder(doc, company);
   };
 
   // ---------- render ----------
@@ -393,6 +441,11 @@ export default function SalesOrderDetail() {
         actions={(
           <>
             {!isNew && <StatusBadge status={status} meta={SO_STATUS_META} />}
+            {doc && (
+              <button type="button" onClick={printDoc} disabled={busy} className={btnGhost} title="Cetak konfirmasi pesanan (dengan harga)">
+                <i className="fa fa-print"></i> Print
+              </button>
+            )}
             {isDraft && !isNew && perm.canDelete && (
               <button type="button" onClick={removeDraft} disabled={busy} className={btnDanger}>
                 <i className="fa fa-trash"></i> Delete
@@ -439,6 +492,29 @@ export default function SalesOrderDetail() {
           onConfirm={runPanel}
           onClose={() => setPanel(null)}
         />
+      )}
+
+      {creditBlock && isDraft && (creditBlock.canApprove ? (
+        <ReasonPanel
+          title="Approve credit exception"
+          description={`Pemeriksaan kredit gagal: ${creditBlock.issues.join('; ')}. Konfirmasi tetap bisa dilakukan dengan alasan (tercatat di audit).`}
+          placeholder="Alasan persetujuan (wajib)"
+          confirmLabel={dirty || isNew ? 'Approve, Save & Confirm' : 'Approve & Confirm'}
+          icon="fa-check"
+          busy={busy}
+          onConfirm={(reason) => doConfirm(reason)}
+          onClose={() => setCreditBlock(null)}
+        />
+      ) : (
+        <div className="mb-4 rounded-lg border border-danger-line bg-danger-soft p-4 text-sm max-w-3xl">
+          <p className="font-semibold text-danger mb-1"><i className="fa fa-ban mr-1.5"></i>Credit check failed</p>
+          <p className="text-fg">{creditBlock.issues.join('; ')}.</p>
+          <p className="text-muted mt-1">Simpan sebagai draft, lalu minta user dengan izin <b>Sales Order: Approve</b> untuk mengonfirmasi.</p>
+        </div>
+      ))}
+
+      {isDraft && credit && (credit.limit > 0 || credit.overdue?.count > 0) && (
+        <CreditSummary credit={credit} orderTotal={totals?.total ?? 0} blockOverdue={blockOverdue} className="mb-4 max-w-md" />
       )}
 
       {isDraft && !isNew && !editable && (
@@ -741,8 +817,25 @@ export default function SalesOrderDetail() {
                   <i className={`fa ${DELIVERY_METHODS[doc.deliveryMethod]?.icon} text-muted mr-1.5`}></i>{DELIVERY_METHODS[doc.deliveryMethod]?.label}
                   {doc.deliveryMethod === 'DELIVERY' && <div className="text-xs text-muted break-words">{[doc.shipTo?.name, doc.shipTo?.phone].filter(Boolean).join(' · ')}{doc.shipTo?.name || doc.shipTo?.phone ? <br /> : null}{addressLine(doc.shipTo)}</div>}
                 </dd>
+                {doc.quotation && (
+                  <>
+                    <dt className="text-muted">Quotation</dt>
+                    <dd><Link to={`/quotation/${doc.quotation._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{doc.quotation.no}</Link>
+                      <div className="text-xs text-muted">Harga mengikuti penawaran</div></dd>
+                  </>
+                )}
                 {doc.requestedDate && (<><dt className="text-muted">Requested</dt><dd>{formatDay(doc.requestedDate)}</dd></>)}
                 {doc.confirmedDate && (<><dt className="text-muted">Confirmed</dt><dd>{formatDate2(doc.confirmedDate)} · {doc.confirmedBy?.name || '-'}</dd></>)}
+                {doc.creditOverrideDate && (
+                  <>
+                    <dt className="text-muted">Credit approval</dt>
+                    <dd>
+                      {formatDate2(doc.creditOverrideDate)} · {doc.creditOverrideBy?.name || '-'}
+                      <div className="text-xs text-muted">{doc.creditOverrideNote}</div>
+                      <div className="text-xs">“{doc.creditOverrideReason}”</div>
+                    </dd>
+                  </>
+                )}
                 {doc.closedDate && (<><dt className="text-muted">Closed</dt><dd>{formatDate2(doc.closedDate)} · {doc.closedBy?.name || '-'}</dd></>)}
                 {doc.closeReason && (<><dt className="text-muted">Reason</dt><dd className="break-words">{doc.closeReason}</dd></>)}
                 {doc.cancelledDate && (<><dt className="text-muted">Cancelled</dt><dd>{formatDate2(doc.cancelledDate)} · {doc.cancelledBy?.name || '-'}</dd></>)}

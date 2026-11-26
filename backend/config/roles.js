@@ -76,11 +76,12 @@ const ROLE_TEMPLATES = [
   {
     key: 'salesAdmin',
     name: 'Sales Admin',
-    deskripsi: 'Sales order, tagihan dari surat jalan, sales invoice, retur penjualan, customer; lihat price list & surat jalan',
+    deskripsi: 'Quotation, sales order, tagihan dari surat jalan, sales invoice, retur penjualan, customer; lihat price list & surat jalan',
     permissions: {
       produk: ['view'],
       customer: ALL,
       priceList: ['view'],
+      quotation: ALL,
       salesOrder: ALL,
       deliveryOrder: ['view'],
       salesInvoice: DOC,
@@ -90,10 +91,10 @@ const ROLE_TEMPLATES = [
   {
     key: 'finance',
     name: 'Finance',
-    deskripsi: 'Pembayaran & refund, laporan penjualan & umur piutang, nilai persediaan',
+    deskripsi: 'Pembayaran & refund, batas kredit customer & persetujuan SO melewati batas, laporan penjualan & umur piutang, nilai persediaan',
     permissions: {
-      customer: ['view'],
-      salesOrder: ['view'],
+      customer: ['view', 'update'],
+      salesOrder: ['view', 'approve'],
       deliveryOrder: ['view'],
       salesInvoice: ['view'],
       salesReturn: ['view'],

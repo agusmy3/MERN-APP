@@ -17,7 +17,9 @@ const lineSchema = new mongoose.Schema({
   konversi: { type: Number, required: true },
   qty: { type: Number, required: true },        // diterima, dalam uomBeli
   qtyBase: { type: Number, required: true },    // qty x konversi (masuk stok)
-  unitCost: { type: Number, required: true },   // per satuan dasar (HPP masuk)
+  baseUnitCost: { type: Number, default: null },  // HPP dari harga PO saja, per satuan dasar
+  freightCost: { type: Number, default: 0 },      // bagian biaya angkut baris ini (total, bukan per unit)
+  unitCost: { type: Number, required: true },   // per satuan dasar (HPP masuk = base + angkut / qtyBase)
   note: { type: String },
 }, { _id: false });
 
@@ -28,6 +30,10 @@ const goodsReceiptSchema = new mongoose.Schema({
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true }, // disalin dari PO
   date: { type: Date, required: true },
   deliveryNoteNo: { type: String },                             // no. surat jalan vendor
+  // biaya angkut / ekspedisi penerimaan ini (tanpa PPN yang bisa dikreditkan): dibagi ke baris menurut nilai,
+  // menambah HPP. Hanya diisi / dilihat user dengan vendorPrice:view.
+  freightCharge: { type: Number, default: 0 },
+  freightNote: { type: String, default: '' },
   status: { type: String, required: true, enum: ['DRAFT', 'POSTED', 'CANCELLED'], default: 'DRAFT' },
   lines: { type: [lineSchema], default: [] },
   note: { type: String },

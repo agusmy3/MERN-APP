@@ -7,7 +7,7 @@ const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { applyMovements, nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
-const { unitCostOf, outstandingOf, receiptStatus } = require('../helpers/purchaseHelper');
+const { unitCostOf, allocateFreight, outstandingOf, receiptStatus } = require('../helpers/purchaseHelper');
 const { hasPermission } = require('../config/permissions');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 
@@ -46,8 +46,26 @@ const parseGr = (body) => {
     return { poLine: String(l.poLine), qty: round2(l.qty), note: trimText(l.note, 200) || undefined };
   });
 
-  return { date, deliveryNoteNo: trimText(body.deliveryNoteNo, 100), note: trimText(body.note), lines };
+  // biaya angkut: undefined = tidak diubah (user tanpa vendorPrice:view mempertahankan nilai lama)
+  let freightCharge;
+  if (body.freightCharge !== undefined && body.freightCharge !== null && body.freightCharge !== '') {
+    const err = checkAmount(body.freightCharge, 'Freight charge');
+    if (err) throw new HttpError(err, 400);
+    freightCharge = round2(body.freightCharge);
+  } else if (body.freightCharge === '' || body.freightCharge === null) freightCharge = 0;
+
+  return {
+    date, deliveryNoteNo: trimText(body.deliveryNoteNo, 100), note: trimText(body.note), lines,
+    freightCharge, freightNote: body.freightNote === undefined ? undefined : trimText(body.freightNote, 200),
+  };
 };
+
+const canSeeCostOf = (req) => hasPermission(req.user, 'vendorPrice', 'view');
+
+/** Biaya angkut dari body hanya dipakai jika user boleh melihat data biaya; selain itu nilai lama dipertahankan */
+const freightFrom = (req, parsed, current = { freightCharge: 0, freightNote: '' }) => (canSeeCostOf(req)
+  ? { freightCharge: parsed.freightCharge ?? current.freightCharge ?? 0, freightNote: parsed.freightNote ?? current.freightNote ?? '' }
+  : { freightCharge: current.freightCharge || 0, freightNote: current.freightNote || '' });
 
 /**
  * PO yang bisa diterima (OPEN / PARTIAL), dikunci: bentrok dengan cancel/close PO & GR lain.
@@ -64,8 +82,11 @@ const loadReceivablePo = async (poId) => {
   return po;
 };
 
-/** Baris GR lengkap dari baris PO (snapshot sku/uom/konversi/harga pokok). Qty <= sisa PO. */
-const buildLines = (po, parsedLines, skus) => parsedLines.map((l) => {
+/**
+ * Baris GR lengkap dari baris PO (snapshot sku/uom/konversi/harga pokok). Qty <= sisa PO.
+ * freight = biaya angkut dokumen, dibagi ke baris menurut nilai (unitCost = harga + angkut).
+ */
+const buildLines = (po, parsedLines, skus, freight = 0) => allocateFreight(parsedLines.map((l) => {
   const poLine = po.lines.id(l.poLine);
   if (!poLine) throw new HttpError('One or more lines do not belong to this purchase order', 400);
   const outstanding = outstandingOf(poLine);
@@ -81,10 +102,10 @@ const buildLines = (po, parsedLines, skus) => parsedLines.map((l) => {
     konversi: poLine.konversi,
     qty: l.qty,
     qtyBase: round2(l.qty * poLine.konversi),
-    unitCost: unitCostOf(po, poLine),
+    baseUnitCost: unitCostOf(po, poLine),
     note: l.note,
   };
-});
+}), freight);
 
 const skuCodes = async (po) => {
   const rows = await mongoose.model('ProdukSku').find({ _id: { $in: po.lines.map((l) => l.sku) } }).select('sku').lean();
@@ -227,7 +248,14 @@ exports.getGoodsReceipt = async (req, res) => {
       l.ordered = pl?.qty ?? null;
       l.received = pl?.qtyReceived ?? null;
       l.outstanding = pl ? outstandingOf(pl) : null;
+      if (!canSeeCostOf(req)) {
+        delete l.unitCost;
+        delete l.baseUnitCost;
+        delete l.freightCost;
+      }
     });
+    gr.canSeeCost = canSeeCostOf(req);
+    if (!gr.canSeeCost) delete gr.freightCharge;
     return successResponse(res, gr);
   } catch (error) {
     return handleError(res, error);
@@ -243,9 +271,11 @@ exports.createGoodsReceipt = async (req, res) => {
     const gr = await runInTransaction(async () => {
       const po = await loadReceivablePo(req.body.purchaseOrder);
       assertGudang(req, po.gudang);
-      const lines = buildLines(po, parsed.lines, await skuCodes(po));
+      const freight = freightFrom(req, parsed);
+      const lines = buildLines(po, parsed.lines, await skuCodes(po), freight.freightCharge);
       const doc = await GoodsReceipt.create({
         ...parsed,
+        ...freight,
         lines,
         no: await nextDocNo('GR'),
         purchaseOrder: po._id,
@@ -282,7 +312,8 @@ exports.updateGoodsReceipt = async (req, res) => {
       doc.date = parsed.date;
       doc.deliveryNoteNo = parsed.deliveryNoteNo;
       doc.note = parsed.note;
-      doc.lines = buildLines(po, parsed.lines, await skuCodes(po));
+      Object.assign(doc, freightFrom(req, parsed, doc));
+      doc.lines = buildLines(po, parsed.lines, await skuCodes(po), doc.freightCharge);
       doc.updatedDate = new Date();
       doc.updatedBy = req.user._id;
       await doc.save();
@@ -383,7 +414,7 @@ exports.postGoodsReceipt = async (req, res) => {
       if (wantPriceUpdate) await lock(ref('vendor', po.vendor));
 
       // hitung ulang dari PO (qty tetap; sisa diperiksa terhadap kondisi PO terbaru)
-      const lines = buildLines(po, doc.lines.map((l) => ({ poLine: l.poLine, qty: l.qty, note: l.note })), await skuCodes(po));
+      const lines = buildLines(po, doc.lines.map((l) => ({ poLine: l.poLine, qty: l.qty, note: l.note })), await skuCodes(po), doc.freightCharge);
       const batchId = audit.newBatchId();
       const grBefore = await audit.snap('goodsReceipt', [doc]);
       const poBefore = await audit.snap('purchaseOrder', [po]);

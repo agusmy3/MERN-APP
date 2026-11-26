@@ -23,7 +23,7 @@ import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, round2, variantLabel } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
-import { GR_STATUS_META, PO_STATUS_META } from '../utils/purchaseMeta';
+import { GR_STATUS_META, PO_STATUS_META, allocateFreight } from '../utils/purchaseMeta';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -62,6 +62,7 @@ const lineFromGr = (l) => ({
   received: l.received,
   outstanding: l.outstanding,
   unitCost: l.unitCost,
+  freightCost: l.freightCost || 0,
   qty: l.qty,
   note: l.note || '',
 });
@@ -71,6 +72,8 @@ const toPayload = (form, lines) => ({
   date: form.date,
   deliveryNoteNo: form.deliveryNoteNo,
   note: form.note,
+  // biaya angkut hanya dikirim user dengan akses biaya (lainnya: nilai lama dipertahankan backend)
+  ...(form.freightCharge === undefined ? {} : { freightCharge: form.freightCharge || 0, freightNote: form.freightNote }),
   lines: lines.filter((l) => l.qty !== '' && Number(l.qty) !== 0).map((l) => ({ poLine: l.poLine, qty: l.qty, note: l.note })),
 });
 
@@ -149,7 +152,7 @@ export default function GoodsReceiptDetail() {
         return;
       }
       setPo(p);
-      setForm({ purchaseOrder: p._id, date: toDateInput(), deliveryNoteNo: '', note: '' });
+      setForm({ purchaseOrder: p._id, date: toDateInput(), deliveryNoteNo: '', note: '', ...(canSeeCost ? { freightCharge: 0, freightNote: '' } : {}) });
       setLines(p.lines.filter((l) => l.outstanding > 0).map((l) => ({ ...lineFromPo(l), qty: l.outstanding })));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load purchase order');
@@ -160,7 +163,10 @@ export default function GoodsReceiptDetail() {
   const load = useCallback(async () => {
     try {
       const d = await getGoodsReceipt(id, user.token);
-      const f = { purchaseOrder: d.purchaseOrder?._id, date: toDateInput(d.date), deliveryNoteNo: d.deliveryNoteNo || '', note: d.note || '' };
+      const f = {
+        purchaseOrder: d.purchaseOrder?._id, date: toDateInput(d.date), deliveryNoteNo: d.deliveryNoteNo || '', note: d.note || '',
+        ...(d.canSeeCost ? { freightCharge: d.freightCharge || 0, freightNote: d.freightNote || '' } : {}),
+      };
       let ls;
       if (d.status === 'DRAFT') {
         // draft: tampilkan semua baris PO yang masih bisa diterima + isian draft
@@ -205,12 +211,20 @@ export default function GoodsReceiptDetail() {
 
   const setLine = (poLine, patch) => setLines((prev) => prev.map((l) => (l.poLine === poLine ? { ...l, ...patch } : l)));
 
+  // HPP per baris termasuk biaya angkut: draft dihitung di sini (harga PO + bagian angkut), posted dari dokumen
+  const costed = useMemo(() => {
+    if (!isDraft) return new Map(lines.map((l) => [l.poLine, l]));
+    const filled = lines.filter((l) => l.qty !== '' && Number(l.qty) > 0)
+      .map((l) => ({ ...l, qtyBase: round2(Number(l.qty) * l.konversi), baseUnitCost: l.unitCost || 0 }));
+    return new Map(allocateFreight(filled, form?.freightCharge || 0).map((l) => [l.poLine, l]));
+  }, [lines, isDraft, form?.freightCharge]);
+
   const summary = useMemo(() => {
     const filled = lines.filter((l) => l.qty !== '' && Number(l.qty) > 0);
     const over = lines.filter((l) => isDraft && l.qty !== '' && Number(l.qty) > l.outstanding);
-    const value = round2(filled.reduce((sum, l) => sum + Number(l.qty) * l.konversi * (l.unitCost || 0), 0));
+    const value = round2(filled.reduce((sum, l) => sum + Number(l.qty) * l.konversi * (costed.get(l.poLine)?.unitCost ?? l.unitCost ?? 0), 0));
     return { filled: filled.length, over: over.length, value };
-  }, [lines, isDraft]);
+  }, [lines, isDraft, costed]);
 
   // ---------- aksi ----------
   const validate = () => {
@@ -394,6 +408,19 @@ export default function GoodsReceiptDetail() {
                 <input id="gr-note" value={form.note} placeholder="Optional"
                   onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} className={inputClass} />
               </FormField>
+              {canSeeCost && form.freightCharge !== undefined && (
+                <>
+                  <FormField label="Freight charge (Rp)" htmlFor="gr-freight"
+                    hint="Biaya angkut kedatangan ini (tanpa PPN yang bisa dikreditkan); dibagi ke baris menurut nilai & menambah HPP.">
+                    <input id="gr-freight" type="number" min="0" step="0.01" value={form.freightCharge}
+                      onChange={(e) => setForm((f) => ({ ...f, freightCharge: e.target.value }))} className={inputClass} />
+                  </FormField>
+                  <FormField label="Freight note" htmlFor="gr-freight-note">
+                    <input id="gr-freight-note" value={form.freightNote} maxLength={200} placeholder="Ekspedisi / no. tagihan"
+                      onChange={(e) => setForm((f) => ({ ...f, freightNote: e.target.value }))} className={inputClass} />
+                  </FormField>
+                </>
+              )}
             </fieldset>
           </section>
 
@@ -426,7 +453,7 @@ export default function GoodsReceiptDetail() {
                     {isDraft && <th className="px-2 py-2 border-b border-line font-semibold w-24 text-right">Outstanding</th>}
                     <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right">This receipt</th>
                     <th className="px-2 py-2 border-b border-line font-semibold w-28 text-right">To stock</th>
-                    {canSeeCost && <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right" title="HPP masuk per satuan dasar">Unit cost</th>}
+                    {canSeeCost && <th className="px-2 py-2 border-b border-line font-semibold w-32 text-right" title="HPP masuk per satuan dasar (harga PO + bagian biaya angkut)">Unit cost</th>}
                     <th className="px-2 py-2 border-b border-line font-semibold w-44">Note</th>
                   </tr>
                 </thead>
@@ -468,7 +495,14 @@ export default function GoodsReceiptDetail() {
                         <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">
                           {qty ? `${formatNumber(round2(qty * l.konversi))} ${l.baseUom}` : '-'}
                         </td>
-                        {canSeeCost && <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">{formatRupiah(l.unitCost)}</td>}
+                        {canSeeCost && (
+                          <td className="px-2 py-1.5 border-t border-line-soft text-right tabular-nums">
+                            {formatRupiah(costed.get(l.poLine)?.unitCost ?? l.unitCost)}
+                            {(costed.get(l.poLine)?.freightCost || 0) > 0 && (
+                              <div className="text-[10px] text-muted">angkut {formatRupiah(costed.get(l.poLine).freightCost)}</div>
+                            )}
+                          </td>
+                        )}
                         <td className="px-2 py-1.5 border-t border-line-soft">
                           {editable ? (
                             <input aria-label={`Note ${l.sku}`} value={l.note} maxLength={200} disabled={busy}
@@ -488,6 +522,7 @@ export default function GoodsReceiptDetail() {
               <span>
                 {summary.filled} item diterima
                 {canSeeCost && <> · nilai persediaan masuk <b className="tabular-nums">{formatRupiah(summary.value)}</b></>}
+                {canSeeCost && Number(form?.freightCharge) > 0 && <span className="text-muted"> (termasuk angkut {formatRupiah(form.freightCharge)})</span>}
                 {summary.over > 0 && <span className="ml-2 text-danger"><i className="fa fa-triangle-exclamation mr-1"></i>{summary.over} item melebihi sisa PO</span>}
               </span>
               {isDraft && perm.canPost && canUpdatePrices && (

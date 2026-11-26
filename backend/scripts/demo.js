@@ -48,6 +48,7 @@ const PriceList = require('../models/PriceList');
 const SalesInvoice = require('../models/SalesInvoice');
 const SalesOrder = require('../models/SalesOrder');
 const DeliveryOrder = require('../models/DeliveryOrder');
+const Quotation = require('../models/Quotation');
 const SalesPayment = require('../models/SalesPayment');
 const PosShift = require('../models/PosShift');
 
@@ -266,7 +267,7 @@ async function main() {
     const customer = {
       walkIn: await Customer.findOne({ isWalkIn: true }),
       maju: await create(Customer, 'customer', { code: 'CUST00001', name: 'CV Maju Jaya (Demo)', phone: '0813-0000-1001', address: 'Jl. Niaga No. 8', provinsi: 'DKI Jakarta', kota: 'Jakarta Barat', kecamatan: 'Tambora', kodePos: '11220', latitude: -6.1450123, longitude: 106.8058456, npwp: '01.234.567.8-901.000', termDays: 30, priceList: grosir._id }),
-      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174', termDays: 14 }),
+      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174', termDays: 14, creditLimit: 25000000 }),
       budi: await create(Customer, 'customer', { code: 'CUST00003', name: 'Budi Santoso (Demo)', phone: '0813-0000-1003' }),
     };
     if (!customer.walkIn) throw new Error('Customer walk-in belum ada. Jalankan npm run init.');
@@ -377,6 +378,20 @@ async function main() {
     await so.save();
     await log('salesOrder', [so]);
     await log('deliveryOrder', [dlv]);
+
+    // penawaran harga terkirim ke calon pembeli (walk-in), berlaku 14 hari
+    const quoLines = [{ sku: p.keripik.by('Original'), qty: 100 }].map(({ sku, qty }) => {
+      const l = { sku: sku._id, produk: sku.produk, qty, hargaJual: sku.hargaJual, diskonPersen: 5 };
+      l.subtotal = salesLineSubtotal(l);
+      return l;
+    });
+    const quo = await Quotation.create({
+      no: await nextDocNo('QUO'), customer: customer.walkIn._id, prospectName: 'Kantin Sekolah Harapan (Demo)', prospectContact: '0813-0000-1099',
+      gudang: gudang.main._id, date: new Date(), validUntil: new Date(Date.now() + 14 * DAY), deliveryMethod: 'PICKUP',
+      status: 'SENT', taxRate, priceIncludesTax: soPit, lines: quoLines, ...salesTotals(quoLines, { taxRate, priceIncludesTax: soPit }),
+      terms: 'Harga berlaku untuk pengambilan sekaligus.', sentBy: admin._id, sentDate: new Date(), ...by,
+    });
+    await log('quotation', [quo]);
 
     // shift POS tertutup di TOKO-JKT: 2 penjualan (tunai & QRIS)
     const openedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);

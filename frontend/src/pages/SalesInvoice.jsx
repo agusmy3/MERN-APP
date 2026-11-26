@@ -69,7 +69,7 @@ export default function SalesInvoice() {
         <span>
           <Link to={`/sales-invoice/${d._id}`} className="font-mono text-sm font-semibold text-primary hover:underline">{d.no}</Link>
           {d.source === 'POS' && <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-primary-soft text-primary-soft-fg" title="Transaksi kasir POS">POS</span>}
-          {d.source === 'SALES_ORDER' && <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-primary-soft text-primary-soft-fg" title={`Tagihan surat jalan ${d.salesOrder?.no || ''}`}>SO</span>}
+          {d.source === 'SALES_ORDER' && <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-primary-soft text-primary-soft-fg" title={`Tagihan surat jalan ${(d.salesOrders || []).map((x) => x.no).join(', ')}`}>SO</span>}
         </span>
       ),
     },

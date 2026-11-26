@@ -15,6 +15,8 @@ const getHeaders = (token) => ({
 export const getCustomers = async (token, params) => (await axios.get(CUSTOMER, { ...getHeaders(token), params })).data.data;
 /** [{ _id, code, name, isActive, isWalkIn }] (walk-in pertama) */
 export const getCustomerDropdown = async (token) => (await axios.get(`${CUSTOMER}/dropdown`, getHeaders(token))).data.data;
+/** customer + credit { limit, receivable, uninvoiced, exposure, available, overdue } */
+export const getCustomer = async (id, token) => (await axios.get(`${CUSTOMER}/${id}`, getHeaders(token))).data.data;
 export const createCustomer = (data, token) => axios.post(CUSTOMER, data, getHeaders(token));
 export const updateCustomer = (id, data, token) => axios.put(`${CUSTOMER}/${id}`, data, getHeaders(token));
 export const deleteCustomer = (id, token) => axios.delete(`${CUSTOMER}/${id}`, getHeaders(token));
@@ -76,6 +78,24 @@ export const getSalesSkuPrices = async (token, customer, skus) => (await axios.p
 
 // ---------- Sales Order ----------
 
+// ---------- Quotation ----------
+
+const QUO = '/api/quotation';
+/** params { search, status (EXPIRED = lewat masa berlaku), customer, from, to, paginasi } -> { dataQuotation, totalData } */
+export const getQuotations = async (token, params) => (await axios.get(QUO, { ...getHeaders(token), params })).data.data;
+export const getQuotation = async (id, token) => (await axios.get(`${QUO}/${id}`, getHeaders(token))).data.data;
+/** sama dengan SKU Sales Order: params { gudang, customer, search } (+ stok, harga, priceSource) */
+export const searchQuotationSkus = async (token, params) => (await axios.get(`${QUO}/skus`, { ...getHeaders(token), params })).data.data;
+export const getQuotationSkuPrices = async (token, customer, skus) => (await axios.post(`${QUO}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
+export const createQuotation = (data, token) => axios.post(QUO, data, getHeaders(token));
+export const updateQuotation = (id, data, token) => axios.put(`${QUO}/${id}`, data, getHeaders(token));
+export const deleteQuotation = (id, token) => axios.delete(`${QUO}/${id}`, getHeaders(token));
+export const sendQuotation = (id, token) => axios.post(`${QUO}/${id}/send`, {}, getHeaders(token));
+export const reviseQuotation = (id, token) => axios.post(`${QUO}/${id}/revise`, {}, getHeaders(token));
+export const rejectQuotation = (id, reason, token) => axios.post(`${QUO}/${id}/reject`, { reason }, getHeaders(token));
+/** body { customer? } (wajib untuk quotation walk-in) -> { quotation, salesOrder } */
+export const convertQuotation = (id, body, token) => axios.post(`${QUO}/${id}/convert`, body, getHeaders(token));
+
 const SO = '/api/sales-order';
 /** params { search, status (ACTIVE = OPEN+PARTIAL), customer, gudang, from, to, page, pageSize, sortField, sortOrder } */
 export const getSalesOrders = async (token, params) => (await axios.get(SO, { ...getHeaders(token), params })).data.data;
@@ -86,11 +106,13 @@ export const searchSoSkus = async (token, params) => (await axios.get(`${SO}/sku
 export const getSoSkuAvailability = async (token, gudang, skus, exclude) => (await axios.post(`${SO}/skus/availability`, { gudang, skus, exclude }, getHeaders(token))).data.data;
 export const getSoSkuPrices = async (token, customer, skus) => (await axios.post(`${SO}/skus/prices`, { customer, skus }, getHeaders(token))).data.data;
 /** alamat kirim default customer -> { shipTo, termDays } */
-export const getSoCustomerShipTo = async (customerId, token) => (await axios.get(`${SO}/ship-to/${customerId}`, getHeaders(token))).data.data;
+/** -> { shipTo, termDays, credit } (credit tanpa SO `exclude`) */
+export const getSoCustomerShipTo = async (customerId, token, exclude) => (await axios.get(`${SO}/ship-to/${customerId}`, { ...getHeaders(token), params: { exclude } })).data.data;
 export const createSalesOrder = (data, token) => axios.post(SO, data, getHeaders(token));
 export const updateSalesOrder = (id, data, token) => axios.put(`${SO}/${id}`, data, getHeaders(token));
 export const deleteSalesOrder = (id, token) => axios.delete(`${SO}/${id}`, getHeaders(token));
-export const confirmSalesOrder = (id, token) => axios.post(`${SO}/${id}/confirm`, {}, getHeaders(token));
+/** body { creditOverride?: { reason } } — 409 data.code CREDIT_BLOCK = perlu persetujuan */
+export const confirmSalesOrder = (id, token, body = {}) => axios.post(`${SO}/${id}/confirm`, body, getHeaders(token));
 export const cancelSalesOrder = (id, reason, token) => axios.post(`${SO}/${id}/cancel`, { reason }, getHeaders(token));
 export const closeSalesOrder = (id, reason, token) => axios.post(`${SO}/${id}/close`, { reason }, getHeaders(token));
 
@@ -111,6 +133,8 @@ export const postDeliveryOrder = (id, token) => axios.post(`${DLV}/${id}/post`, 
 export const cancelDeliveryOrder = (id, reason, token) => axios.post(`${DLV}/${id}/cancel`, { reason }, getHeaders(token));
 /** { date, dueDate, note } -> invoice POSTED */
 export const invoiceDeliveryOrder = (id, data, token) => axios.post(`${DLV}/${id}/invoice`, data, getHeaders(token));
+/** invoice gabungan: { deliveryOrders: [id], date, dueDate, note } (customer & gudang sama) */
+export const invoiceDeliveryOrders = (data, token) => axios.post(`${DLV}/invoice`, data, getHeaders(token));
 
 // ---------- Sales Report ----------
 
@@ -118,3 +142,7 @@ export const invoiceDeliveryOrder = (id, data, token) => axios.post(`${DLV}/${id
 export const getSalesReport = async (token, params) => (await axios.get('/api/sales-report/sales', { ...getHeaders(token), params })).data.data;
 /** params { gudang, customer } -> { asOf, rows: [{ customer, current, d1_30, d31_60, d61_90, d90, total, invoices }], totals } */
 export const getAgingReport = async (token, params) => (await axios.get('/api/sales-report/aging', { ...getHeaders(token), params })).data.data;
+/** sisa SO (backorder): params { gudang, customer, search, late } -> { rows, totals, truncated } */
+export const getBackorderReport = async (token, params) => (await axios.get('/api/sales-report/backorder', { ...getHeaders(token), params })).data.data;
+/** surat jalan per periode: params { from, to, gudang, customer, method, invoiced } -> { rows, totals, truncated } */
+export const getDeliveryReport = async (token, params) => (await axios.get('/api/sales-report/delivery', { ...getHeaders(token), params })).data.data;

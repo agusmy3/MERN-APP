@@ -19,3 +19,23 @@ export const lineSubtotal = (l) => {
   const n = Number(l.qty) * Number(l.hargaBeli) * (1 - Number(l.diskonPersen || 0) / 100);
   return Math.round((n + Number.EPSILON) * 100) / 100;
 };
+
+/**
+ * Biaya angkut Goods Receipt dibagi ke baris menurut nilai (qtyBase x baseUnitCost), atau qty jika semua 0;
+ * baris terakhir menerima sisa pembulatan. Salinan backend helpers/purchaseHelper.js allocateFreight.
+ */
+export const allocateFreight = (lines, freight) => {
+  const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const total = r2(Math.max(Number(freight) || 0, 0));
+  const weights = lines.map((l) => l.qtyBase * (l.baseUnitCost || 0));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const basis = sum > 0 ? weights : lines.map((l) => l.qtyBase);
+  const basisSum = basis.reduce((a, b) => a + b, 0);
+  let left = total;
+  return lines.map((l, i) => {
+    const share = i === lines.length - 1 ? left : r2(basisSum ? total * (basis[i] / basisSum) : 0);
+    left = r2(left - share);
+    const freightCost = total ? share : 0;
+    return { ...l, freightCost, unitCost: r2((l.baseUnitCost || 0) + (l.qtyBase ? freightCost / l.qtyBase : 0)) };
+  });
+};

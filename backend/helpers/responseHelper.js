@@ -14,10 +14,12 @@ exports.successResponse = (
 exports.errorResponse = (
   res,
   message = "Error",
-  statusCode = 500
+  statusCode = 500,
+  data = undefined
 ) => {
   return res.status(statusCode).json({
     success: false,
-    message
+    message,
+    ...(data === undefined ? {} : { data })
   });
 };

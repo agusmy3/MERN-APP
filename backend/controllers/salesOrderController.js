@@ -14,7 +14,7 @@ const { getBalances, nextDocNo } = require('../helpers/stockHelper');
 const { getSettings } = require('../helpers/settings');
 const { checkAmount, round2 } = require('../helpers/number');
 const { salesLineSubtotal, salesTotals, netLineRevenue, soOutstanding } = require('../helpers/salesHelper');
-const { committedQty } = require('../helpers/salesOrderHelper');
+const { committedQty, customerCredit } = require('../helpers/salesOrderHelper');
 const { resolvePrices } = require('../helpers/priceHelper');
 const { parseLocation } = require('../helpers/locationHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
@@ -25,7 +25,7 @@ const SORTABLE_FIELDS = ['no', 'date', 'requestedDate', 'total', 'createdDate', 
 const METHODS = ['DELIVERY', 'PICKUP'];
 
 const handleError = (res, error) => {
-  if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
+  if (error instanceof HttpError) return errorResponse(res, error.message, error.status, error.details);
   if (error.name === 'ValidationError' || error.name === 'CastError') return errorResponse(res, error.message, 400);
   return errorResponse(res, error.message, 500);
 };
@@ -148,11 +148,14 @@ const resolveRefs = async (parsed) => {
   return { customer };
 };
 
-/** Harga dibekukan: price list customer / harga jual SKU (lihat Sales Invoice applyPrices) */
-const applyPrices = async (parsed) => {
+/**
+ * Harga dibekukan: price list customer / harga jual SKU (lihat Sales Invoice applyPrices).
+ * quotePrices (Map skuId -> harga): SO dari quotation memakai harga penawaran untuk SKU-nya.
+ */
+const applyPrices = async (parsed, quotePrices = null) => {
   const prices = await resolvePrices(parsed.customer, parsed.lines.map((l) => l.sku));
   parsed.lines.forEach((l) => {
-    l.hargaJual = round2(prices.get(l.sku)?.price ?? 0);
+    l.hargaJual = round2(quotePrices?.has(l.sku) ? quotePrices.get(l.sku) : (prices.get(l.sku)?.price ?? 0));
     l.subtotal = salesLineSubtotal(l);
   });
   const subtotal = round2(parsed.lines.reduce((s, l) => s + l.subtotal, 0));
@@ -187,20 +190,96 @@ const fillSo = (doc, parsed, settings, customer) => {
   Object.assign(doc, salesTotals(parsed.lines, doc));
 };
 
-const confirm = (doc, req) => {
+const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+/**
+ * Cek kredit saat konfirmasi (di dalam transaksi; customer sudah dikunci resolveRefs -> konfirmasi SO
+ * bersamaan untuk customer yang sama bentrok & diulang dengan posisi terbaru):
+ * - batas kredit (> 0): piutang + SO lain belum ditagih + total SO ini <= limit
+ * - setting sales.blockOverdue: tidak ada invoice belum lunas yang lewat jatuh tempo
+ * Melanggar -> 409 + details (posisi kredit), kecuali body.creditOverride.reason & izin salesOrder:approve.
+ */
+const checkCredit = async (doc, req, settings) => {
+  const credit = await customerCredit(doc.customer, { excludeSo: doc._id });
+  const after = round2(credit.exposure + (doc.total || 0));
+  const issues = [];
+  if (credit.limit > 0 && after > credit.limit) {
+    issues.push(`credit limit exceeded (outstanding ${fmt(credit.exposure)} + this order ${fmt(doc.total)} = ${fmt(after)} > limit ${fmt(credit.limit)})`);
+  }
+  if (settings['sales.blockOverdue'] !== false && credit.overdue.count) {
+    issues.push(`${credit.overdue.count} overdue invoice(s) totalling ${fmt(credit.overdue.amount)}`);
+  }
+  if (!issues.length) return;
+
+  const override = req.body?.creditOverride;
+  const canApprove = hasPermission(req.user, 'salesOrder', 'approve');
+  if (!override) {
+    throw new HttpError(`Customer credit check failed: ${issues.join('; ')}.${canApprove ? ' Approve with a reason to confirm anyway.' : ' Ask a user with approval rights to confirm it.'}`,
+      409, { code: 'CREDIT_BLOCK', credit, orderTotal: doc.total, exposureAfter: after, issues, canApprove });
+  }
+  if (!canApprove) throw new HttpError('You are not allowed to approve sales orders over the credit check', 403);
+  const reason = trimText(override.reason);
+  if (!reason) throw new HttpError('Approval reason is required', 400);
+  doc.creditOverrideReason = reason;
+  doc.creditOverrideNote = issues.join('; ');
+  doc.creditOverrideBy = req.user._id;
+  doc.creditOverrideDate = new Date();
+};
+
+/** Harga penawaran untuk SO hasil konversi quotation: Map skuId -> harga (null = tanpa quotation) */
+const quotationPrices = async (quotationId) => {
+  if (!quotationId) return null;
+  const q = await require('../models/Quotation').findById(quotationId).select('lines.sku lines.hargaJual').lean();
+  return q ? new Map(q.lines.map((l) => [String(l.sku), l.hargaJual])) : null;
+};
+
+/**
+ * SO DRAFT dari quotation (di dalam transaksi pemanggil): customer bernama, gudang, metode, baris, diskon,
+ * ongkir & pajak disalin; harga = harga penawaran; alamat kirim = alamat customer. -> dokumen SO
+ */
+exports.createDraftFromQuotation = async (req, q, customerId) => {
+  const parsed = {
+    customer: String(customerId),
+    gudang: String(q.gudang),
+    date: new Date(),
+    requestedDate: null,
+    customerPoNo: '',
+    deliveryMethod: q.deliveryMethod,
+    shipTo: undefined,
+    taxRate: q.taxRate,
+    priceIncludesTax: q.priceIncludesTax,
+    discountAmount: q.discountAmount || 0,
+    shippingCharge: q.deliveryMethod === 'PICKUP' ? 0 : (q.shippingCharge || 0),
+    note: q.note || '',
+    lines: q.lines.map((l) => ({ sku: String(l.sku), qty: l.qty, hargaJual: null, diskonPersen: l.diskonPersen || 0, qtyDelivered: 0, note: l.note })),
+  };
+  assertGudang(req, parsed.gudang);
+  const { customer } = await resolveRefs(parsed);
+  await applyPrices(parsed, new Map(q.lines.map((l) => [String(l.sku), l.hargaJual])));
+  const doc = new SalesOrder({ no: await nextDocNo('SO'), createdBy: req.user._id, quotation: q._id });
+  fillSo(doc, parsed, await getSettings(), customer);
+  await doc.save();
+  await audit.logCreate(req, 'salesOrder', [doc]);
+  return doc;
+};
+
+const confirm = async (doc, req, settings) => {
+  await checkCredit(doc, req, settings || await getSettings());
   doc.status = 'OPEN';
   doc.confirmedBy = req.user._id;
   doc.confirmedDate = new Date();
 };
 
 const populateSo = (query) => query
-  .populate('customer', 'code name phone address npwp termDays isActive')
+  .populate('customer', 'code name phone address provinsi kota kecamatan kodePos npwp termDays creditLimit isActive')
   .populate('gudang', 'code name isActive')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
   .populate('createdBy', 'name')
   .populate('updatedBy', 'name')
   .populate('confirmedBy', 'name')
+  .populate('creditOverrideBy', 'name')
+  .populate('quotation', 'no validUntil')
   .populate('closedBy', 'name')
   .populate('cancelledBy', 'name');
 
@@ -304,13 +383,16 @@ exports.getSalesOrder = async (req, res) => {
       });
     }
 
+    // posisi kredit customer (tanpa SO ini) untuk peringatan sebelum konfirmasi
+    if (doc.status === 'DRAFT' && doc.customer) doc.credit = await customerCredit(doc.customer._id, { excludeSo: doc._id });
+
     if (doc.status !== 'DRAFT') {
       doc.deliveries = await DeliveryOrder.find({ salesOrder: doc._id })
         .select('no date status deliveryMethod invoice postedDate')
         .populate('invoice', 'no status')
         .sort({ createdDate: 1 }).lean();
-      doc.invoices = await SalesInvoice.find({ salesOrder: doc._id })
-        .select('no date status total paymentStatus deliveryOrder')
+      doc.invoices = await SalesInvoice.find({ salesOrders: doc._id })
+        .select('no date status total paymentStatus deliveryOrders')
         .sort({ createdDate: 1 }).lean();
     }
 
@@ -425,7 +507,9 @@ exports.getCustomerShipTo = async (req, res) => {
     const c = await Customer.findById(req.params.customerId)
       .select('name phone address provinsi kota kecamatan kodePos latitude longitude termDays').lean();
     if (!c) return errorResponse(res, 'Customer not found', 404);
-    return successResponse(res, { shipTo: customerShipTo(c), termDays: c.termDays || 0 });
+    const excludeSo = mongoose.isValidObjectId(req.query.exclude) ? req.query.exclude : null;
+    const credit = await customerCredit(c._id, { excludeSo });
+    return successResponse(res, { shipTo: customerShipTo(c), termDays: c.termDays || 0, credit });
   } catch (error) {
     return handleError(res, error);
   }
@@ -442,8 +526,9 @@ exports.createSalesOrder = async (req, res) => {
       const { customer } = await resolveRefs(parsed);
       await applyPrices(parsed);
       const doc = new SalesOrder({ no: await nextDocNo('SO'), createdBy: req.user._id });
-      fillSo(doc, parsed, await getSettings(), customer);
-      if (req.body.confirm === true) confirm(doc, req);
+      const settings = await getSettings();
+      fillSo(doc, parsed, settings, customer);
+      if (req.body.confirm === true) await confirm(doc, req, settings);
       await doc.save();
       await audit.logCreate(req, 'salesOrder', [doc]);
       return doc;
@@ -462,10 +547,11 @@ exports.updateSalesOrder = async (req, res) => {
       const parsed = parseSo(req.body);
       assertGudang(req, parsed.gudang);
       const { customer } = await resolveRefs(parsed);
-      await applyPrices(parsed);
+      await applyPrices(parsed, await quotationPrices(doc.quotation));
       const before = await audit.snap('salesOrder', [doc]);
-      fillSo(doc, parsed, await getSettings(), customer);
-      if (req.body.confirm === true) confirm(doc, req);
+      const settings = await getSettings();
+      fillSo(doc, parsed, settings, customer);
+      if (req.body.confirm === true) await confirm(doc, req, settings);
       doc.updatedDate = new Date();
       doc.updatedBy = req.user._id;
       await doc.save();
@@ -486,7 +572,7 @@ exports.confirmSalesOrder = async (req, res) => {
       if (!doc.lines.length) throw new HttpError('Sales order has no lines', 400);
       await resolveRefs({ customer: String(doc.customer), gudang: String(doc.gudang), lines: doc.lines.map((l) => ({ sku: String(l.sku) })) });
       const before = await audit.snap('salesOrder', [doc]);
-      confirm(doc, req);
+      await confirm(doc, req);
       await doc.save();
       await audit.logUpdate(req, 'salesOrder', before, [doc]);
       return doc;

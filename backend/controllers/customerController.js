@@ -4,6 +4,9 @@ const { successResponse, errorResponse } = require('../helpers/responseHelper');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
 const { parseRegion } = require('../helpers/locationHelper');
+const { hasPermission } = require('../config/permissions');
+const { checkAmount, round2 } = require('../helpers/number');
+const { customerCredit } = require('../helpers/salesOrderHelper');
 
 const SORTABLE_FIELDS = ['code', 'name', 'phone', 'createdDate', 'updatedDate'];
 const TEXT_FIELDS = { name: 120, phone: 40, email: 120, address: 500, npwp: 30, deskripsi: 1000 };
@@ -39,8 +42,21 @@ const parseFields = (body) => {
     if (!Number.isInteger(n) || n < 0 || n > 365) throw new HttpError('Payment term must be a whole number of days (0 - 365)', 400);
     out.termDays = n;
   }
+  if (body.creditLimit !== undefined && body.creditLimit !== null && body.creditLimit !== '') {
+    const err = checkAmount(body.creditLimit, 'Credit limit');
+    if (err) throw new HttpError(err, 400);
+    out.creditLimit = round2(body.creditLimit);
+  } else if (body.creditLimit === '' || body.creditLimit === null) out.creditLimit = 0;
   Object.assign(out, parseRegion(body)); // provinsi, kota, kecamatan, kodePos, latitude, longitude
   return out;
+};
+
+/** Batas kredit = kontrol risiko: hanya boleh diubah user yang juga boleh menyetujui SO melewati batas */
+const assertCreditLimitChange = (req, from, to) => {
+  if (to === undefined || round2(from || 0) === to) return;
+  if (!hasPermission(req.user, 'salesOrder', 'approve')) {
+    throw new HttpError('Changing the credit limit requires the Sales Order "Approve" permission', 403);
+  }
 };
 
 /** Kode otomatis bila kosong: CUST00001 (counter di dalam transaksi) */
@@ -84,8 +100,9 @@ exports.getCustomers = async (req, res) => {
 // GET /api/customer/:id
 exports.getCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id).populate('priceList', 'code name isActive').populate('createdBy', 'name').populate('updatedBy', 'name');
+    const customer = await Customer.findById(req.params.id).populate('priceList', 'code name isActive').populate('createdBy', 'name').populate('updatedBy', 'name').lean();
     if (!customer) return errorResponse(res, 'Customer not found', 404);
+    if (!customer.isWalkIn) customer.credit = await customerCredit(customer._id);
     return successResponse(res, customer);
   } catch (error) {
     return handleError(res, error);
@@ -97,6 +114,7 @@ exports.createCustomer = async (req, res) => {
   try {
     const fields = parseFields(req.body);
     if (!fields.name) return errorResponse(res, 'Customer name is required', 400);
+    assertCreditLimitChange(req, 0, fields.creditLimit);
     const customer = await runInTransaction(async () => {
       const code = String(req.body.code || '').trim() || await nextCustomerCode();
       const customer = await Customer.create({
@@ -125,6 +143,8 @@ exports.updateCustomer = async (req, res) => {
       if (!customer) throw new HttpError('Customer not found', 404);
       if (customer.isWalkIn && req.body.isActive === false) throw new HttpError('The walk-in customer cannot be deactivated', 400);
 
+      assertCreditLimitChange(req, customer.creditLimit, fields.creditLimit);
+      if (customer.isWalkIn) delete fields.creditLimit;
       const before = await audit.snap('customer', [customer]);
       Object.assign(customer, fields, await parsePriceList(req.body));
       if (req.body.code) customer.code = String(req.body.code).trim();
@@ -153,6 +173,8 @@ exports.deleteCustomer = async (req, res) => {
       if (used) throw new HttpError(`Customer is used by ${used} sales invoice(s). Deactivate it instead.`, 400);
       const orders = await require('../models/SalesOrder').countDocuments({ customer: customer._id });
       if (orders) throw new HttpError(`Customer is used by ${orders} sales order(s). Deactivate it instead.`, 400);
+      const quotes = await require('../models/Quotation').countDocuments({ customer: customer._id });
+      if (quotes) throw new HttpError(`Customer is used by ${quotes} quotation(s). Deactivate it instead.`, 400);
       const before = await audit.snap('customer', [customer]);
       await customer.deleteOne();
       await audit.logDelete(req, 'customer', before);

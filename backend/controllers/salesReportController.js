@@ -225,3 +225,145 @@ exports.getAgingReport = async (req, res) => {
     return handleError(res, error);
   }
 };
+
+// ---------------------------------------------------------------- Sales Order: sisa & pengiriman
+
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * GET /api/sales-report/backorder?gudang=&customer=&search=&late=true
+ * Sisa pesanan (backorder): baris SO OPEN / PARTIAL yang belum terkirim penuh.
+ * -> { rows: [{ so: { _id, no, date, requestedDate, status, customerPoNo }, customer, gudang, sku, produk, uom,
+ *               ordered, delivered, outstanding, onHand, value, late }],
+ *      totals: { soCount, lineCount, outstanding, value, lateCount } }
+ * value = sisa qty x harga bersih baris (sebelum diskon dokumen & PPN). late = tanggal kirim diminta sudah lewat.
+ */
+exports.getBackorderReport = async (req, res) => {
+  try {
+    const match = docMatch(req);
+    match.status = { $in: ['OPEN', 'PARTIAL'] };
+    if (req.query.search) {
+      const rx = { $regex: escapeRegex(req.query.search), $options: 'i' };
+      const customers = await Customer.find({ $or: [{ name: rx }, { code: rx }] }).distinct('_id');
+      match.$or = [{ no: rx }, { customerPoNo: rx }, { customer: { $in: customers } }];
+    }
+    const today = startOfToday();
+    if (req.query.late === 'true') match.requestedDate = { $lt: today };
+    const orders = await mongoose.model('SalesOrder').find(match)
+      .select('no date requestedDate status customerPoNo customer gudang lines')
+      .populate('customer', 'code name')
+      .populate('gudang', 'code name')
+      .populate('lines.sku', 'sku variantValues')
+      .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
+      .sort({ requestedDate: 1, date: 1, no: 1 })
+      .limit(1000)
+      .lean();
+
+    const keys = orders.flatMap((o) => o.lines.map((l) => ({ sku: l.sku?._id, gudang: o.gudang?._id }))).filter((k) => k.sku && k.gudang);
+    const balances = keys.length
+      ? await mongoose.model('StockBalance').find({ $or: keys.map((k) => ({ sku: k.sku, gudang: k.gudang })) }).select('sku gudang qty').lean()
+      : [];
+    const bal = new Map(balances.map((b) => [`${b.sku}:${b.gudang}`, b.qty]));
+
+    const rows = [];
+    orders.forEach((o) => {
+      const late = !!o.requestedDate && o.requestedDate < today;
+      o.lines.forEach((l) => {
+        const outstanding = round2(Math.max(l.qty - (l.qtyDelivered || 0), 0));
+        if (outstanding <= 0) return;
+        rows.push({
+          so: { _id: o._id, no: o.no, date: o.date, requestedDate: o.requestedDate, status: o.status, customerPoNo: o.customerPoNo },
+          customer: o.customer,
+          gudang: o.gudang,
+          sku: l.sku,
+          produk: l.produk ? { _id: l.produk._id, name: l.produk.name } : null,
+          uom: l.produk?.uom?.code || '',
+          ordered: l.qty,
+          delivered: l.qtyDelivered || 0,
+          outstanding,
+          onHand: bal.get(`${l.sku?._id}:${o.gudang?._id}`) || 0,
+          value: l.qty ? round2((l.subtotal / l.qty) * outstanding) : 0,
+          late,
+        });
+      });
+    });
+    const totals = {
+      soCount: new Set(rows.map((r) => String(r.so._id))).size,
+      lineCount: rows.length,
+      outstanding: round2(rows.reduce((s, r) => s + r.outstanding, 0)),
+      value: round2(rows.reduce((s, r) => s + r.value, 0)),
+      lateCount: new Set(rows.filter((r) => r.late).map((r) => String(r.so._id))).size,
+    };
+    return successResponse(res, { rows, totals, truncated: orders.length >= 1000 });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * GET /api/sales-report/delivery?from=&to=&gudang=&customer=&method=DELIVERY|PICKUP&invoiced=true|false
+ * Surat jalan POSTED per periode (tanggal DO).
+ * -> { rows: [{ _id, no, date, salesOrder, customer, gudang, deliveryMethod, courier, trackingNo, vehicleNo, lineCount, qty, value, invoice }],
+ *      totals: { count, delivery, pickup, qty, value, uninvoicedCount, uninvoicedValue } }
+ * value = qty x harga bersih baris SO (sebelum diskon dokumen & PPN).
+ */
+exports.getDeliveryReport = async (req, res) => {
+  try {
+    const now = new Date();
+    const from = req.query.from ? new Date(`${req.query.from}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : now;
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return errorResponse(res, 'Invalid date', 400);
+    if (to < from) return errorResponse(res, 'End date must be after start date', 400);
+    if (to - from > 366 * 2 * DAY) return errorResponse(res, 'Maximum period is 2 years', 400);
+    const match = docMatch(req);
+    match.date = { $gte: from, $lte: to };
+    if (['DELIVERY', 'PICKUP'].includes(req.query.method)) match.deliveryMethod = req.query.method;
+    if (req.query.invoiced === 'false') match.invoice = null;
+    if (req.query.invoiced === 'true') match.invoice = { $ne: null };
+
+    const docs = await mongoose.model('DeliveryOrder').find(match)
+      .select('no date salesOrder customer gudang deliveryMethod courier trackingNo vehicleNo driverName pickedUpBy lines invoice')
+      .populate('salesOrder', 'no customerPoNo lines.sku lines.qty lines.subtotal')
+      .populate('customer', 'code name')
+      .populate('gudang', 'code')
+      .populate('invoice', 'no status')
+      .sort({ date: -1, no: -1 })
+      .limit(2000)
+      .lean();
+    const rows = docs.map((d) => {
+      const price = new Map((d.salesOrder?.lines || []).map((l) => [String(l.sku), l.qty ? l.subtotal / l.qty : 0]));
+      return {
+        _id: d._id,
+        no: d.no,
+        date: d.date,
+        salesOrder: d.salesOrder ? { _id: d.salesOrder._id, no: d.salesOrder.no, customerPoNo: d.salesOrder.customerPoNo } : null,
+        customer: d.customer,
+        gudang: d.gudang,
+        deliveryMethod: d.deliveryMethod,
+        courier: d.courier,
+        trackingNo: d.trackingNo,
+        vehicleNo: d.vehicleNo,
+        driverName: d.driverName,
+        pickedUpBy: d.pickedUpBy,
+        lineCount: d.lines.length,
+        qty: round2(d.lines.reduce((s, l) => s + l.qty, 0)),
+        value: round2(d.lines.reduce((s, l) => s + l.qty * (price.get(String(l.sku)) || 0), 0)),
+        invoice: d.invoice && d.invoice.status !== 'CANCELLED' ? d.invoice : null,
+      };
+    });
+    const uninvoiced = rows.filter((r) => !r.invoice);
+    const totals = {
+      count: rows.length,
+      delivery: rows.filter((r) => r.deliveryMethod === 'DELIVERY').length,
+      pickup: rows.filter((r) => r.deliveryMethod === 'PICKUP').length,
+      qty: round2(rows.reduce((s, r) => s + r.qty, 0)),
+      value: round2(rows.reduce((s, r) => s + r.value, 0)),
+      uninvoicedCount: uninvoiced.length,
+      uninvoicedValue: round2(uninvoiced.reduce((s, r) => s + r.value, 0)),
+    };
+    return successResponse(res, { rows, totals, truncated: docs.length >= 2000 });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};

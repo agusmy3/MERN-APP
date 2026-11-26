@@ -174,10 +174,10 @@ const fillInvoice = (doc, parsed, settings, customer) => {
 };
 
 const populateDoc = (query) => query
-  .populate('customer', 'code name phone address npwp isWalkIn isActive')
+  .populate('customer', 'code name phone address provinsi kota kecamatan kodePos npwp isWalkIn isActive')
   .populate('gudang', 'code name isActive')
-  .populate('salesOrder', 'no customerPoNo deliveryMethod')
-  .populate('deliveryOrder', 'no date')
+  .populate('salesOrders', 'no customerPoNo deliveryMethod')
+  .populate('deliveryOrders', 'no date')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
   .populate('createdBy', 'name')
@@ -247,7 +247,7 @@ exports.getInvoices = async (req, res) => {
       SalesInvoice.find(filter)
         .select('-lines')
         .populate('customer', 'code name isWalkIn')
-        .populate('salesOrder', 'no')
+        .populate('salesOrders', 'no')
         .populate('gudang', 'code name')
         .populate('createdBy', 'name')
         .populate('updatedBy', 'name')
@@ -538,9 +538,10 @@ exports.cancelInvoice = async (req, res) => {
       const batchId = audit.newBatchId();
       if (doc.source === 'SALES_ORDER') {
         // tagihan atas Delivery Order: stok tidak berubah (barang tetap terkirim), DO bisa ditagih ulang
-        await lock(ref('deliveryOrder', doc.deliveryOrder));
-        const dlv = await DeliveryOrder.findById(doc.deliveryOrder);
-        if (dlv && String(dlv.invoice) === String(doc._id)) {
+        await lock((doc.deliveryOrders || []).map((id) => ref('deliveryOrder', id)));
+        const dlvs = await DeliveryOrder.find({ _id: { $in: doc.deliveryOrders || [] } });
+        for (const dlv of dlvs) {
+          if (String(dlv.invoice) !== String(doc._id)) continue;
           const dlvBefore = await audit.snap('deliveryOrder', [dlv]);
           dlv.invoice = null;
           await dlv.save();

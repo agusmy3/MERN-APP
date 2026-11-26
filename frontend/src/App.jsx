@@ -11,6 +11,8 @@ import SalesInvoice from './pages/SalesInvoice';
 import SalesInvoiceDetail from './pages/SalesInvoiceDetail';
 import SalesReturn from './pages/SalesReturn';
 import SalesOrder from './pages/SalesOrder';
+import Quotation from './pages/Quotation';
+import QuotationDetail from './pages/QuotationDetail';
 import SalesOrderDetail from './pages/SalesOrderDetail';
 import DeliveryOrder from './pages/DeliveryOrder';
 import DeliveryOrderDetail from './pages/DeliveryOrderDetail';
@@ -91,6 +93,9 @@ function App() {
         <Route path="/goods-receipt" element={guard('goodsReceipt', <GoodsReceipt />)} />
         {/* :id = 'new' (?po=<poId>) atau id dokumen */}
         <Route path="/goods-receipt/:id" element={guard('goodsReceipt', <GoodsReceiptDetail />)} />
+        <Route path="/quotation" element={guard('quotation', <Quotation />)} />
+        {/* :id = 'new' atau id dokumen */}
+        <Route path="/quotation/:id" element={guard('quotation', <QuotationDetail />)} />
         <Route path="/sales-order" element={guard('salesOrder', <SalesOrder />)} />
         {/* :id = 'new' atau id dokumen */}
         <Route path="/sales-order/:id" element={guard('salesOrder', <SalesOrderDetail />)} />

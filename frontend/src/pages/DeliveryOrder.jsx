@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getDeliveryOrders, getCustomerDropdown } from '../services/salesService';
+import { getDeliveryOrders, getCustomerDropdown, invoiceDeliveryOrders } from '../services/salesService';
 import { getMyGudangDropdown } from '../services/gudangService';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
@@ -15,6 +15,8 @@ import { formatDay } from '../utils/dateHelper';
 import { formatNumber } from '../utils/formatHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { DO_STATUS_META, DELIVERY_METHODS } from '../utils/salesMeta';
+import useToast from '../hooks/useToast';
+import DeliveryInvoicePanel from '../components/sales/DeliveryInvoicePanel';
 
 const EMPTY_FILTERS = { status: '', invoiced: '', customer: '', gudang: '', from: '', to: '' };
 const INVOICE_FILTERS = { false: 'Belum ditagih', true: 'Sudah ditagih' };
@@ -35,6 +37,46 @@ export default function DeliveryOrder() {
   }));
   const [gudangList, setGudangList] = useState([]);
   const [customerList, setCustomerList] = useState([]);
+  const toast = useToast();
+  // pilih beberapa surat jalan belum ditagih (customer & gudang sama) -> 1 invoice
+  const canInvoice = invoicePerm.canCreate && invoicePerm.canPost;
+  const [selected, setSelected] = useState(() => new Map()); // id -> row
+  const [invoicePanel, setInvoicePanel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const selectable = (d) => canInvoice && d.status === 'POSTED' && !d.invoice;
+  const toggle = (d) => {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(d._id)) {
+        next.delete(d._id);
+        return next;
+      }
+      const first = next.values().next().value;
+      if (first && (first.customer?._id !== d.customer?._id || first.gudang?._id !== d.gudang?._id)) {
+        toast.warning(`Invoice gabungan hanya untuk 1 customer & 1 gudang (${first.customer?.name} · ${first.gudang?.code}).`);
+        return prev;
+      }
+      next.set(d._id, d);
+      return next;
+    });
+  };
+  const clearSelection = () => {
+    setSelected(new Map());
+    setInvoicePanel(false);
+  };
+  const selectedRows = [...selected.values()];
+  const createInvoice = async (body) => {
+    setBusy(true);
+    try {
+      const res = await invoiceDeliveryOrders({ ...body, deliveryOrders: selectedRows.map((d) => d._id) }, user.token);
+      toast.success(res.data.message);
+      navigate(`/sales-invoice/${res.data.data._id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create invoice');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     getMyGudangDropdown(user.token).then(setGudangList).catch(console.error);
@@ -56,6 +98,15 @@ export default function DeliveryOrder() {
   const hasFilter = Object.values(filters).some(Boolean) || table.searchInput;
 
   const columns = [
+    ...(canInvoice ? [{
+      key: 'select',
+      header: '',
+      width: 44,
+      render: (d) => (selectable(d) ? (
+        <input type="checkbox" aria-label={`Select ${d.no} for invoicing`} checked={selected.has(d._id)} onChange={() => toggle(d)}
+          className="w-4 h-4 accent-primary cursor-pointer" />
+      ) : null),
+    }] : []),
     {
       key: 'no',
       header: 'DO No.',
@@ -125,6 +176,32 @@ export default function DeliveryOrder() {
           </button>
         )}
       />
+
+      {selected.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary bg-primary-soft px-4 py-2 text-sm">
+          <span className="text-fg">
+            <b>{selected.size}</b> surat jalan dipilih · {selectedRows[0]?.customer?.name} · {selectedRows[0]?.gudang?.code}
+          </span>
+          <button type="button" onClick={() => setInvoicePanel(true)} disabled={busy}
+            className="bg-primary hover:bg-primary-hover text-primary-fg px-3 py-1.5 rounded cursor-pointer disabled:opacity-50">
+            <i className="fa fa-file-invoice-dollar"></i> Create invoice
+          </button>
+          <button type="button" onClick={clearSelection} className="text-muted hover:text-fg cursor-pointer">
+            <i className="fa fa-xmark"></i> Clear
+          </button>
+        </div>
+      )}
+      {invoicePanel && selected.size > 0 && (
+        <DeliveryInvoicePanel
+          title={`Invoice untuk ${selected.size} surat jalan`}
+          description={`${selectedRows.map((d) => d.no).join(', ')}. Baris SKU yang sama digabung (harga & diskon harus sama). `
+            + 'Diskon dokumen dibagi per SO; ongkir SO ditagih di invoice pertama SO tsb. Stok tidak berubah.'}
+          minDate={selectedRows.reduce((m, d) => (!m || new Date(d.date) > new Date(m) ? d.date : m), null)}
+          busy={busy}
+          onConfirm={createInvoice}
+          onClose={() => setInvoicePanel(false)}
+        />
+      )}
 
       <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
         <div className="mb-4 flex flex-wrap items-center gap-3">

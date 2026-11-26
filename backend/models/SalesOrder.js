@@ -58,8 +58,14 @@ const salesOrderSchema = new mongoose.Schema({
   shippingDpp: { type: Number, default: 0 },
   shippingTotal: { type: Number, default: 0 },
   note: { type: String },
+  quotation: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation', default: null }, // dibuat dari penawaran (harga penawaran dipakai)
   confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   confirmedDate: { type: Date, default: null },
+  // konfirmasi melewati batas kredit / invoice lewat jatuh tempo (izin salesOrder:approve)
+  creditOverrideReason: { type: String, default: null },
+  creditOverrideNote: { type: String, default: null },   // ringkasan posisi kredit saat disetujui
+  creditOverrideBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  creditOverrideDate: { type: Date, default: null },
   closedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   closedDate: { type: Date, default: null },
   closeReason: { type: String, default: null },

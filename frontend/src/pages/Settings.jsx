@@ -74,6 +74,22 @@ export default function Settings() {
         </label>
       );
     }
+    if (d.multiline) {
+      return (
+        <div>
+          <label htmlFor={id} className="block text-sm font-medium text-fg mb-1">{d.label}</label>
+          <textarea
+            id={id}
+            rows={3}
+            maxLength={d.maxLength}
+            value={values[d.key] ?? ''}
+            onChange={(e) => setValues((v) => ({ ...v, [d.key]: e.target.value }))}
+            className={`${inputClass} max-w-xl`}
+          />
+          {d.description && <p className="text-xs text-muted mt-1">{d.description}</p>}
+        </div>
+      );
+    }
     return (
       <div>
         <label htmlFor={id} className="block text-sm font-medium text-fg mb-1">{d.label}</label>
@@ -83,9 +99,10 @@ export default function Settings() {
           step={d.type === 'number' ? '0.01' : undefined}
           min={d.min}
           max={d.max}
+          maxLength={d.maxLength}
           value={values[d.key] ?? ''}
           onChange={(e) => setValues((v) => ({ ...v, [d.key]: e.target.value }))}
-          className={`${inputClass} max-w-xs`}
+          className={`${inputClass} ${d.type === 'text' ? 'max-w-xl' : 'max-w-xs'}`}
         />
         {d.description && <p className="text-xs text-muted mt-1">{d.description}</p>}
       </div>

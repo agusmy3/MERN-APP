@@ -416,7 +416,7 @@ exports.cancelDeliveryOrder = async (req, res) => {
         throw new HttpError(doc.status === 'DRAFT' ? 'Draft delivery orders are deleted, not cancelled' : 'Delivery order is already cancelled', 400);
       }
       await lock(ref('deliveryOrder', doc._id), ref('salesOrder', doc.salesOrder));
-      const inv = await SalesInvoice.findOne({ deliveryOrder: doc._id, status: { $ne: 'CANCELLED' } }).select('no').lean();
+      const inv = await SalesInvoice.findOne({ deliveryOrders: doc._id, status: { $ne: 'CANCELLED' } }).select('no').lean();
       if (inv) throw new HttpError(`Delivery order is invoiced (${inv.no}). Cancel the invoice first.`, 400);
       const so = await SalesOrder.findById(doc.salesOrder);
       if (!so) throw new HttpError('Sales order no longer exists', 400);
@@ -458,99 +458,204 @@ exports.cancelDeliveryOrder = async (req, res) => {
 
 // ---------------------------------------------------------------- tagihan
 
+/** Tanggal & jatuh tempo invoice dari body (murni) */
+const parseInvoiceDates = (body) => {
+  const date = body.date ? new Date(body.date) : new Date();
+  if (Number.isNaN(date.getTime())) throw new HttpError('Invalid invoice date', 400);
+  if (date > endOfToday()) throw new HttpError('Invoice date cannot be in the future', 400);
+  let dueDate = null;
+  if (body.dueDate) {
+    dueDate = new Date(body.dueDate);
+    if (Number.isNaN(dueDate.getTime())) throw new HttpError('Invalid due date', 400);
+    if (dueDate < startOfDay(date)) throw new HttpError('Due date cannot be before the invoice date', 400);
+  }
+  return { date, dueDate };
+};
+
+const MAX_INVOICE_DOS = 50;
+
 /**
- * POST /api/delivery-order/:id/invoice  body: { date?, dueDate?, note? }
- * Buat Sales Invoice POSTED atas 1 DO POSTED yang belum ditagih (butuh salesInvoice create + post).
- * Tidak mengubah stok (stok sudah keluar di DO): baris = qty DO x harga & diskon SO, unitCost = HPP DO.
- * Diskon dokumen SO dibagi proporsional subtotal (invoice yang melengkapi SO memakai sisanya);
- * ongkir SO ditagih penuh di invoice pertama SO tsb (yang tidak dibatalkan). Jatuh tempo default = tanggal + termin customer.
+ * Buat invoice POSTED dari 1 / beberapa DO POSTED yang belum ditagih (di dalam transaksi).
+ * - Semua DO: customer & gudang sama; SO-nya: tarif PPN & mode harga sama.
+ * - Baris digabung per SKU (harga & diskon harus sama; beda harga antar SO -> tagih terpisah); HPP dari DO.
+ * - Per SO: diskon dokumen dibagi proporsional subtotal (invoice yang melengkapi qty SO memakai sisanya),
+ *   ongkir SO ditagih penuh di invoice pertama SO tsb. Dicatat di soAllocations.
+ * Stok tidak berubah (sudah keluar di DO).
+ */
+const invoiceDeliveries = async (req, ids, { date, dueDate, note }) => {
+  const unique = [...new Set(ids.map(String))];
+  const dos = await DeliveryOrder.find({ _id: { $in: unique } }).sort({ date: 1, no: 1 });
+  if (dos.length !== unique.length) throw new HttpError('Delivery order not found', 404);
+  dos.forEach((d) => assertGudang(req, d.gudang));
+  const soIds = [...new Set(dos.map((d) => String(d.salesOrder)))];
+  await lock(dos.map((d) => ref('deliveryOrder', d._id)), soIds.map((id) => ref('salesOrder', id)));
+
+  for (const d of dos) {
+    if (d.status !== 'POSTED') throw new HttpError(`${d.no}: only posted delivery orders can be invoiced`, 400);
+    if (d.invoice) {
+      const inv = await SalesInvoice.findById(d.invoice).select('no status').lean();
+      if (inv && inv.status !== 'CANCELLED') throw new HttpError(`${d.no} is already invoiced (${inv.no})`, 400);
+    }
+    if (startOfDay(date) < startOfDay(d.date)) throw new HttpError(`Invoice date cannot be before the delivery date of ${d.no}`, 400);
+  }
+  if (new Set(dos.map((d) => String(d.customer))).size > 1) throw new HttpError('All delivery orders must be for the same customer', 400);
+  if (new Set(dos.map((d) => String(d.gudang))).size > 1) throw new HttpError('All delivery orders must be from the same warehouse', 400);
+
+  const orders = await SalesOrder.find({ _id: { $in: soIds } }).lean();
+  if (orders.length !== soIds.length) throw new HttpError('Sales order no longer exists', 400);
+  const first = orders[0];
+  if (orders.some((o) => (o.taxRate || 0) !== (first.taxRate || 0) || !!o.priceIncludesTax !== !!first.priceIncludesTax)) {
+    throw new HttpError('Sales orders have different tax settings (PPN rate / price incl. PPN). Invoice them separately.', 400);
+  }
+  const soById = new Map(orders.map((o) => [String(o._id), o]));
+
+  // baris digabung per SKU; asal harga dicatat untuk pesan bentrok
+  const merged = new Map();
+  for (const d of dos) {
+    const so = soById.get(String(d.salesOrder));
+    const soLine = new Map(so.lines.map((l) => [String(l.sku), l]));
+    for (const l of d.lines) {
+      const sl = soLine.get(String(l.sku));
+      if (!sl) throw new HttpError(`${d.no}: delivery line no longer matches the sales order`, 400);
+      const key = String(l.sku);
+      const cur = merged.get(key);
+      if (cur && (cur.hargaJual !== sl.hargaJual || cur.diskonPersen !== (sl.diskonPersen || 0))) {
+        const code = (await ProdukSku.findById(l.sku).select('sku').lean())?.sku || 'An item';
+        throw new HttpError(`${code} has a different price or discount in ${cur.soNo} and ${so.no}. Invoice them separately.`, 400);
+      }
+      if (cur) {
+        cur.qty = round2(cur.qty + l.qty);
+        cur.cost += l.qty * (l.unitCost || 0);
+        if (l.note && !cur.notes.includes(l.note)) cur.notes.push(l.note);
+      } else {
+        merged.set(key, {
+          sku: l.sku, produk: l.produk, qty: l.qty, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0,
+          cost: l.qty * (l.unitCost || 0), notes: l.note ? [l.note] : [], soNo: so.no,
+        });
+      }
+    }
+  }
+  const lines = [...merged.values()].map((m) => {
+    const line = { sku: m.sku, produk: m.produk, qty: m.qty, hargaJual: m.hargaJual, diskonPersen: m.diskonPersen, note: m.notes.join('; ').slice(0, 200) || undefined };
+    line.subtotal = salesLineSubtotal(line);
+    line.unitCost = m.qty ? round2(m.cost / m.qty) : 0;
+    return line;
+  });
+
+  // alokasi per SO
+  const allocations = [];
+  for (const so of orders) {
+    const soDos = dos.filter((d) => String(d.salesOrder) === String(so._id));
+    const soLine = new Map(so.lines.map((l) => [String(l.sku), l]));
+    const subtotal = round2(soDos.flatMap((d) => d.lines).reduce((sum, l) => {
+      const sl = soLine.get(String(l.sku));
+      return sum + salesLineSubtotal({ qty: l.qty, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0 });
+    }, 0));
+    const prior = await SalesInvoice.find({ 'soAllocations.salesOrder': so._id, status: { $ne: 'CANCELLED' } }).select('soAllocations').lean();
+    const priorAlloc = prior.flatMap((p) => p.soAllocations).filter((a) => String(a.salesOrder) === String(so._id));
+    let discountAmount = 0;
+    if (so.discountAmount > 0 && so.subtotal > 0) {
+      // qty yang sudah / akan ditagih per SKU = DO SO ini yang sudah ditagih + DO di invoice ini
+      const billed = await DeliveryOrder.find({ salesOrder: so._id, status: 'POSTED', invoice: { $ne: null }, _id: { $nin: soDos.map((d) => d._id) } })
+        .select('lines.sku lines.qty').lean();
+      const invoicedQty = new Map();
+      [...billed.flatMap((d) => d.lines), ...soDos.flatMap((d) => d.lines)]
+        .forEach((l) => invoicedQty.set(String(l.sku), round2((invoicedQty.get(String(l.sku)) || 0) + l.qty)));
+      const completes = so.lines.every((l) => (invoicedQty.get(String(l.sku)) || 0) >= l.qty);
+      discountAmount = completes
+        ? round2(so.discountAmount - priorAlloc.reduce((sum, a) => sum + (a.discountAmount || 0), 0))
+        : round2(so.discountAmount * (subtotal / so.subtotal));
+      discountAmount = Math.min(Math.max(discountAmount, 0), subtotal);
+    }
+    const shippingCharge = priorAlloc.some((a) => (a.shippingCharge || 0) > 0) ? 0 : (so.shippingCharge || 0);
+    allocations.push({ salesOrder: so._id, subtotal, discountAmount, shippingCharge });
+  }
+
+  const totals = salesTotals(lines, {
+    discountAmount: round2(allocations.reduce((sum, a) => sum + a.discountAmount, 0)),
+    taxRate: first.taxRate,
+    priceIncludesTax: first.priceIncludesTax,
+    shippingCharge: round2(allocations.reduce((sum, a) => sum + a.shippingCharge, 0)),
+  });
+  const customer = await Customer.findById(dos[0].customer).select('termDays').lean();
+  const now = new Date();
+  const poNos = orders.map((o) => o.customerPoNo).filter(Boolean);
+  const invDoc = new SalesInvoice({
+    no: await nextDocNo('INV'),
+    source: 'SALES_ORDER',
+    salesOrders: orders.map((o) => o._id),
+    deliveryOrders: dos.map((d) => d._id),
+    soAllocations: allocations,
+    customer: dos[0].customer,
+    gudang: dos[0].gudang,
+    date,
+    dueDate: dueDate || new Date(startOfDay(date).getTime() + (customer?.termDays || 0) * DAY),
+    status: 'POSTED',
+    priceIncludesTax: first.priceIncludesTax,
+    taxRate: first.taxRate,
+    lines,
+    ...totals,
+    cogs: round2(dos.flatMap((d) => d.lines).reduce((sum, l) => sum + l.qty * (l.unitCost || 0), 0)),
+    returnedAmount: 0,
+    paidAmount: 0,
+    note: trimText(note) || [orders.map((o) => o.no).join(', '), dos.map((d) => d.no).join(', '), poNos.length ? `PO ${poNos.join(', ')}` : '']
+      .filter(Boolean).join(' · ').slice(0, 500),
+    postedBy: req.user._id,
+    postedDate: now,
+    createdBy: req.user._id,
+  });
+  invDoc.paymentStatus = invoiceBalance(invDoc).paymentStatus;
+  await invDoc.save();
+
+  const batchId = audit.newBatchId();
+  await audit.logCreate(req, 'salesInvoice', [invDoc], { batchId });
+  for (const d of dos) {
+    const before = await audit.snap('deliveryOrder', [d]);
+    d.invoice = invDoc._id;
+    await d.save();
+    await audit.logUpdate(req, 'deliveryOrder', before, [d], { batchId });
+  }
+  return invDoc;
+};
+
+const assertInvoicePermission = (req) => {
+  if (!(hasPermission(req.user, 'salesInvoice', 'create') && hasPermission(req.user, 'salesInvoice', 'post'))) {
+    throw new HttpError("You don't have permission to create and post sales invoices", 403);
+  }
+};
+
+/**
+ * POST /api/delivery-order/:id/invoice  body: { date?, dueDate?, note? } — invoice POSTED atas 1 DO.
+ * Butuh juga salesInvoice create + post. Aturan harga / diskon / ongkir: invoiceDeliveries.
  */
 exports.createInvoice = async (req, res) => {
   try {
-    if (!(hasPermission(req.user, 'salesInvoice', 'create') && hasPermission(req.user, 'salesInvoice', 'post'))) {
-      return errorResponse(res, "You don't have permission to create and post sales invoices", 403);
-    }
+    assertInvoicePermission(req);
     const body = req.body || {};
-    const date = body.date ? new Date(body.date) : new Date();
-    if (Number.isNaN(date.getTime())) return errorResponse(res, 'Invalid invoice date', 400);
-    if (date > endOfToday()) return errorResponse(res, 'Invoice date cannot be in the future', 400);
-    let dueDate = null;
-    if (body.dueDate) {
-      dueDate = new Date(body.dueDate);
-      if (Number.isNaN(dueDate.getTime())) return errorResponse(res, 'Invalid due date', 400);
-      if (dueDate < startOfDay(date)) return errorResponse(res, 'Due date cannot be before the invoice date', 400);
-    }
-
-    const inv = await runInTransaction(async () => {
-      const doc = await loadDoc(req, req.params.id);
-      if (doc.status !== 'POSTED') throw new HttpError('Only posted delivery orders can be invoiced', 400);
-      await lock(ref('deliveryOrder', doc._id), ref('salesOrder', doc.salesOrder));
-      const existing = await SalesInvoice.findOne({ deliveryOrder: doc._id, status: { $ne: 'CANCELLED' } }).select('no').lean();
-      if (existing) throw new HttpError(`Delivery order is already invoiced (${existing.no})`, 400);
-      if (startOfDay(date) < startOfDay(doc.date)) throw new HttpError('Invoice date cannot be before the delivery date', 400);
-      const so = await SalesOrder.findById(doc.salesOrder).lean();
-      if (!so) throw new HttpError('Sales order no longer exists', 400);
-      const customer = await Customer.findById(so.customer).select('termDays').lean();
-
-      const soLine = new Map(so.lines.map((l) => [String(l.sku), l]));
-      const lines = doc.lines.map((l) => {
-        const sl = soLine.get(String(l.sku));
-        if (!sl) throw new HttpError('Delivery line no longer matches the sales order', 400);
-        const line = { sku: l.sku, produk: l.produk, qty: l.qty, hargaJual: sl.hargaJual, diskonPersen: sl.diskonPersen || 0, unitCost: l.unitCost, note: l.note };
-        line.subtotal = salesLineSubtotal(line);
-        return line;
-      });
-      const subtotal = round2(lines.reduce((s, l) => s + l.subtotal, 0));
-
-      const prior = await SalesInvoice.find({ salesOrder: so._id, status: { $ne: 'CANCELLED' } }).select('discountAmount shippingCharge lines').lean();
-      let discountAmount = 0;
-      if (so.discountAmount > 0 && so.subtotal > 0) {
-        const invoicedQty = new Map();
-        [...prior.flatMap((p) => p.lines), ...lines].forEach((l) => invoicedQty.set(String(l.sku), round2((invoicedQty.get(String(l.sku)) || 0) + l.qty)));
-        const completes = so.lines.every((l) => (invoicedQty.get(String(l.sku)) || 0) >= l.qty);
-        discountAmount = completes
-          ? round2(so.discountAmount - prior.reduce((s, p) => s + (p.discountAmount || 0), 0))
-          : round2(so.discountAmount * (subtotal / so.subtotal));
-        discountAmount = Math.min(Math.max(discountAmount, 0), subtotal);
-      }
-      const shippingCharge = prior.some((p) => (p.shippingCharge || 0) > 0) ? 0 : (so.shippingCharge || 0);
-
-      const totals = salesTotals(lines, { discountAmount, taxRate: so.taxRate, priceIncludesTax: so.priceIncludesTax, shippingCharge });
-      const now = new Date();
-      const invDoc = new SalesInvoice({
-        no: await nextDocNo('INV'),
-        source: 'SALES_ORDER',
-        salesOrder: so._id,
-        deliveryOrder: doc._id,
-        customer: so.customer,
-        gudang: doc.gudang,
-        date,
-        dueDate: dueDate || new Date(startOfDay(date).getTime() + (customer?.termDays || 0) * DAY),
-        status: 'POSTED',
-        priceIncludesTax: so.priceIncludesTax,
-        taxRate: so.taxRate,
-        lines,
-        ...totals,
-        cogs: round2(lines.reduce((s, l) => s + l.qty * (l.unitCost || 0), 0)),
-        returnedAmount: 0,
-        paidAmount: 0,
-        note: trimText(body.note) || [so.no, doc.no, so.customerPoNo ? `PO ${so.customerPoNo}` : ''].filter(Boolean).join(' · '),
-        postedBy: req.user._id,
-        postedDate: now,
-        createdBy: req.user._id,
-      });
-      invDoc.paymentStatus = invoiceBalance(invDoc).paymentStatus;
-      await invDoc.save();
-
-      const batchId = audit.newBatchId();
-      const before = await audit.snap('deliveryOrder', [doc]);
-      doc.invoice = invDoc._id;
-      await doc.save();
-      await audit.logCreate(req, 'salesInvoice', [invDoc], { batchId });
-      await audit.logUpdate(req, 'deliveryOrder', before, [doc], { batchId });
-      return invDoc;
-    });
+    const dates = parseInvoiceDates(body);
+    if (!mongoose.isValidObjectId(req.params.id)) return errorResponse(res, 'Delivery order not found', 404);
+    const inv = await runInTransaction(() => invoiceDeliveries(req, [req.params.id], { ...dates, note: body.note }));
     return successResponse(res, inv, `${inv.no} created`, 201);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+/**
+ * POST /api/delivery-order/invoice  body: { deliveryOrders: [id], date?, dueDate?, note? }
+ * Invoice gabungan beberapa surat jalan (customer & gudang sama, boleh lintas SO).
+ */
+exports.createCombinedInvoice = async (req, res) => {
+  try {
+    assertInvoicePermission(req);
+    const body = req.body || {};
+    const ids = Array.isArray(body.deliveryOrders) ? body.deliveryOrders : [];
+    if (!ids.length) return errorResponse(res, 'Select at least one delivery order', 400);
+    if (ids.length > MAX_INVOICE_DOS) return errorResponse(res, `At most ${MAX_INVOICE_DOS} delivery orders per invoice`, 400);
+    if (ids.some((id) => !mongoose.isValidObjectId(id))) return errorResponse(res, 'Invalid delivery order', 400);
+    const dates = parseInvoiceDates(body);
+    const inv = await runInTransaction(() => invoiceDeliveries(req, ids, { ...dates, note: body.note }));
+    return successResponse(res, inv, `${inv.no} created for ${new Set(ids.map(String)).size} delivery order(s)`, 201);
   } catch (error) {
     return handleError(res, error);
   }

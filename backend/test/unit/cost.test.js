@@ -31,3 +31,12 @@ test('outstanding & receipt status', () => {
   assert.equal(receiptStatus([{ qty: 10, qtyReceived: 4 }, { qty: 1, qtyReceived: 0 }]), 'PARTIAL');
   assert.equal(receiptStatus([{ qty: 10, qtyReceived: 10 }]), 'RECEIVED');
 });
+
+test('allocateFreight: by value, remainder on last line, by qty when values are zero', () => {
+  const { allocateFreight } = require('../../helpers/purchaseHelper');
+  const out = allocateFreight([{ qtyBase: 3, baseUnitCost: 10 }, { qtyBase: 3, baseUnitCost: 10 }, { qtyBase: 3, baseUnitCost: 10 }], 100);
+  assert.deepEqual(out.map((l) => l.freightCost), [33.33, 33.33, 33.34]);
+  assert.equal(out[2].unitCost, 21.11);
+  assert.deepEqual(allocateFreight([{ qtyBase: 1, baseUnitCost: 0 }, { qtyBase: 3, baseUnitCost: 0 }], 40).map((l) => l.freightCost), [10, 30]);
+  assert.deepEqual(allocateFreight([{ qtyBase: 2, baseUnitCost: 5 }], 0).map((l) => [l.freightCost, l.unitCost]), [[0, 5]]);
+});

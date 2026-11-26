@@ -26,6 +26,7 @@ const normalizeSetting = (key, value) => {
   }
   const text = String(value ?? '').trim();
   if (def.required && !text) throw new Error(`${def.label} is required`);
+  if (def.maxLength && text.length > def.maxLength) throw new Error(`${def.label} must be at most ${def.maxLength} characters`);
   return text;
 };
 

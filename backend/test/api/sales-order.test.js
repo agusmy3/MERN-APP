@@ -245,3 +245,204 @@ test('sales order permissions & warehouse access', async () => {
   assert.equal(delCust.status, 400);
   assert.equal((await admin.del(`/api/gudang/${s.m.gudang._id}`)).status, 400);
 });
+
+test('credit limit & overdue check on confirm, approval override, exposure moves with invoices & payments', async () => {
+  const admin = await t.loginAs();
+  const s = await setup(admin);
+  const credit = async () => ok(await admin.get(`/api/customer/${s.customer._id}`)).credit;
+
+  // batas kredit hanya bisa diubah user dengan salesOrder:approve
+  const custAdmin = await t.loginAs({ customer: ['view', 'create', 'update'] }, 'CustAdmin');
+  assert.equal((await custAdmin.put(`/api/customer/${s.customer._id}`, { creditLimit: 1000000 })).status, 403);
+  assert.equal((await custAdmin.post('/api/customer', { name: 'Baru', creditLimit: 5 })).status, 403);
+  ok(await custAdmin.put(`/api/customer/${s.customer._id}`, { phone: '0813', creditLimit: 0 })); // tidak berubah = boleh
+  ok(await admin.put(`/api/customer/${s.customer._id}`, { creditLimit: 1000000 }));
+
+  // 4 x 100.000 + PPN 11% = 444.000 per SO
+  const body = (extra = {}) => soBody(s, { lines: [{ sku: s.a._id, qty: 4 }], discountAmount: 0, shippingCharge: 0, ...extra });
+  const so1 = ok(await admin.post('/api/sales-order', body({ confirm: true })), 201);
+  assert.equal(so1.total, 444000);
+  ok(await admin.post('/api/sales-order', body({ confirm: true })), 201);
+  assert.equal((await credit()).exposure, 888000);
+
+  // SO ketiga melewati batas: 409 + rincian; draft tetap bisa disimpan
+  const blocked = await admin.post('/api/sales-order', body({ confirm: true }));
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.data.code, 'CREDIT_BLOCK');
+  assert.equal(blocked.data.exposureAfter, 1332000);
+  const draft = ok(await admin.post('/api/sales-order', body()), 201);
+  const shipTo = ok(await admin.get(`/api/sales-order/ship-to/${s.customer._id}?exclude=${draft._id}`));
+  assert.equal(shipTo.credit.available, 112000);
+  assert.equal(ok(await admin.get(`/api/sales-order/${draft._id}`)).credit.exposure, 888000);
+
+  const sales = await t.loginAs({ salesOrder: ['view', 'create', 'update'] }, 'Sales');
+  const noRight = await sales.post(`/api/sales-order/${draft._id}/confirm`, {});
+  assert.equal(noRight.status, 409);
+  assert.equal(noRight.data.canApprove, false);
+  assert.equal((await sales.post(`/api/sales-order/${draft._id}/confirm`, { creditOverride: { reason: 'x' } })).status, 403);
+  assert.equal((await admin.post(`/api/sales-order/${draft._id}/confirm`, { creditOverride: { reason: ' ' } })).status, 400);
+  const approved = ok(await admin.post(`/api/sales-order/${draft._id}/confirm`, { creditOverride: { reason: 'Customer lama, bayar minggu ini' } }));
+  assert.equal(approved.status, 'OPEN');
+  assert.match(approved.creditOverrideNote, /credit limit exceeded/);
+  const log = await t.model('AuditLog').findOne({ entity: 'salesOrder', entityId: draft._id, action: 'update' }).lean();
+  assert.ok(log.changes.some((ch) => ch.field === 'creditOverrideReason'));
+  assert.equal((await credit()).exposure, 1332000);
+
+  // kirim & tagih 1 dari SO1: nilai pindah dari "belum ditagih" ke piutang (exposure tetap); bayar -> turun
+  const d = ok(await admin.post('/api/delivery-order', { salesOrder: so1._id, lines: [{ sku: s.a._id, qty: 1 }] }), 201);
+  ok(await admin.post(`/api/delivery-order/${d._id}/post`));
+  let c = await credit();
+  assert.equal(c.uninvoiced, 1332000);
+  const inv = ok(await admin.post(`/api/delivery-order/${d._id}/invoice`, {}), 201);
+  c = await credit();
+  assert.equal(c.receivable, 111000);
+  assert.equal(c.uninvoiced, 1221000);
+  ok(await admin.post('/api/sales-payment', { salesInvoice: inv._id, type: 'PAYMENT', method: 'CASH', amount: 111000 }), 201);
+  assert.equal((await credit()).exposure, 1221000);
+  // SO1 ditutup: sisa 3 tidak lagi dihitung
+  ok(await admin.post(`/api/sales-order/${so1._id}/close`, { reason: 'Cukup' }));
+  assert.equal((await credit()).exposure, 888000);
+
+  // invoice lewat jatuh tempo memblokir customer tanpa batas kredit (setting sales.blockOverdue)
+  const other = ok(await admin.post('/api/customer', { name: 'Telat Bayar', ...ADDRESS }), 201);
+  const otherBody = soBody({ ...s, customer: other }, { lines: [{ sku: s.b._id, qty: 1 }], discountAmount: 0, shippingCharge: 0 });
+  const so = ok(await admin.post('/api/sales-order', { ...otherBody, confirm: true }), 201);
+  const d2 = ok(await admin.post('/api/delivery-order', { salesOrder: so._id, lines: [{ sku: s.b._id, qty: 1 }] }), 201);
+  ok(await admin.post(`/api/delivery-order/${d2._id}/post`));
+  const inv2 = ok(await admin.post(`/api/delivery-order/${d2._id}/invoice`, {}), 201);
+  await t.model('SalesInvoice').updateOne({ _id: inv2._id }, { dueDate: new Date(Date.now() - 5 * 86400000) });
+  const od = await admin.post('/api/sales-order', { ...otherBody, confirm: true });
+  assert.equal(od.status, 409);
+  assert.match(od.message, /overdue/);
+  assert.equal(od.data.credit.overdue.count, 1);
+  ok(await admin.put('/api/setting', { values: { 'sales.blockOverdue': false } }));
+  ok(await admin.post('/api/sales-order', { ...otherBody, confirm: true }), 201);
+  ok(await admin.put('/api/setting', { values: { 'sales.blockOverdue': true } }));
+});
+
+test('combined invoice from several delivery orders (across sales orders), rules & cancel; migration of old invoices', async () => {
+  const admin = await t.loginAs();
+  const s = await setup(admin);
+  const so1 = ok(await admin.post('/api/sales-order', soBody(s, { confirm: true })), 201); // A 4 -10%, B 2, diskon 10.000, ongkir 20.000
+  const so2 = ok(await admin.post('/api/sales-order', soBody(s, { confirm: true, lines: [{ sku: s.a._id, qty: 2, diskonPersen: 10 }], discountAmount: 0, shippingCharge: 0 })), 201);
+  const so3 = ok(await admin.post('/api/sales-order', soBody(s, { confirm: true, lines: [{ sku: s.a._id, qty: 1 }], discountAmount: 0, shippingCharge: 0 })), 201);
+  const deliver = async (so, lines) => {
+    const d = ok(await admin.post('/api/delivery-order', { salesOrder: so._id, lines }), 201);
+    ok(await admin.post(`/api/delivery-order/${d._id}/post`));
+    return d;
+  };
+  const d1 = await deliver(so1, [{ sku: s.a._id, qty: 2 }, { sku: s.b._id, qty: 2 }]);
+  const d2 = await deliver(so2, [{ sku: s.a._id, qty: 2 }]);
+  const d3 = await deliver(so3, [{ sku: s.a._id, qty: 1 }]);
+
+  // harga beda (SO3 tanpa diskon baris) -> tagih terpisah
+  assert.match((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d3._id] })).message, /different price/);
+  assert.equal((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [] })).status, 400);
+  const staff = await t.loginAs({ deliveryOrder: ['view'], salesInvoice: ['view', 'create'] }, 'NoPost');
+  assert.equal((await staff.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d2._id] })).status, 403);
+
+  const inv = ok(await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d1._id, d2._id] }), 201);
+  assert.equal(inv.deliveryOrders.length, 2);
+  assert.equal(inv.salesOrders.length, 2);
+  assert.equal(inv.lines.length, 2);              // A digabung (2 + 2), B
+  assert.equal(inv.lines.find((l) => String(l.sku) === String(s.a._id)).qty, 4);
+  assert.equal(inv.subtotal, 440000);             // 4 x 90.000 + 2 x 40.000
+  const a1 = inv.soAllocations.find((a) => String(a.salesOrder) === String(so1._id));
+  assert.equal(a1.subtotal, 260000);
+  assert.equal(a1.discountAmount, 5909.09);       // 10.000 x 260.000 / 440.000
+  assert.equal(a1.shippingCharge, 20000);
+  assert.equal(inv.discountAmount, 5909.09);
+  assert.equal(inv.shippingCharge, 20000);
+  assert.equal(inv.cogs, 4 * 60000 + 2 * 20000);
+  assert.match(inv.note, new RegExp(`${so1.no}, ${so2.no}`));
+  assert.equal(ok(await admin.get(`/api/delivery-order/${d2._id}`)).invoice.no, inv.no);
+  assert.ok(ok(await admin.get(`/api/sales-order/${so2._id}`)).invoices.some((i) => i.no === inv.no));
+  assert.match((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d2._id] })).message, /already invoiced/);
+  const detail = ok(await admin.get(`/api/sales-invoice/${inv._id}`));
+  assert.deepEqual(detail.deliveryOrders.map((d) => d.no).sort(), [d1.no, d2.no].sort());
+
+  // customer lain -> ditolak
+  const other = ok(await admin.post('/api/customer', { name: 'Lain', ...ADDRESS }), 201);
+  const so4 = ok(await admin.post('/api/sales-order', soBody({ ...s, customer: other }, { confirm: true, lines: [{ sku: s.b._id, qty: 1 }], discountAmount: 0, shippingCharge: 0 })), 201);
+  const d4 = await deliver(so4, [{ sku: s.b._id, qty: 1 }]);
+  assert.match((await admin.post('/api/delivery-order/invoice', { deliveryOrders: [d3._id, d4._id] })).message, /same customer/);
+
+  // batal -> semua DO bisa ditagih lagi; ongkir SO1 kembali ditagih di invoice berikutnya
+  ok(await admin.post(`/api/sales-invoice/${inv._id}/cancel`, { reason: 'Salah gabung' }));
+  assert.equal(ok(await admin.get(`/api/delivery-order/${d1._id}`)).invoice, null);
+  assert.equal(ok(await admin.get(`/api/delivery-order/${d2._id}`)).invoice, null);
+  const again = ok(await admin.post(`/api/delivery-order/${d1._id}/invoice`, {}), 201);
+  assert.equal(again.shippingCharge, 20000);
+  assert.equal(again.discountAmount, 5909.09);
+  // DO berikutnya melengkapi SO1: diskon = sisa
+  const d5 = await deliver(so1, [{ sku: s.a._id, qty: 2 }]);
+  assert.equal(ok(await admin.post(`/api/delivery-order/${d5._id}/invoice`, {}), 201).discountAmount, 4090.91);
+
+  // migrasi data lama (field salesOrder / deliveryOrder tunggal)
+  const mongoose = require('mongoose');
+  const col = t.model('SalesInvoice').collection;
+  const db = t.model('SalesInvoice').db.db;
+  const legacy = await col.findOne({ _id: new mongoose.Types.ObjectId(String(again._id)) });
+  legacy._id = new mongoose.Types.ObjectId();
+  legacy.no = 'INV-LEGACY-1';
+  legacy.salesOrder = legacy.salesOrders[0];
+  legacy.deliveryOrder = legacy.deliveryOrders[0];
+  delete legacy.salesOrders;
+  delete legacy.deliveryOrders;
+  delete legacy.soAllocations;
+  await col.insertOne(legacy);
+  const { migrateInvoiceDeliveries } = require('../../scripts/migrate-invoice-deliveries');
+  assert.equal(await migrateInvoiceDeliveries(db), 1);
+  const migrated = await col.findOne({ _id: legacy._id });
+  assert.equal(String(migrated.deliveryOrders[0]), String(d1._id));
+  assert.equal(migrated.soAllocations[0].shippingCharge, 20000);
+  assert.equal(migrated.salesOrder, undefined);
+  assert.equal(await migrateInvoiceDeliveries(db), 0); // idempotent
+});
+
+test('reorder counts open sales order remainder; backorder & delivery reports', async () => {
+  const admin = await t.loginAs();
+  const s = await setup(admin);
+  ok(await admin.put('/api/reorder/rules', { rules: [{ sku: s.a._id, gudang: s.m.gudang._id, minQty: 3, maxQty: 10 }] }));
+  const rowOf = async () => ok(await admin.get('/api/reorder?status=ALL')).find((r) => String(r.sku._id) === String(s.a._id));
+  assert.equal((await rowOf()).status, 'OK');
+
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const so = ok(await admin.post('/api/sales-order', soBody(s, {
+    confirm: true, date: yesterday, requestedDate: yesterday, lines: [{ sku: s.a._id, qty: 8, diskonPersen: 10 }], discountAmount: 0,
+  })), 201);
+  let r = await rowOf();
+  assert.equal(r.committed, 8);
+  assert.equal(r.available, 2);
+  assert.equal(r.status, 'CRITICAL');   // stok 10, tapi 8 sudah dijanjikan ke customer
+  assert.equal(r.suggestedQty, 8);      // max 10 - (10 - 8)
+
+  // backorder: sisa 8 x 90.000, terlambat (tanggal kirim diminta kemarin)
+  let bo = ok(await admin.get(`/api/sales-report/backorder?search=${encodeURIComponent(so.no)}`));
+  assert.equal(bo.rows.length, 1);
+  assert.equal(bo.rows[0].outstanding, 8);
+  assert.equal(bo.rows[0].value, 720000);
+  assert.equal(bo.rows[0].onHand, 10);
+  assert.equal(bo.rows[0].late, true);
+
+  const d = ok(await admin.post('/api/delivery-order', { salesOrder: so._id, lines: [{ sku: s.a._id, qty: 3 }] }), 201);
+  ok(await admin.post(`/api/delivery-order/${d._id}/post`));
+  r = await rowOf();
+  assert.equal(r.onHand, 7);
+  assert.equal(r.committed, 5);
+  bo = ok(await admin.get(`/api/sales-report/backorder?search=${encodeURIComponent(so.no)}`));
+  assert.equal(bo.totals.outstanding, 5);
+  assert.equal(bo.rows[0].delivered, 3);
+
+  const dlRow = async (q = '') => ok(await admin.get(`/api/sales-report/delivery?customer=${s.customer._id}${q}`)).rows.find((x) => x._id === String(d._id));
+  const row = await dlRow();
+  assert.equal(row.value, 270000);
+  assert.equal(row.deliveryMethod, 'DELIVERY');
+  assert.ok(await dlRow('&invoiced=false'));
+  ok(await admin.post(`/api/delivery-order/${d._id}/invoice`, {}), 201);
+  assert.equal(await dlRow('&invoiced=false'), undefined);
+  assert.equal((await dlRow('&invoiced=true')).invoice.status, 'POSTED');
+
+  const noRight = await t.loginAs({ salesOrder: ['view'] }, 'SoOnly');
+  assert.equal((await noRight.get('/api/sales-report/backorder')).status, 403);
+});

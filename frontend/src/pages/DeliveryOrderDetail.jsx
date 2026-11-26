@@ -19,6 +19,7 @@ import PageHeader from '../components/PageHeader';
 import FormField from '../components/FormField';
 import StatusBadge from '../components/stock/StatusBadge';
 import ReasonPanel from '../components/stock/ReasonPanel';
+import DeliveryInvoicePanel from '../components/sales/DeliveryInvoicePanel';
 import AuditTimeline from '../components/audit/AuditTimeline';
 import { AuditDetail } from '../components/AuditInfo';
 import { inputClass } from '../utils/formStyles';
@@ -26,6 +27,7 @@ import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper'
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
 import { DO_STATUS_META, SO_STATUS_META, INVOICE_STATUS_META, PAYMENT_STATUS_META, DELIVERY_METHODS, addressLine } from '../utils/salesMeta';
 import { printDeliveryNote } from '../utils/documentPrint';
+import { getSettings } from '../services/purchaseService';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -111,41 +113,6 @@ function SoSelect({ token, onSelect }) {
         ))}
         {list.length === 0 && <li className="px-3 py-3 text-sm text-muted">Tidak ada sales order yang menunggu pengiriman.</li>}
       </ul>
-    </section>
-  );
-}
-
-/** Panel buat invoice dari DO: tanggal & jatuh tempo (default termin customer) */
-function InvoicePanel({ doc, busy, onConfirm, onClose }) {
-  const [date, setDate] = useState(toDateInput());
-  const [dueDate, setDueDate] = useState('');
-  const [note, setNote] = useState('');
-  return (
-    <section className="mb-4 rounded-lg border border-primary bg-surface p-4 max-w-3xl space-y-3">
-      <div>
-        <h3 className="font-semibold text-fg">Buat invoice untuk {doc.no}</h3>
-        <p className="text-sm text-muted">
-          Invoice langsung diposting dengan harga & diskon dari {doc.salesOrder?.no}. Stok tidak berubah lagi (sudah keluar di surat jalan ini).
-          Ongkir SO ditagih di invoice pertama SO tsb.
-        </p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <FormField label="Invoice date" htmlFor="inv-date" required>
-          <input id="inv-date" type="date" min={toDateInput(doc.date)} max={toDateInput()} value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
-        </FormField>
-        <FormField label="Due date" htmlFor="inv-due" hint="Kosong = tanggal + termin customer">
-          <input id="inv-due" type="date" min={date} value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputClass} />
-        </FormField>
-        <FormField label="Note" htmlFor="inv-note">
-          <input id="inv-note" value={note} maxLength={500} placeholder="Default: no. SO & surat jalan" onChange={(e) => setNote(e.target.value)} className={inputClass} />
-        </FormField>
-      </div>
-      <div className="flex gap-2">
-        <button type="button" disabled={busy || !date} onClick={() => onConfirm({ date, dueDate: dueDate || null, note })} className={btnPrimary}>
-          <i className="fa fa-file-invoice-dollar"></i> Create invoice
-        </button>
-        <button type="button" disabled={busy} onClick={onClose} className={btnGhost}>Close</button>
-      </div>
     </section>
   );
 }
@@ -354,6 +321,18 @@ export default function DeliveryOrderDetail() {
     }
   };
 
+
+  // cetak dengan kop perusahaan (System Settings company.*)
+  const printDoc = async () => {
+    let company = {};
+    try {
+      company = (await getSettings(user.token)).values;
+    } catch (err) {
+      console.error(err);
+    }
+    printDeliveryNote(doc, company);
+  };
+
   // ---------- render ----------
   if (notFound) {
     return (
@@ -382,7 +361,7 @@ export default function DeliveryOrderDetail() {
         <>
           {!isNew && <StatusBadge status={status} meta={DO_STATUS_META} />}
           {doc && (
-            <button type="button" onClick={() => printDeliveryNote(doc)} disabled={busy} className={btnGhost} title="Cetak surat jalan (tanpa harga)">
+            <button type="button" onClick={printDoc} disabled={busy} className={btnGhost} title="Cetak surat jalan (tanpa harga)">
               <i className="fa fa-print"></i> Print
             </button>
           )}
@@ -445,7 +424,17 @@ export default function DeliveryOrderDetail() {
           onClose={() => setPanel(null)}
         />
       )}
-      {panel === 'invoice' && <InvoicePanel doc={doc} busy={busy} onConfirm={createInvoice} onClose={() => setPanel(null)} />}
+      {panel === 'invoice' && (
+        <DeliveryInvoicePanel
+          title={`Buat invoice untuk ${doc.no}`}
+          description={`Invoice langsung diposting dengan harga & diskon dari ${doc.salesOrder?.no || 'SO'}. Stok tidak berubah lagi (sudah keluar di surat jalan ini). `
+            + 'Ongkir SO ditagih di invoice pertama SO tsb. Untuk menggabungkan beberapa surat jalan dalam 1 invoice, pilih di daftar Delivery Order.'}
+          minDate={doc.date}
+          busy={busy}
+          onConfirm={createInvoice}
+          onClose={() => setPanel(null)}
+        />
+      )}
 
       <div className={`grid gap-4 items-start ${doc ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}>
         <div className="space-y-4 min-w-0">

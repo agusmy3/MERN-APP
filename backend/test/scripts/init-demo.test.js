@@ -61,7 +61,7 @@ test('init: guards, wipe, menus, roles, super admin, walk-in customer', async ()
   const tree = (await admin.get('/api/menu/tree')).data;
   const flat = (list) => list.flatMap((m) => [m, ...flat(m.children || [])]);
   const routes = flat(tree).map((m) => m.component).filter(Boolean);
-  for (const route of ['/', '/produk', '/stock-adjustment', '/purchase-order', '/sales-order', '/delivery-order', '/sales-invoice', '/pos', '/pos-shift', '/outlet', '/settings']) {
+  for (const route of ['/', '/produk', '/stock-adjustment', '/purchase-order', '/quotation', '/sales-order', '/delivery-order', '/sales-invoice', '/pos', '/pos-shift', '/outlet', '/settings']) {
     assert.ok(routes.includes(route), `menu ${route}`);
   }
   const roles = (await admin.get('/api/role/dropdown')).data.map((x) => x.name);
@@ -98,6 +98,8 @@ test('demo: master, stock, users per role with scoped access, sample transaction
   assert.equal(so.status, 'PARTIAL');
   assert.equal(await t.model('DeliveryOrder').countDocuments({ status: 'POSTED', invoice: null }), 1);
   assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).kota, 'Surabaya');
+  assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).creditLimit, 25000000);
+  assert.equal(await t.model('Quotation').countDocuments({ status: 'SENT' }), 1);
 
   // kartu stok konsisten dengan saldo
   const rec = run('stock-reconcile.js', []);

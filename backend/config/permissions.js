@@ -8,9 +8,10 @@
  *   Role lama otomatis TIDAK punya akses ke resource baru (aman secara default).
  */
 
-// Semua action yang dikenal. 'post' (posting/pembatalan dokumen yang mengubah stok) hanya berlaku
-// untuk resource yang mendeklarasikannya di `actions`.
-const ACTIONS = ['view', 'create', 'update', 'delete', 'post'];
+// Semua action yang dikenal. 'post' (posting/pembatalan dokumen yang mengubah stok) dan 'approve'
+// (menyetujui pengecualian, mis. konfirmasi SO melewati batas kredit) hanya berlaku untuk resource
+// yang mendeklarasikannya di `actions`.
+const ACTIONS = ['view', 'create', 'update', 'delete', 'post', 'approve'];
 // action default untuk resource yang tidak menulis `actions`
 const DEFAULT_ACTIONS = ['view', 'create', 'update', 'delete'];
 
@@ -43,9 +44,12 @@ const RESOURCES = [
   { key: 'purchaseOrder', label: 'Purchase Order', group: 'Purchasing' },
   // Penerimaan barang: create/update/delete = draft; post = posting & pembatalan (mengubah stok & HPP)
   { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
+  // Quotation / penawaran harga: create = draft; update = ubah draft, kirim, revisi, tolak, konversi ke SO
+  // (konversi butuh juga salesOrder:create); delete = hapus draft
+  { key: 'quotation', label: 'Quotation', group: 'Sales' },
   // Sales Order (tidak mengubah stok): create = buat draft / konfirmasi; update = ubah draft, konfirmasi,
-  // cancel & close; delete = hapus draft
-  { key: 'salesOrder', label: 'Sales Order', group: 'Sales' },
+  // cancel & close; delete = hapus draft; approve = konfirmasi melewati batas kredit / invoice lewat jatuh tempo
+  { key: 'salesOrder', label: 'Sales Order', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'approve'] },
   // Delivery Order / surat jalan: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali).
   // Buat invoice dari DO butuh juga salesInvoice create + post
   { key: 'deliveryOrder', label: 'Delivery Order', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },

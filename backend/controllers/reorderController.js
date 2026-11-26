@@ -14,6 +14,7 @@ const { hasPermission } = require('../config/permissions');
 const { createDraftPoInTransaction } = require('./purchaseOrderController');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 const { inTransitSummary } = require('./stockTransferController');
+const { committedMap } = require('../helpers/salesOrderHelper');
 
 const ALERT_STATUSES = ['OUT', 'CRITICAL', 'ORDERED'];
 
@@ -26,17 +27,18 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const isBlank = (v) => v === undefined || v === null || v === '';
 
 /**
- * Status 1 rule:
- *   OUT      : stok <= 0
- *   CRITICAL : stok <= min DAN stok + sedang dipesan <= min (belum tertutup PO)
- *   ORDERED  : stok <= min tapi PO terbuka sudah menutupinya
- *   OK       : stok > min
+ * Status 1 rule. tersedia = stok - dipesan customer (sisa SO OPEN / PARTIAL);
+ * posisi = tersedia + sedang dipesan ke vendor (PO terbuka + transfer masuk).
+ *   OK       : tersedia > min
+ *   OUT      : tersedia <= 0 dan posisi <= min (stok habis / sudah dijanjikan semua ke customer)
+ *   CRITICAL : tersedia <= min dan posisi <= min (belum tertutup PO)
+ *   ORDERED  : tersedia <= min tapi PO / transfer terbuka sudah menutupinya
  */
-const statusOf = (onHand, onOrder, min) => {
-  if (onHand > min) return 'OK';
-  if (onHand <= 0 && onHand + onOrder <= min) return 'OUT';
-  if (onHand + onOrder <= min) return 'CRITICAL';
-  return 'ORDERED';
+const statusOf = (onHand, onOrder, min, committed = 0) => {
+  const available = onHand - committed;
+  if (available > min) return 'OK';
+  if (available + onOrder > min) return 'ORDERED';
+  return available <= 0 ? 'OUT' : 'CRITICAL';
 };
 
 /** Qty yang sedang dipesan (PO OPEN / PARTIAL, sisa x konversi) per SKU+gudang: Map "sku:gudang" -> qty */
@@ -72,6 +74,7 @@ const evaluateRules = async (ruleFilter = {}) => {
     onOrderMap({ 'lines.sku': { $in: skuIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
   ]);
   const { qtyBySkuTo } = await inTransitSummary();
+  const committed = await committedMap(skuIds);
   for (const [key, qty] of qtyBySkuTo) onOrder.set(key, round2((onOrder.get(key) || 0) + qty));
   const skuMap = new Map(skus.map((s) => [String(s._id), s]));
   const gudangMap = new Map(gudangs.map((g) => [String(g._id), g]));
@@ -84,8 +87,9 @@ const evaluateRules = async (ruleFilter = {}) => {
     const key = `${r.sku}:${r.gudang}`;
     const onHand = balMap.get(key) || 0;
     const ordered = onOrder.get(key) || 0;
-    const position = round2(onHand + ordered);
-    const status = statusOf(onHand, ordered, r.minQty);
+    const reserved = committed.get(key) || 0;
+    const position = round2(onHand - reserved + ordered);
+    const status = statusOf(onHand, ordered, r.minQty, reserved);
     return {
       _id: r._id,
       sku: { _id: sku._id, sku: sku.sku, variantValues: sku.variantValues },
@@ -96,6 +100,8 @@ const evaluateRules = async (ruleFilter = {}) => {
       minQty: r.minQty,
       maxQty: r.maxQty,
       onHand,
+      committed: reserved,             // sisa SO yang belum dikirim
+      available: round2(onHand - reserved),
       onOrder: ordered,
       position,
       status,

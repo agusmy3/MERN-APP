@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef } from 'react';
 
-const ACTION_LABEL = { view: 'View', create: 'Create', update: 'Update', delete: 'Delete', post: 'Post' };
+const ACTION_LABEL = { view: 'View', create: 'Create', update: 'Update', delete: 'Delete', post: 'Post', approve: 'Approve' };
 
 /** Checkbox yang bisa tampil "sebagian" (indeterminate) untuk kolom/baris yang tercentang sebagian. */
 function TriCheckbox({ checked, indeterminate, onChange, label }) {

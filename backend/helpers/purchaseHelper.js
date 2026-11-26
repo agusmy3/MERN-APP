@@ -23,6 +23,26 @@ const unitCostOf = (po, line) => {
   return round2(withTax / line.konversi);
 };
 
+/**
+ * Biaya angkut penerimaan dibagi ke baris menurut nilai barang (qtyBase x HPP harga), atau qty jika semua
+ * bernilai 0. Baris terakhir menerima sisa pembulatan (jumlah freightCost = freight).
+ * lines: [{ qtyBase, baseUnitCost }] -> lines + { freightCost, unitCost } (unitCost = base + angkut per satuan dasar)
+ */
+const allocateFreight = (lines, freight) => {
+  const total = round2(Math.max(Number(freight) || 0, 0));
+  const weights = lines.map((l) => l.qtyBase * (l.baseUnitCost || 0));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const basis = sum > 0 ? weights : lines.map((l) => l.qtyBase);
+  const basisSum = basis.reduce((a, b) => a + b, 0);
+  let left = total;
+  return lines.map((l, i) => {
+    const share = i === lines.length - 1 ? left : round2(basisSum ? total * (basis[i] / basisSum) : 0);
+    left = round2(left - share);
+    const freightCost = total ? share : 0;
+    return { ...l, freightCost, unitCost: round2((l.baseUnitCost || 0) + (l.qtyBase ? freightCost / l.qtyBase : 0)) };
+  });
+};
+
 /** Sisa yang belum diterima (dalam satuan beli) */
 const outstandingOf = (line) => Math.max(round2(line.qty - (line.qtyReceived || 0)), 0);
 
@@ -33,4 +53,4 @@ const receiptStatus = (lines) => {
   return 'OPEN';
 };
 
-module.exports = { lineSubtotal, poTotals, unitCostOf, outstandingOf, receiptStatus };
+module.exports = { lineSubtotal, poTotals, unitCostOf, allocateFreight, outstandingOf, receiptStatus };

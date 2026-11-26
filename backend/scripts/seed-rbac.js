@@ -43,6 +43,7 @@ const ROUTE_RESOURCE = {
   '/goods-receipt': 'goodsReceipt',
   '/settings': 'setting',
   '/customer': 'customer',
+  '/quotation': 'quotation',
   '/sales-order': 'salesOrder',
   '/delivery-order': 'deliveryOrder',
   '/sales-invoice': 'salesInvoice',
@@ -61,6 +62,7 @@ const POS_MENUS = [
 ];
 
 const SALES_MENUS = [
+  { menu: 'Quotation', component: '/quotation', icon: 'fa-solid fa-file-pen', resource: 'quotation', deskripsi: 'Penawaran harga ke customer / calon pembeli; harga dikunci saat dikirim, dikonversi jadi Sales Order' },
   { menu: 'Sales Order', component: '/sales-order', icon: 'fa-solid fa-file-signature', resource: 'salesOrder', deskripsi: 'Pesanan customer: dikirim / diambil bertahap lewat surat jalan, lalu ditagih' },
   { menu: 'Delivery Order', component: '/delivery-order', icon: 'fa-solid fa-truck-fast', resource: 'deliveryOrder', deskripsi: 'Surat jalan: stok keluar saat diposting, lalu dibuatkan invoice' },
   { menu: 'Sales Invoice', component: '/sales-invoice', icon: 'fa-solid fa-file-invoice-dollar', resource: 'salesInvoice', deskripsi: 'Penjualan langsung: stok keluar & laba kotor saat diposting' },

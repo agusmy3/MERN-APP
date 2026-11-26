@@ -19,5 +19,7 @@ export default function usePermission(resource) {
     canDelete: actions.includes('delete'),
     // posting & pembatalan dokumen stok (hanya resource yang punya action 'post')
     canPost: actions.includes('post'),
+    // menyetujui pengecualian (mis. SO melewati batas kredit)
+    canApprove: actions.includes('approve'),
   };
 }

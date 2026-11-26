@@ -25,12 +25,22 @@ const lineSchema = new mongoose.Schema({
   note: { type: String },
 }, { _id: false });
 
+const soAllocationSchema = new mongoose.Schema({
+  salesOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder', required: true },
+  subtotal: { type: Number, default: 0 },
+  discountAmount: { type: Number, default: 0 },
+  shippingCharge: { type: Number, default: 0 },
+}, { _id: false });
+
 const salesInvoiceSchema = new mongoose.Schema({
   no: { type: String, required: true, unique: true },  // INV-202611-0001 (POS: POS-202611-0001)
-  // BACKOFFICE = invoice langsung; POS = kasir; SALES_ORDER = tagihan atas 1 Delivery Order (stok keluar di DO)
+  // BACKOFFICE = invoice langsung; POS = kasir; SALES_ORDER = tagihan atas 1 / beberapa Delivery Order (stok keluar di DO)
   source: { type: String, enum: ['BACKOFFICE', 'POS', 'SALES_ORDER'], default: 'BACKOFFICE' },
-  salesOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder', default: null },       // SALES_ORDER
-  deliveryOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryOrder', default: null }, // SALES_ORDER
+  // SALES_ORDER: surat jalan yang ditagih (customer & gudang sama; boleh dari beberapa SO) + SO-nya
+  salesOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: 'SalesOrder' }],
+  deliveryOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryOrder' }],
+  // porsi per SO: subtotal barang, diskon dokumen SO yang dibebankan, ongkir SO (hanya invoice pertama SO tsb)
+  soAllocations: [soAllocationSchema],
   outlet: { type: mongoose.Schema.Types.ObjectId, ref: 'Outlet', default: null },   // POS
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null },  // POS
   cashTendered: { type: Number, default: null },  // POS: uang tunai diterima
@@ -74,8 +84,8 @@ salesInvoiceSchema.index({ status: 1, date: -1 });
 salesInvoiceSchema.index({ gudang: 1, status: 1 });
 salesInvoiceSchema.index({ customer: 1 });
 salesInvoiceSchema.index({ shift: 1 });
-salesInvoiceSchema.index({ salesOrder: 1 });
-salesInvoiceSchema.index({ deliveryOrder: 1 });
+salesInvoiceSchema.index({ salesOrders: 1 });
+salesInvoiceSchema.index({ deliveryOrders: 1 });
 salesInvoiceSchema.index({ outlet: 1, date: -1 });
 salesInvoiceSchema.index({ status: 1, paymentStatus: 1, dueDate: 1 });
 salesInvoiceSchema.index({ 'lines.sku': 1 });

@@ -41,6 +41,7 @@ const MENU_TARGET = [
   {
     group: 'Sales', aliases: [], icon: 'fa-solid fa-cash-register', order: 5,
     children: [
+      leaf('/quotation', 'Quotation', 'fa-solid fa-file-pen', 'quotation', 'Penawaran harga ke customer / calon pembeli; harga dikunci saat dikirim, dikonversi jadi Sales Order'),
       leaf('/sales-order', 'Sales Order', 'fa-solid fa-file-signature', 'salesOrder', 'Pesanan customer: dikirim / diambil bertahap lewat surat jalan, lalu ditagih'),
       leaf('/delivery-order', 'Delivery Order', 'fa-solid fa-truck-fast', 'deliveryOrder', 'Surat jalan: stok keluar saat diposting, lalu dibuatkan invoice'),
       leaf('/sales-invoice', 'Sales Invoice', 'fa-solid fa-file-invoice-dollar', 'salesInvoice', 'Penjualan langsung: stok keluar & laba kotor saat diposting'),

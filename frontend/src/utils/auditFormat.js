@@ -19,6 +19,7 @@ export const ENTITY_META = {
   stockTransfer: { label: 'Stock Transfer', icon: 'fa-truck-arrow-right' },
   customer: { label: 'Customer', icon: 'fa-user-tag' },
   salesInvoice: { label: 'Sales Invoice', icon: 'fa-file-invoice-dollar' },
+  quotation: { label: 'Quotation', icon: 'fa-file-pen' },
   salesOrder: { label: 'Sales Order', icon: 'fa-file-signature' },
   deliveryOrder: { label: 'Delivery Order', icon: 'fa-truck-fast' },
   salesReturn: { label: 'Sales Return', icon: 'fa-rotate-left' },

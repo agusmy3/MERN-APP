@@ -170,6 +170,7 @@ const skusWithStockHistory = async (skuIds) => {
     StockTransfer.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
     SalesInvoice.distinct('lines.sku', { 'lines.sku': { $in: ids } }),
     require('../models/SalesOrder').distinct('lines.sku', { 'lines.sku': { $in: ids } }),
+    require('../models/Quotation').distinct('lines.sku', { 'lines.sku': { $in: ids } }),
   ]);
   const wanted = new Set(ids.map(String));
   return new Set(lists.flat().map(String).filter((id) => wanted.has(id)));

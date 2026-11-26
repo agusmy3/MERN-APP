@@ -20,6 +20,7 @@ const customerSchema = new mongoose.Schema({
   npwp: { type: String, trim: true, default: '' },
   deskripsi: { type: String, default: '' },
   termDays: { type: Number, default: 0, min: 0, max: 365 }, // termin bayar default (0 = tunai) -> jatuh tempo invoice
+  creditLimit: { type: Number, default: 0, min: 0 },       // batas kredit (piutang + SO belum ditagih); 0 = tanpa batas
   priceList: { type: mongoose.Schema.Types.ObjectId, ref: 'PriceList', default: null }, // harga khusus (null = harga jual default)
   isActive: { type: Boolean, default: true },
   isWalkIn: { type: Boolean, default: false },

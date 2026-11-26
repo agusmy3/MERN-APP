@@ -148,3 +148,58 @@ test('delivery note html: no prices, escapes text, pickup vs delivery', async ()
   assert.match(pick, /Diambil oleh/);
   assert.doesNotMatch(pick, /Kirim ke/);
 });
+
+test('documentPrint: company header, sales order & invoice with prices, totals and balance', async () => {
+  const { salesOrderHtml, invoiceHtml, deliveryNoteHtml } = await import('../src/utils/documentPrint.js');
+  const company = { 'company.name': 'PT Kita <Jaya>', 'company.address': 'Jl. A\nJakarta', 'company.npwp': '01.234', 'company.bankInfo': 'BCA 123 a.n. PT Kita' };
+  const lines = [{ qty: 2, hargaJual: 100000, diskonPersen: 10, subtotal: 180000, sku: { sku: 'KAOS-M' }, produk: { name: 'Kaos', uom: { code: 'PCS' } } }];
+  const so = {
+    no: 'SO-1', date: '2026-11-25', status: 'OPEN', customer: { name: 'PT Maju', address: 'Jl. B', kota: 'Bogor', termDays: 30 },
+    deliveryMethod: 'DELIVERY', shipTo: { name: 'Gudang Maju', alamat: 'Jl. C' }, lines,
+    subtotal: 180000, discountAmount: 0, shippingCharge: 20000, dpp: 180000, shippingDpp: 20000, taxRate: 11, taxAmount: 22000, total: 222000,
+  };
+  const html = salesOrderHtml(so, company);
+  assert.match(html, /PT Kita &lt;Jaya&gt;/);
+  assert.match(html, /Jl\. A<br>Jakarta/);
+  assert.match(html, /SALES ORDER/);
+  assert.match(html, /Kirim ke/);
+  assert.match(html, /30 hari/);
+  assert.match(html, /200\.000/); // DPP barang + ongkir
+  assert.match(html, /222\.000/);
+  assert.doesNotMatch(html, /BCA 123/); // instruksi bayar hanya di invoice
+  assert.doesNotMatch(salesOrderHtml(so, {}), /class="co"/); // tanpa nama perusahaan = tanpa kop
+
+  const inv = { ...so, no: 'INV-1', status: 'POSTED', dueDate: '2026-12-25', paidAmount: 100000, returnedAmount: 0, paymentStatus: 'PARTIAL', deliveryOrders: [{ no: 'DO-1' }, { no: 'DO-2' }] };
+  const ih = invoiceHtml(inv, company);
+  assert.match(ih, /INVOICE/);
+  assert.match(ih, /BCA 123/);
+  assert.match(ih, /DO-1, DO-2/);
+  assert.match(ih, /SISA TAGIHAN/);
+  assert.match(ih, /122\.000/);
+  assert.match(invoiceHtml({ ...inv, paidAmount: 222000, paymentStatus: 'PAID' }, company), /LUNAS/);
+  assert.match(deliveryNoteHtml({ ...so, no: 'DO-1', status: 'POSTED' }, company), /PT Kita/);
+});
+
+test('documentPrint: quotation for a walk-in prospect with validity & terms', async () => {
+  const { quotationHtml } = await import('../src/utils/documentPrint.js');
+  const q = {
+    no: 'QUO-1', date: '2026-11-20', validUntil: '2026-12-04', status: 'SENT', deliveryMethod: 'PICKUP',
+    customer: { name: 'Umum / Walk-in', isWalkIn: true }, prospectName: 'Budi <B>', prospectContact: '0812', terms: 'DP 50%',
+    lines: [{ qty: 1, hargaJual: 50000, subtotal: 50000, sku: { sku: 'X' }, produk: { name: 'X', uom: { code: 'PCS' } } }],
+    subtotal: 50000, dpp: 50000, taxRate: 0, taxAmount: 0, total: 50000,
+  };
+  const html = quotationHtml(q, { 'company.name': 'PT Kita', 'company.bankInfo': 'BCA 1' });
+  assert.match(html, /PENAWARAN HARGA/);
+  assert.match(html, /Budi &lt;B&gt;/);
+  assert.doesNotMatch(html, /Walk-in/);
+  assert.match(html, /04 Dec 2026/);
+  assert.match(html, /DP 50%/);
+  assert.match(quotationHtml({ ...q, expired: true }), /KEDALUWARSA/);
+});
+
+test('allocateFreight (frontend copy) matches backend rules', async () => {
+  const { allocateFreight } = await import('../src/utils/purchaseMeta.js');
+  const out = allocateFreight([{ qtyBase: 24, baseUnitCost: 9000 }, { qtyBase: 6, baseUnitCost: 11000 }], 28200);
+  assert.deepEqual(out.map((l) => [l.freightCost, l.unitCost]), [[21600, 9900], [6600, 12100]]);
+  assert.deepEqual(allocateFreight([{ qtyBase: 1, baseUnitCost: 0 }, { qtyBase: 3, baseUnitCost: 0 }], 40).map((l) => l.freightCost), [10, 30]);
+});

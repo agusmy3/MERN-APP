@@ -36,6 +36,29 @@ const SETTINGS = [
     description: 'Harga jual sudah termasuk PPN (umum di retail): PPN dihitung dari dalam total. '
       + 'Jika tidak, PPN ditambahkan di atas harga. Disalin ke Sales Invoice saat dibuat (bisa diubah per dokumen selama draft).',
   },
+  {
+    key: 'sales.blockOverdue',
+    label: 'Block sales orders for overdue customers',
+    group: 'Sales',
+    type: 'bool',
+    default: true,
+    description: 'Konfirmasi Sales Order ditolak jika customer punya invoice belum lunas yang lewat jatuh tempo '
+      + '(bisa disetujui user dengan izin Sales Order: Approve). Batas kredit diatur per customer.',
+  },
+  // identitas perusahaan: dicetak di kop dokumen (SO, invoice, quotation, surat jalan)
+  { key: 'company.name', label: 'Company name', group: 'Company', type: 'text', default: '', maxLength: 120, description: 'Kop dokumen cetak (Sales Order, Invoice, Quotation, Surat Jalan).' },
+  { key: 'company.address', label: 'Address', group: 'Company', type: 'text', multiline: true, default: '', maxLength: 500 },
+  { key: 'company.phone', label: 'Phone', group: 'Company', type: 'text', default: '', maxLength: 60 },
+  { key: 'company.email', label: 'Email', group: 'Company', type: 'text', default: '', maxLength: 120 },
+  { key: 'company.npwp', label: 'NPWP', group: 'Company', type: 'text', default: '', maxLength: 40 },
+  {
+    key: 'company.bankInfo', label: 'Payment instructions', group: 'Company', type: 'text', multiline: true, default: '', maxLength: 500,
+    description: 'Rekening bank / cara bayar, dicetak di invoice & quotation.',
+  },
+  {
+    key: 'company.documentFooter', label: 'Document footer', group: 'Company', type: 'text', multiline: true, default: '', maxLength: 500,
+    description: 'Catatan kaki dokumen penjualan cetak (mis. syarat & ketentuan).',
+  },
 ];
 
 const getDefinition = (key) => SETTINGS.find((s) => s.key === key);

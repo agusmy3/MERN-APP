@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getPriceListDropdown } from '../services/salesService';
+import { getCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer, getPriceListDropdown } from '../services/salesService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -14,6 +14,9 @@ import RegionFields from '../components/RegionFields';
 import { EMPTY_REGION, regionFrom, regionError } from '../utils/regionMeta';
 import useToast from '../hooks/useToast';
 import { addressLine } from '../utils/salesMeta';
+import usePermission from '../hooks/usePermission';
+import CreditSummary from '../components/sales/CreditSummary';
+import { formatNumber } from '../utils/formatHelper';
 
 const EMPTY_FORM = {
   code: '',
@@ -25,6 +28,7 @@ const EMPTY_FORM = {
   npwp: '',
   deskripsi: '',
   termDays: 0,
+  creditLimit: 0,
   priceList: '',
   isActive: true,
 };
@@ -59,6 +63,7 @@ export default function Customer() {
       npwp: row.npwp || '',
       deskripsi: row.deskripsi || '',
       termDays: row.termDays ?? 0,
+      creditLimit: row.creditLimit ?? 0,
       priceList: row.priceList?._id || '',
       isActive: row.isActive !== false,
     }),
@@ -82,6 +87,15 @@ export default function Customer() {
 
   const { editingRow, form } = crud;
   const isWalkIn = !!editingRow?.isWalkIn;
+  // batas kredit hanya bisa diubah user yang boleh menyetujui SO melewati batas
+  const { canApprove } = usePermission('salesOrder');
+  const [credit, setCredit] = useState(null);
+  const editingId = editingRow && !editingRow.isWalkIn ? editingRow._id : null;
+  useEffect(() => {
+    setCredit(null);
+    if (!editingId) return;
+    getCustomer(editingId, user.token).then((c) => setCredit(c.credit || null)).catch(() => setCredit(null));
+  }, [editingId, user.token]);
 
   const columns = [
     { key: 'code', header: 'Code', sortField: 'code', width: 130, className: 'font-semibold font-mono text-sm' },
@@ -101,6 +115,13 @@ export default function Customer() {
     { key: 'email', header: 'Email', width: 200 },
     { key: 'priceList', header: 'Price List', width: 140, render: (row) => row.priceList?.name || <span className="text-muted">Default</span> },
     { key: 'termDays', header: 'Term', width: 90, className: 'text-right tabular-nums', render: (row) => (row.termDays ? `${row.termDays} d` : 'Cash') },
+    {
+      key: 'creditLimit',
+      header: 'Credit Limit',
+      width: 130,
+      className: 'text-right tabular-nums',
+      render: (row) => (row.creditLimit ? formatNumber(row.creditLimit) : <span className="text-muted">–</span>),
+    },
     { key: 'address', header: 'Address', width: 320, render: (row) => addressLine(row) },
     {
       key: 'isActive',
@@ -158,6 +179,17 @@ export default function Customer() {
         <FormField label="Payment term (days)" htmlFor="cust-term" hint="Jatuh tempo invoice = tanggal invoice + termin. 0 = tunai.">
           <input id="cust-term" name="termDays" type="number" min="0" max="365" step="1" value={form.termDays} onChange={crud.handleChange} className={inputClass} />
         </FormField>
+
+        {!isWalkIn && (
+          <FormField label="Credit limit" htmlFor="cust-credit"
+            hint={canApprove
+              ? 'Batas piutang + SO belum ditagih. Konfirmasi SO yang melewatinya butuh persetujuan. 0 = tanpa batas.'
+              : 'Hanya bisa diubah user dengan izin Sales Order: Approve. 0 = tanpa batas.'}>
+            <input id="cust-credit" name="creditLimit" type="number" min="0" step="0.01" value={form.creditLimit}
+              onChange={crud.handleChange} disabled={!canApprove} className={inputClass} />
+          </FormField>
+        )}
+        {credit && <CreditSummary credit={credit} />}
 
         <FormField label="Price list" htmlFor="cust-pl" hint="Kosong = harga jual default SKU.">
           <select id="cust-pl" name="priceList" value={form.priceList} onChange={crud.handleChange} className={`${inputClass} text-fg`}>

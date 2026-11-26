@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const permissionSchema = new mongoose.Schema({
   resource: { type: String, required: true },   // key dari config/permissions.js, mis. 'produk'
-  actions: [{ type: String }],                   // subset dari ACTIONS: view, create, update, delete
+  actions: [{ type: String }],                   // subset dari ACTIONS: view, create, update, delete, post, approve
 }, { _id: false });
 
 const roleSchema = new mongoose.Schema({

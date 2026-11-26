@@ -10,6 +10,7 @@ const pay = require('../controllers/salesPaymentController');
 const pl = require('../controllers/priceListController');
 const PriceList = require('../models/PriceList');
 const report = require('../controllers/salesReportController');
+const quo = require('../controllers/quotationController');
 const so = require('../controllers/salesOrderController');
 const dlv = require('../controllers/deliveryOrderController');
 
@@ -35,6 +36,7 @@ salesOrder.post('/:id/close', protect, authorize('salesOrder', 'update'), so.clo
  * Delivery Order (/api/delivery-order) — surat jalan atas SO
  *   create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali)
  *   POST /:id/invoice = buat invoice POSTED (dicek di handler: salesInvoice create + post)
+ *   POST /invoice { deliveryOrders: [] } = invoice gabungan beberapa DO (customer & gudang sama)
  */
 const deliveryOrder = express.Router();
 deliveryOrder.get('/so-options', protect, authorize('deliveryOrder', 'view'), dlv.getSoOptions);
@@ -46,6 +48,7 @@ deliveryOrder.put('/:id', protect, authorize('deliveryOrder', 'update'), dlv.upd
 deliveryOrder.delete('/:id', protect, authorize('deliveryOrder', 'delete'), dlv.deleteDeliveryOrder);
 deliveryOrder.post('/:id/post', protect, authorize('deliveryOrder', 'post'), dlv.postDeliveryOrder);
 deliveryOrder.post('/:id/cancel', protect, authorize('deliveryOrder', 'post'), dlv.cancelDeliveryOrder);
+deliveryOrder.post('/invoice', protect, authorize('deliveryOrder', 'view'), dlv.createCombinedInvoice);
 deliveryOrder.post('/:id/invoice', protect, authorize('deliveryOrder', 'view'), dlv.createInvoice);
 
 /** Customer (/api/customer): master data standar; /dropdown cukup login (pilihan di dokumen penjualan) */
@@ -112,5 +115,23 @@ priceList.delete('/:id', protect, authorize('priceList', 'delete'), pl.deletePri
 const salesReport = express.Router();
 salesReport.get('/sales', protect, authorize('salesReport', 'view'), report.getSalesReport);
 salesReport.get('/aging', protect, authorize('salesReport', 'view'), report.getAgingReport);
+salesReport.get('/backorder', protect, authorize('salesReport', 'view'), report.getBackorderReport);
+salesReport.get('/delivery', protect, authorize('salesReport', 'view'), report.getDeliveryReport);
 
-module.exports = { salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };
+/**
+ * Quotation (/api/quotation) — penawaran harga; konversi ke SO butuh juga salesOrder:create (dicek di handler)
+ */
+const quotation = express.Router();
+quotation.get('/', protect, authorize('quotation', 'view'), quo.getQuotations);
+quotation.get('/skus', protect, authorize('quotation', 'view'), so.searchSkus);
+quotation.post('/skus/prices', protect, authorize('quotation', 'view'), inv.skuPrices);
+quotation.get('/:id', protect, authorize('quotation', 'view'), quo.getQuotation);
+quotation.post('/', protect, authorize('quotation', 'create'), quo.createQuotation);
+quotation.put('/:id', protect, authorize('quotation', 'update'), quo.updateQuotation);
+quotation.delete('/:id', protect, authorize('quotation', 'delete'), quo.deleteQuotation);
+quotation.post('/:id/send', protect, authorize('quotation', 'update'), quo.sendQuotation);
+quotation.post('/:id/revise', protect, authorize('quotation', 'update'), quo.reviseQuotation);
+quotation.post('/:id/reject', protect, authorize('quotation', 'update'), quo.rejectQuotation);
+quotation.post('/:id/convert', protect, authorize('quotation', 'update'), quo.convertQuotation);
+
+module.exports = { quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };

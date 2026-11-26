@@ -213,3 +213,34 @@ test('master used by PO cannot be deleted; inactive SKU cannot be ordered', asyn
   assert.equal(res.status, 400);
   assert.match(res.message, /inactive/);
 });
+
+test('goods receipt freight: allocated by value into HPP, kept for users without cost access, hidden from them', async () => {
+  const admin = await t.loginAs();
+  const m = await createMasters(admin);
+  const sku = await createProduct(admin, m, 'Freight');
+  const po = await issuedPo(admin, m, sku);
+  // BOX: 2 x 12 pcs @ 9.000 (nilai 216.000); PCS: 6 @ 11.000 (nilai 66.000); angkut 28.200
+  const lines = [{ poLine: po.lines[0]._id, qty: 2 }, { poLine: po.lines[1]._id, qty: 6 }];
+  assert.equal((await admin.post('/api/goods-receipt', { purchaseOrder: po._id, lines, freightCharge: -1 })).status, 400);
+  const gr = ok(await admin.post('/api/goods-receipt', { purchaseOrder: po._id, lines, freightCharge: 28200, freightNote: 'JNE Cargo' }), 201);
+  assert.equal(gr.freightCharge, 28200);
+  assert.equal(gr.lines[0].baseUnitCost, 9000);
+  assert.equal(gr.lines[0].freightCost, 21600);
+  assert.equal(gr.lines[0].unitCost, 9900);
+  assert.equal(gr.lines[1].freightCost, 6600);
+  assert.equal(gr.lines[1].unitCost, 12100);
+
+  // user gudang tanpa vendorPrice:view: tidak bisa mengubah / melihat angkut, nilainya tetap
+  const wh = await t.loginAs({ goodsReceipt: ['view', 'create', 'update', 'post'] }, 'Gudang Angkut');
+  ok(await wh.put(`/api/goods-receipt/${gr._id}`, { lines, freightCharge: 0, deliveryNoteNo: 'SJ-1' }));
+  const hidden = ok(await wh.get(`/api/goods-receipt/${gr._id}`));
+  assert.equal(hidden.freightCharge, undefined);
+  assert.equal(hidden.lines[0].unitCost, undefined);
+  assert.equal(ok(await admin.get(`/api/goods-receipt/${gr._id}`)).freightCharge, 28200);
+
+  ok(await wh.post(`/api/goods-receipt/${gr._id}/post`, {}));
+  const s = await t.model('ProdukSku').findById(sku._id).lean();
+  assert.equal(s.avgCost, 10340); // (24 x 9.900 + 6 x 12.100) / 30
+  const mv = await t.model('StockMovement').find({ refId: gr._id }).lean();
+  assert.equal(Math.round(mv.reduce((sum, x) => sum + x.value, 0)), 282000 + 28200);
+});

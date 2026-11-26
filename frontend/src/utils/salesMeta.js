@@ -71,6 +71,17 @@ export const SO_STATUS_META = {
   CANCELLED: { label: 'Cancelled', icon: 'fa-ban', tone: 'bg-danger-soft text-danger' },
 };
 
+// Quotation: DRAFT -> SENT -> ACCEPTED (jadi SO) / REJECTED; EXPIRED = SENT lewat masa berlaku (dihitung)
+export const QUOTATION_STATUS_META = {
+  DRAFT: { label: 'Draft', icon: 'fa-pen-ruler', tone: 'bg-warning-soft text-warning-fg' },
+  SENT: { label: 'Sent', icon: 'fa-paper-plane', tone: 'bg-primary-soft text-primary-soft-fg' },
+  EXPIRED: { label: 'Expired', icon: 'fa-hourglass-end', tone: 'bg-subtle text-muted' },
+  ACCEPTED: { label: 'Accepted', icon: 'fa-check-double', tone: 'bg-success-soft text-success-fg' },
+  REJECTED: { label: 'Rejected', icon: 'fa-thumbs-down', tone: 'bg-danger-soft text-danger' },
+};
+/** status tampilan quotation (SENT kedaluwarsa -> EXPIRED) */
+export const quotationStatus = (q) => (q?.expired ? 'EXPIRED' : q?.status);
+
 // Delivery Order: DRAFT -> POSTED -> CANCELLED
 export const DO_STATUS_META = INVOICE_STATUS_META;
 
