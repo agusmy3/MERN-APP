@@ -12,13 +12,14 @@ export default function useDataTable(fetcher, {
   defaultSortOrder = 'desc',
   defaultPageSize = 5,
   debounceMs = 500,
+  initialSearch = '', // mis. dari ?search= di URL (tautan "Buka detail" halaman Peta)
 } = {}) {
   const [items, setItems] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [search, setSearch] = useState(initialSearch);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSizeState] = useState(defaultPageSize);
   const [sortField, setSortField] = useState(defaultSortField);

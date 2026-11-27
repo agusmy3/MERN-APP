@@ -32,6 +32,7 @@ const ROUTE_RESOURCE = {
   '/users': 'user',
   '/roles': 'role',
   '/audit-log': 'auditLog',
+  '/map': 'map',
   '/gudang': 'gudang',
   '/stock-adjustment': 'stockAdjustment',
   '/stock-transfer': 'stockTransfer',

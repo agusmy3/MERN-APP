@@ -30,6 +30,7 @@ const ROLE_TEMPLATES = [
     permissions: {
       kategori: ALL, produk: ALL, uom: ALL, variant: ALL, vendor: ALL, customer: ALL,
       priceList: ALL, gudang: ALL, outlet: ALL,
+      map: ['view'],
     },
   },
   {
@@ -56,6 +57,7 @@ const ROLE_TEMPLATES = [
       stockMovement: ['view'],
       reorder: ['view', 'update'],
       costRevaluation: DOC,
+      map: ['view'],
       vendorPrice: ['view'],
       deliveryOrder: DOC,
       purchaseReturn: DOC,
@@ -74,6 +76,7 @@ const ROLE_TEMPLATES = [
       purchaseReturn: ['view', 'create', 'update', 'delete'],
       reorder: ['view', 'update'],
       stockMovement: ['view'],
+      map: ['view'],
     },
   },
   {
@@ -89,6 +92,7 @@ const ROLE_TEMPLATES = [
       deliveryOrder: ['view'],
       salesInvoice: DOC,
       salesReturn: DOC,
+      map: ['view'],
     },
   },
   {
@@ -106,6 +110,7 @@ const ROLE_TEMPLATES = [
       vendorPrice: ['view'],
       purchaseInvoice: ['view'],
       vendorPayment: ['view', 'create', 'update'],
+      map: ['view'],
     },
   },
   {
@@ -121,6 +126,7 @@ const ROLE_TEMPLATES = [
     permissions: {
       pos: ['view', 'create', 'post'],
       posShift: ['view', 'update'],
+      map: ['view'],
       customer: ['view', 'create', 'update'],
       salesInvoice: ['view'],
       salesReturn: DOC,

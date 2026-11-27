@@ -18,6 +18,9 @@ const DEFAULT_ACTIONS = ['view', 'create', 'update', 'delete'];
 // `group` hanya untuk pengelompokan di matriks halaman Role.
 // `actions` (opsional) membatasi action yang berlaku, mis. log yang hanya bisa dilihat.
 const RESOURCES = [
+  // halaman Peta (lokasi outlet, gudang, vendor & customer): tiap lapisan & angka ringkasan tetap butuh izin view
+  // resource-nya masing-masing (mis. customer:view untuk titik customer)
+  { key: 'map', label: 'Map', group: 'Dashboard', actions: ['view'] },
   { key: 'kategori', label: 'Category', group: 'Master Data' },
   { key: 'produk', label: 'Product', group: 'Master Data' },
   { key: 'uom', label: 'Unit of Measure', group: 'Master Data' },

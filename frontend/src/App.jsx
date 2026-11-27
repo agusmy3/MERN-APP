@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -59,6 +60,9 @@ import RequirePermission from './components/RequirePermission';
 
 // Halaman yang butuh izin 'view' untuk resource-nya (key = backend/config/permissions.js)
 const guard = (resource, element) => <RequirePermission resource={resource}>{element}</RequirePermission>;
+// halaman Peta memuat Leaflet: chunk terpisah, hanya diunduh saat dibuka
+const MapPage = lazy(() => import('./pages/MapPage'));
+const lazyPage = (el) => <Suspense fallback={<div className="p-6 text-muted">Loading...</div>}>{el}</Suspense>;
 
 function App() {
   return (
@@ -73,6 +77,7 @@ function App() {
           datanya di menu Menu dengan `component` = path & `resource` yang sama. */}
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/map" element={guard('map', lazyPage(<MapPage />))} />
         <Route path="/kategori" element={guard('kategori', <Kategori />)} />
         <Route path="/produk" element={guard('produk', <Produk />)} />
         <Route path="/produk/:id" element={guard('produk', <ProdukDetail />)} />

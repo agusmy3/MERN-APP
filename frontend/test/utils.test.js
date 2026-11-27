@@ -327,3 +327,27 @@ test('map picker helpers: point parsing, rounding, initial view, geolocation err
   assert.match(geoErrorMessage(1), /Izin lokasi ditolak/);
   assert.match(geoErrorMessage(99), /Gagal/);
 });
+
+test('map page helpers: flatten, client filters, detail links, bounds', async () => {
+  const { flattenPoints, filterPoints, detailLink, pointsBounds } = await import('../src/utils/mapMeta.js');
+  const layers = {
+    customer: { points: [
+      { id: 'c1', code: 'CUST1', name: 'Toko Dago', lat: -6.88, lng: 107.61, regionCode: '32.73.02.1001', overdue: true, isActive: true },
+      { id: 'c2', code: 'CUST2', name: 'Toko Jakarta', lat: -6.2, lng: 106.8, regionCode: '31.74', overdue: false, isActive: false },
+    ], missing: [] },
+    gudang: { points: [{ id: 'g1', code: 'BDG', name: 'Gudang Bandung', lat: -6.9, lng: 107.6, regionCode: '32.73', isActive: true }], missing: [] },
+    vendor: { points: [{ id: 'v1', name: 'CV A&B', lat: -7, lng: 110, regionCode: null }], missing: [] },
+  };
+  const all = flattenPoints(layers);
+  assert.deepEqual(all.map((p) => p.key), ['gudang:g1', 'vendor:v1', 'customer:c1', 'customer:c2']); // urutan lapisan
+  assert.equal(filterPoints(all).length, 3);                                   // nonaktif disembunyikan
+  assert.equal(filterPoints(all, { showInactive: true }).length, 4);
+  assert.deepEqual(filterPoints(all, { region: '32.73' }).map((p) => p.id), ['g1', 'c1']); // 32.73 & di bawahnya
+  assert.deepEqual(filterPoints(all, { region: '32.7' }).map((p) => p.id), []); // bukan awalan kode utuh
+  assert.deepEqual(filterPoints(all, { visible: ['customer'], overdueOnly: true }).map((p) => p.id), ['c1']);
+  assert.deepEqual(filterPoints(all, { search: 'dago' }).map((p) => p.id), ['c1']);
+  assert.equal(detailLink(all.find((p) => p.id === 'c1')), '/customer?search=CUST1');
+  assert.equal(detailLink(all.find((p) => p.id === 'v1')), '/vendor?search=CV%20A%26B');
+  assert.deepEqual(pointsBounds(filterPoints(all)), [[-7, 107.6], [-6.88, 110]]);
+  assert.equal(pointsBounds([]), null);
+});

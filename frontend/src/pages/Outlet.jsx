@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import useToast from '../hooks/useToast';
 import { getOutlets, createOutlet, updateOutlet, deleteOutlet } from '../services/posService';
 import { getGudangDropdown } from '../services/gudangService';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -53,7 +54,8 @@ export default function Outlet() {
     return { items: data.dataOutlet, total: data.totalData };
   }, [user.token]);
 
-  const table = useDataTable(fetchOutlet);
+  const [searchParams] = useSearchParams();
+  const table = useDataTable(fetchOutlet, { initialSearch: searchParams.get('search') || '' });
 
   const crud = useCrudDrawer({
     entityName: 'Outlet',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer, getPriceListDropdown } from '../services/salesService';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -47,7 +48,8 @@ export default function Customer() {
     return { items: data.dataCustomer, total: data.totalData };
   }, [user.token]);
 
-  const table = useDataTable(fetchCustomers);
+  const [searchParams] = useSearchParams();
+  const table = useDataTable(fetchCustomers, { initialSearch: searchParams.get('search') || '' });
 
   const crud = useCrudDrawer({
     entityName: 'Customer',

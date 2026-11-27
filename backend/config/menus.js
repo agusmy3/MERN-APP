@@ -7,8 +7,9 @@ const leaf = (component, menu, icon, resource, deskripsi) => ({ component, menu,
 
 const MENU_TARGET = [
   { ...leaf('/', 'Dashboard', 'fa-solid fa-gauge', null, null), order: 1 },
+  { ...leaf('/map', 'Map', 'fa-solid fa-map-location-dot', 'map', 'Lokasi outlet, gudang, vendor & customer dalam 1 peta'), order: 2 },
   {
-    group: 'Master Data', aliases: ['Master'], icon: 'fa-solid fa-database', order: 2,
+    group: 'Master Data', aliases: ['Master'], icon: 'fa-solid fa-database', order: 3,
     children: [
       leaf('/kategori', 'Category', 'fa-solid fa-tags', 'kategori', 'Kelola kategori produk'),
       leaf('/produk', 'Product', 'fa-solid fa-box', 'produk', 'Kelola produk, SKU & harga'),
@@ -21,7 +22,7 @@ const MENU_TARGET = [
     ],
   },
   {
-    group: 'Inventory', aliases: [], icon: 'fa-solid fa-boxes-stacked', order: 3,
+    group: 'Inventory', aliases: [], icon: 'fa-solid fa-boxes-stacked', order: 4,
     children: [
       leaf('/stock-adjustment', 'Stock Adjustment', 'fa-solid fa-boxes-stacked', 'stockAdjustment', 'Penyesuaian stok & stock opname (draft, posting, pembatalan)'),
       leaf('/stock-transfer', 'Stock Transfer', 'fa-solid fa-truck-arrow-right', 'stockTransfer', 'Pindah stok antar gudang: kirim lalu terima'),
@@ -32,7 +33,7 @@ const MENU_TARGET = [
     ],
   },
   {
-    group: 'Purchasing', aliases: [], icon: 'fa-solid fa-cart-shopping', order: 4,
+    group: 'Purchasing', aliases: [], icon: 'fa-solid fa-cart-shopping', order: 5,
     children: [
       leaf('/purchase-order', 'Purchase Order', 'fa-solid fa-file-invoice', 'purchaseOrder', 'Pesanan pembelian ke vendor'),
       leaf('/goods-receipt', 'Goods Receipt', 'fa-solid fa-truck-ramp-box', 'goodsReceipt', 'Penerimaan barang dari PO: stok & HPP bertambah saat diposting'),
@@ -42,7 +43,7 @@ const MENU_TARGET = [
     ],
   },
   {
-    group: 'Sales', aliases: [], icon: 'fa-solid fa-cash-register', order: 5,
+    group: 'Sales', aliases: [], icon: 'fa-solid fa-cash-register', order: 6,
     children: [
       leaf('/quotation', 'Quotation', 'fa-solid fa-file-pen', 'quotation', 'Penawaran harga ke customer / calon pembeli; harga dikunci saat dikirim, dikonversi jadi Sales Order'),
       leaf('/sales-order', 'Sales Order', 'fa-solid fa-file-signature', 'salesOrder', 'Pesanan customer: dikirim / diambil bertahap lewat surat jalan, lalu ditagih'),
@@ -55,7 +56,7 @@ const MENU_TARGET = [
     ],
   },
   {
-    group: 'POS', aliases: [], icon: 'fa-solid fa-store', order: 6,
+    group: 'POS', aliases: [], icon: 'fa-solid fa-store', order: 7,
     children: [
       leaf('/pos', 'Cashier', 'fa-solid fa-cash-register', 'pos', 'Layar kasir: scan barang, bayar, cetak struk'),
       leaf('/pos-shift', 'POS Shift', 'fa-solid fa-clock', 'posShift', 'Shift kasir: modal, penjualan, kas & selisih'),

@@ -6,6 +6,7 @@ import {
   updateGudang,
   deleteGudang
 } from '../services/gudangService';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
 import useCrudDrawer from '../hooks/useCrudDrawer';
@@ -45,7 +46,8 @@ export default function Gudang() {
     return { items: res.data.data.dataGudang, total: res.data.data.totalData };
   }, [user.token]);
 
-  const table = useDataTable(fetchGudang);
+  const [searchParams] = useSearchParams();
+  const table = useDataTable(fetchGudang, { initialSearch: searchParams.get('search') || '' });
 
   const crud = useCrudDrawer({
     entityName: 'Warehouse',

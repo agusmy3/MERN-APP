@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -12,6 +12,10 @@ import { formatNumber, formatRupiah, formatRupiahCompact, formatCompact, variant
 import { formatDate2, formatDay } from '../utils/dateHelper';
 import { ENTITY_META } from '../utils/auditFormat';
 import { REORDER_STATUS } from '../utils/reorderMeta';
+import usePermission from '../hooks/usePermission';
+
+// widget peta memuat Leaflet: chunk terpisah
+const MapWidget = lazy(() => import('../components/map/MapWidget'));
 
 const getDashboard = async (token) => (await axios.get('/api/dashboard', {
   headers: { Authorization: `Bearer ${token}` },
@@ -80,7 +84,8 @@ export default function Dashboard() {
   ].filter(([k]) => d?.pending?.[k] !== undefined).map(([k, label, to, icon]) => ({ key: k, label, to, icon, count: d.pending[k] })) : [];
   if (d?.poDrafts !== undefined) pendingItems.push({ key: 'poDrafts', label: 'Purchase order drafts', to: '/purchase-order', icon: 'fa-file-invoice', count: d.poDrafts });
 
-  const hasAnything = d && Object.keys(d).some((k) => k !== 'canSeeCost');
+  const mapPerm = usePermission('map');
+  const hasAnything = d && (mapPerm.canView || Object.keys(d).some((k) => k !== 'canSeeCost'));
 
   return (
     <div className="h-full p-4 flex flex-col overflow-auto">
@@ -135,6 +140,12 @@ export default function Dashboard() {
                 tone={d.skuWithoutHpp ? 'border-warning-fg/40 bg-warning-soft' : ''} />
             )}
           </div>
+
+          {mapPerm.canView && (
+            <Suspense fallback={null}>
+              <MapWidget />
+            </Suspense>
+          )}
 
           {/* ---------- pekerjaan & reorder ---------- */}
           <div className="grid gap-4 lg:grid-cols-2">
