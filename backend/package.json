@@ -18,6 +18,7 @@
     "migrate:invoice-deliveries": "node scripts/migrate-invoice-deliveries.js",
     "migrate:sales-lines": "node scripts/migrate-sales-lines.js",
     "migrate:audit-gudang": "node scripts/migrate-audit-gudang.js",
+    "regions:import": "node scripts/import-regions.js",
     "seed:defaults": "node scripts/seed-defaults.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",

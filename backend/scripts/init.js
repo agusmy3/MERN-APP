@@ -6,6 +6,7 @@
  *   4. role Super Admin + role standar dengan izinnya (config/roles.js)
  *   5. 1 user Super Admin
  *   6. customer "Umum / Walk-in" (default penjualan & POS)
+ *   7. master wilayah Indonesia (koleksi regions, sama dengan `npm run regions:import`)
  *
  *   cd backend && npm run init -- --wipe --email=admin@contoh.com --password=RahasiaKuat123 [--name="Administrator"]
  *     [--pkp=true|false] [--ppn=11] [--price-includes-tax=true|false]
@@ -138,6 +139,10 @@ async function main() {
   console.log(`[OK] Super Admin: ${result.admin.email}`);
   console.log(`[OK] Customer walk-in: ${result.customer.code} — ${result.customer.name}`);
   if (Object.keys(settings).length) console.log(`[OK] Settings: ${JSON.stringify(settings)}`);
+
+  console.log('\n=== 4. Master wilayah ===');
+  const regions = await require('../helpers/regionHelper').importRegions();
+  console.log(`[OK] ${regions.total} wilayah (provinsi s/d kelurahan/desa)`);
   console.log('\nSelesai. Jalankan backend (npm run dev) lalu login. Data contoh (opsional): npm run demo -- --password=<password user demo>');
 }
 

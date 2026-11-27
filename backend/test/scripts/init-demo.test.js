@@ -56,6 +56,7 @@ test('init: guards, wipe, menus, roles, super admin, walk-in customer', async ()
   r = run('init.js', ['--wipe', `--email=${ADMIN.email}`, `--password=${ADMIN.password}`, '--ppn=12']);
   assert.equal(r.code, 0, r.out);
   assert.equal(await t.model('Kategori').countDocuments(), 0);
+  assert.ok(await t.model('Region').countDocuments() > 90000); // master wilayah ikut diimpor
 
   const admin = await login(ADMIN.email, ADMIN.password);
   const tree = (await admin.get('/api/menu/tree')).data;
