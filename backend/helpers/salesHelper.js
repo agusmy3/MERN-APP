@@ -57,13 +57,13 @@ const goodsTotal = (inv) => round2((inv.total || 0) - (inv.shippingTotal || 0));
 const netLineRevenue = (line, totals) => (totals.subtotal ? round2(line.subtotal * (totals.dpp / totals.subtotal)) : 0);
 
 /**
- * Sisa tagihan & status bayar invoice POSTED: sisa = total - retur - dibayar.
- *   > 0 : UNPAID (belum ada bayar) / PARTIAL;  = 0 : PAID;  < 0 : OVERPAID (kelebihan -> refund)
+ * Sisa tagihan & status bayar invoice / tagihan vendor POSTED: sisa = total - retur - dibayar - potongan (write-off).
+ *   > 0 : UNPAID (belum ada bayar / potongan) / PARTIAL;  = 0 : PAID;  < 0 : OVERPAID (kelebihan -> refund / deposit)
  */
 const invoiceBalance = (inv) => {
-  const balance = round2((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0));
+  const balance = round2((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0) - (inv.writtenOffAmount || 0));
   let paymentStatus = 'PAID';
-  if (balance > 0) paymentStatus = (inv.paidAmount || 0) > 0 ? 'PARTIAL' : 'UNPAID';
+  if (balance > 0) paymentStatus = ((inv.paidAmount || 0) > 0 || (inv.writtenOffAmount || 0) > 0) ? 'PARTIAL' : 'UNPAID';
   else if (balance < 0) paymentStatus = 'OVERPAID';
   return { balance, paymentStatus };
 };

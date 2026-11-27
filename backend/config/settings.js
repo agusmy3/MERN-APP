@@ -45,6 +45,17 @@ const SETTINGS = [
     description: 'Konfirmasi Sales Order ditolak jika customer punya invoice belum lunas yang lewat jatuh tempo '
       + '(bisa disetujui user dengan izin Sales Order: Approve). Batas kredit diatur per customer.',
   },
+  {
+    key: 'payment.writeOffLimit',
+    label: 'Write-off limit without approval',
+    group: 'Payment',
+    type: 'number',
+    default: 10000,
+    min: 0,
+    max: 1000000000,
+    description: 'Potongan (pembulatan, biaya transfer, potongan tunai) per invoice / tagihan saat mencatat pembayaran. '
+      + 'Di atas nilai ini, dan semua penghapusan piutang tak tertagih, butuh izin Sales Payment / Vendor Payment: Approve. 0 = selalu butuh persetujuan.',
+  },
   // identitas perusahaan: dicetak di kop dokumen (SO, invoice, quotation, surat jalan)
   { key: 'company.name', label: 'Company name', group: 'Company', type: 'text', default: '', maxLength: 120, description: 'Kop dokumen cetak (Sales Order, Invoice, Quotation, Surat Jalan).' },
   {

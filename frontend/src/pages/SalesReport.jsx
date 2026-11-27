@@ -117,6 +117,11 @@ function SalesTab({ token, gudangs, customers }) {
                 </div>
               )}
               {label === 'Gross profit' && <div className="text-xs text-muted">Margin {pct(data.totals.margin)}</div>}
+              {label === 'Net sales' && data.totals.writeOff > 0 && (
+                <div className="text-xs text-warning-fg" title="Potongan & penghapusan saat pembayaran (tanggal pembayaran); tidak mengurangi penjualan bersih">
+                  Potongan pembayaran {formatRupiah(data.totals.writeOff)}{data.totals.badDebt > 0 ? ` (piutang tak tertagih ${formatRupiah(data.totals.badDebt)})` : ''}
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -351,3 +351,19 @@ test('map page helpers: flatten, client filters, detail links, bounds', async ()
   assert.deepEqual(pointsBounds(filterPoints(all)), [[-7, 107.6], [-6.88, 110]]);
   assert.equal(pointsBounds([]), null);
 });
+
+test('payment helpers: deposit balance, write-off labels, combined payment plan', async () => {
+  const { depositBalance, writeOffLabel, batchPlan } = await import('../src/utils/paymentMeta.js');
+  assert.equal(depositBalance({ status: 'POSTED', amount: 100000, usedAmount: 30000, refundedAmount: 20000 }), 50000);
+  assert.equal(depositBalance({ status: 'CANCELLED', amount: 100000 }), 0);
+  assert.equal(writeOffLabel('BANK_FEE'), 'Biaya transfer');
+  assert.equal(writeOffLabel('OTHER'), 'Lainnya (isi catatan)');
+
+  const invoices = [{ _id: 'a', no: 'INV-A', balance: 300000 }, { _id: 'b', no: 'INV-B', balance: 200000 }];
+  // uang 460rb + deposit 50rb, alokasi 499rb + potongan 1rb -> sisa 11rb jadi deposit
+  const p = batchPlan({ amount: 460000, deposits: { d1: 50000 }, alloc: { a: 300000, b: 199000 }, writeOffs: { b: 1000 }, invoices });
+  assert.deepEqual([p.funds, p.depositTotal, p.allocated, p.writeOff, p.leftover, p.error], [510000, 50000, 499000, 1000, 11000, null]);
+  assert.match(batchPlan({ amount: 100, alloc: { a: 200 }, invoices }).error, /melebihi uang/);
+  assert.match(batchPlan({ amount: 0, deposits: { d1: 500 }, alloc: { a: 100 }, invoices }).error, /Deposit/);
+  assert.match(batchPlan({ amount: 300000, alloc: { a: 300000 }, writeOffs: { a: 1 }, invoices }).error, /INV-A/);
+});

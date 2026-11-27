@@ -1,8 +1,8 @@
 import {
-  getCustomerDropdown, getCustomerReceipts, getCustomerReceipt, getCustomerOpenInvoices, createCustomerReceipt, cancelCustomerReceipt,
+  getCustomerDropdown, getOpenCustomerDeposits, getCustomerReceipts, getCustomerReceipt, getCustomerOpenInvoices, createCustomerReceipt, cancelCustomerReceipt,
 } from '../../services/salesService';
 import {
-  getVendorPaymentBatches, getVendorPaymentBatch, getVendorOpenBills, createVendorPaymentBatch, cancelVendorPaymentBatch,
+  getOpenVendorDeposits, getVendorPaymentBatches, getVendorPaymentBatch, getVendorOpenBills, createVendorPaymentBatch, cancelVendorPaymentBatch,
 } from '../../services/purchaseService';
 import { getVendorDropdown } from '../../services/vendorService';
 
@@ -27,6 +27,9 @@ export const BATCH_KINDS = {
     listKey: 'dataCustomerReceipt',
     get: getCustomerReceipt,
     openInvoices: getCustomerOpenInvoices,
+    openDeposits: getOpenCustomerDeposits,
+    depositPath: '/customer-deposit',
+    side: 'sales',
     create: createCustomerReceipt,
     cancel: cancelCustomerReceipt,
     invoiceField: 'salesInvoice',
@@ -52,6 +55,9 @@ export const BATCH_KINDS = {
     listKey: 'dataVendorPaymentBatch',
     get: getVendorPaymentBatch,
     openInvoices: getVendorOpenBills,
+    openDeposits: getOpenVendorDeposits,
+    depositPath: '/vendor-deposit',
+    side: 'purchase',
     create: createVendorPaymentBatch,
     cancel: cancelVendorPaymentBatch,
     invoiceField: 'purchaseInvoice',

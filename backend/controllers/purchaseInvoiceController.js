@@ -173,7 +173,7 @@ exports.getInvoice = async (req, res) => {
     doc.overdue = doc.status === 'POSTED' && doc.balance > 0 && doc.dueDate < startOfDay(new Date());
     const grIds = (doc.goodsReceipts || []).map((g) => g._id);
     const [payments, returns, pos] = await Promise.all([
-      VendorPayment.find({ purchaseInvoice: doc._id }).populate('batch', 'no').populate('createdBy', 'name').populate('cancelledBy', 'name').sort({ createdDate: 1 }).lean(),
+      VendorPayment.find({ purchaseInvoice: doc._id }).populate('batch', 'no').populate('deposit', 'no').populate('createdBy', 'name').populate('cancelledBy', 'name').sort({ createdDate: 1 }).lean(),
       PurchaseReturn.find({ goodsReceipt: { $in: grIds }, status: { $ne: 'CANCELLED' } }).select('no date status total resolution purchaseInvoice goodsReceipt').sort({ createdDate: 1 }).lean(),
       PurchaseOrder.find({ _id: { $in: (doc.goodsReceipts || []).map((g) => g.purchaseOrder) } }).select('no').lean(),
     ]);
@@ -197,7 +197,7 @@ exports.getAging = async (req, res) => {
       if (!mongoose.isValidObjectId(req.query.vendor)) return errorResponse(res, 'Invalid vendor', 400);
       filter.vendor = req.query.vendor;
     }
-    const bills = await PurchaseInvoice.find(filter).select('no date dueDate vendor vendorInvoiceNo total returnedAmount paidAmount')
+    const bills = await PurchaseInvoice.find(filter).select('no date dueDate vendor vendorInvoiceNo total returnedAmount paidAmount writtenOffAmount')
       .populate('vendor', 'companyName').sort({ dueDate: 1 }).lean();
     const today = startOfDay(new Date());
     const bucketOf = (days) => (days <= 0 ? 'current' : days <= 30 ? 'd1_30' : days <= 60 ? 'd31_60' : days <= 90 ? 'd61_90' : 'd90');

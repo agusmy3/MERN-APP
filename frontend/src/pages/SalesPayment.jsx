@@ -4,6 +4,7 @@ import usePermission from '../hooks/usePermission';
 import { getSalesPayments, getCustomerDropdown } from '../services/salesService';
 import { useAuth } from '../context/AuthContext';
 import useDataTable from '../hooks/useDataTable';
+import { writeOffLabel } from '../utils/paymentMeta';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Pagination from '../components/Pagination';
@@ -62,7 +63,7 @@ export default function SalesPayment() {
     },
     { key: 'customer', header: 'Customer', width: 200, render: (d) => d.customer?.name || '-' },
     { key: 'type', header: 'Type', width: 100, render: (d) => <span className={d.type === 'REFUND' ? 'text-danger' : ''}>{PAYMENT_TYPES[d.type]}</span> },
-    { key: 'method', header: 'Method', width: 110, render: (d) => PAYMENT_METHODS[d.method] || d.method },
+    { key: 'method', header: 'Method', width: 110, render: (d) => (d.amount > 0 ? (d.method === 'DEPOSIT' ? 'Deposit' : PAYMENT_METHODS[d.method] || d.method) : 'Write-off only') },
     {
       key: 'amount',
       header: 'Amount',
@@ -74,6 +75,12 @@ export default function SalesPayment() {
           {d.type === 'REFUND' ? '−' : ''}{formatRupiah(d.amount)}
         </span>
       ),
+    },
+    {
+      key: 'writeOff', header: 'Write-off', width: 130, className: 'text-right tabular-nums',
+      render: (d) => (d.writeOffAmount > 0
+        ? <span className={d.status === 'CANCELLED' ? 'line-through text-muted' : 'text-warning-fg'} title={writeOffLabel(d.writeOffReason)}>{formatRupiah(d.writeOffAmount)}</span>
+        : <span className="text-muted">-</span>),
     },
     { key: 'reference', header: 'Reference', width: 160 },
     { key: 'batch', header: 'Combined', width: 150, render: (d) => (d.batch ? <Link to={`/customer-receipt/${d.batch._id}`} className="font-mono text-xs text-primary hover:underline">{d.batch.no}</Link> : '') },
@@ -141,6 +148,7 @@ export default function SalesPayment() {
           <select aria-label="Method" value={filters.method} onChange={(e) => setFilter('method', e.target.value)} className={selectClass}>
             <option value="">All methods</option>
             {Object.entries(PAYMENT_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <option value="DEPOSIT">Deposit</option>
           </select>
           <select aria-label="Customer" value={filters.customer} onChange={(e) => setFilter('customer', e.target.value)} className={selectClass}>
             <option value="">All customers</option>

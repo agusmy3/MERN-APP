@@ -53,6 +53,8 @@ const ROUTE_RESOURCE = {
   '/sales-invoice': 'salesInvoice',
   '/sales-return': 'salesReturn',
   '/sales-payment': 'salesPayment',
+  '/customer-deposit': 'salesPayment',
+  '/vendor-deposit': 'vendorPayment',
   '/price-list': 'priceList',
   '/sales-report': 'salesReport',
   '/outlet': 'outlet',

@@ -166,7 +166,15 @@ exports.getSalesReport = async (req, res) => {
     const invoiceCount = (await SalesInvoice.distinct('_id', match)).length;
     // ongkir yang ditagih (tanpa PPN): pendapatan terpisah, tidak termasuk penjualan barang / laba kotor
     const ship = await SalesInvoice.aggregate([{ $match: match }, { $group: { _id: null, v: { $sum: { $ifNull: ['$shippingDpp', 0] } } } }]);
-    const totals = { sales: sum('sales'), returns: sum('returns'), net: sum('net'), invoiceCount, shipping: round2(ship[0]?.v || 0) };
+    // potongan / penghapusan saat pembayaran (tanggal pembayaran): TIDAK mengurangi penjualan bersih, ditampilkan terpisah
+    const wo = await require('../models/SalesPayment').aggregate([
+      { $match: { ...match, writeOffAmount: { $gt: 0 } } },
+      { $group: { _id: null, v: { $sum: '$writeOffAmount' }, bad: { $sum: { $cond: [{ $eq: ['$writeOffReason', 'BAD_DEBT'] }, '$writeOffAmount', 0] } } } },
+    ]);
+    const totals = {
+      sales: sum('sales'), returns: sum('returns'), net: sum('net'), invoiceCount, shipping: round2(ship[0]?.v || 0),
+      writeOff: round2(wo[0]?.v || 0), badDebt: round2(wo[0]?.bad || 0),
+    };
     if (canSeeCost) {
       totals.cogs = sum('cogs');
       totals.grossProfit = round2(totals.net - totals.cogs);
@@ -187,7 +195,7 @@ exports.getAgingReport = async (req, res) => {
   try {
     const match = { ...docMatch(req), paymentStatus: { $in: ['UNPAID', 'PARTIAL'] } };
     const invoices = await SalesInvoice.find(SalesInvoice.where(match).cast(SalesInvoice))
-      .select('no date dueDate total returnedAmount paidAmount customer gudang')
+      .select('no date dueDate total returnedAmount paidAmount writtenOffAmount customer gudang')
       .populate('gudang', 'code')
       .sort({ dueDate: 1, date: 1 })
       .lean();
@@ -200,7 +208,7 @@ exports.getAgingReport = async (req, res) => {
     const byCustomer = new Map();
     const totals = empty();
     for (const inv of invoices) {
-      const balance = round2(inv.total - (inv.returnedAmount || 0) - (inv.paidAmount || 0));
+      const balance = round2(inv.total - (inv.returnedAmount || 0) - (inv.paidAmount || 0) - (inv.writtenOffAmount || 0));
       if (balance <= 0) continue;
       const due = inv.dueDate ? new Date(inv.dueDate) : new Date(inv.date);
       due.setHours(0, 0, 0, 0);

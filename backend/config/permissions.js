@@ -49,8 +49,9 @@ const RESOURCES = [
   { key: 'goodsReceipt', label: 'Goods Receipt', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // tagihan vendor (hutang): create = buat tagihan dari GR (langsung berlaku); update = batalkan. Butuh juga vendorPrice:view
   { key: 'purchaseInvoice', label: 'Vendor Bill', group: 'Purchasing', actions: ['view', 'create', 'update'] },
-  // pembayaran ke vendor / refund dari vendor: create = catat; update = batalkan. Butuh juga vendorPrice:view
-  { key: 'vendorPayment', label: 'Vendor Payment', group: 'Purchasing', actions: ['view', 'create', 'update'] },
+  // pembayaran ke vendor / refund dari vendor & uang muka ke vendor: create = catat; update = batalkan;
+  // approve = potongan di atas batas setting. Butuh juga vendorPrice:view
+  { key: 'vendorPayment', label: 'Vendor Payment', group: 'Purchasing', actions: ['view', 'create', 'update', 'approve'] },
   // retur ke vendor: create/update/delete = draft; post = posting & pembatalan (stok keluar / kembali)
   { key: 'purchaseReturn', label: 'Purchase Return', group: 'Purchasing', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // Quotation / penawaran harga: create = draft; update = ubah draft, kirim, revisi, tolak, konversi ke SO
@@ -67,8 +68,9 @@ const RESOURCES = [
   { key: 'salesInvoice', label: 'Sales Invoice', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
   // retur atas invoice: create/update/delete = draft; post = posting & pembatalan (stok masuk, tagihan berkurang)
   { key: 'salesReturn', label: 'Sales Return', group: 'Sales', actions: ['view', 'create', 'update', 'delete', 'post'] },
-  // pembayaran / refund invoice: create = catat (langsung berlaku); update = batalkan
-  { key: 'salesPayment', label: 'Sales Payment', group: 'Sales', actions: ['view', 'create', 'update'] },
+  // pembayaran / refund invoice & deposit customer: create = catat (langsung berlaku); update = batalkan;
+  // approve = potongan di atas batas setting & penghapusan piutang tak tertagih
+  { key: 'salesPayment', label: 'Sales Payment', group: 'Sales', actions: ['view', 'create', 'update', 'approve'] },
   // harga jual khusus per customer
   { key: 'priceList', label: 'Price List', group: 'Sales' },
   // laporan penjualan & umur piutang (baca saja; HPP & laba hanya untuk vendorPrice:view)

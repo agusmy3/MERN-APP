@@ -110,7 +110,7 @@ export default function Dashboard() {
             {d.receivables && (
               <Kpi label="Receivables" icon="fa-hand-holding-dollar" value={formatRupiahCompact(d.receivables.outstanding)}
                 to={d.receivables.overdueCount ? '/sales-invoice?paymentStatus=OVERDUE' : '/sales-invoice?paymentStatus=OPEN'}
-                sub={`${d.receivables.count} invoice${d.receivables.overdueCount ? ` · ${formatRupiahCompact(d.receivables.overdue)} overdue (${d.receivables.overdueCount})` : ''}`}
+                sub={`${d.receivables.count} invoice${d.receivables.overdueCount ? ` · ${formatRupiahCompact(d.receivables.overdue)} overdue (${d.receivables.overdueCount})` : ''}${d.receivables.deposits ? ` · deposit ${formatRupiahCompact(d.receivables.deposits)}` : ''}`}
                 tone={d.receivables.overdueCount ? 'border-danger-line bg-danger-soft' : ''} />
             )}
             {d.payables && (

@@ -12,6 +12,7 @@ const PriceList = require('../models/PriceList');
 const report = require('../controllers/salesReportController');
 const quo = require('../controllers/quotationController');
 const { customerReceipt: rcv } = require('../controllers/paymentBatchController');
+const { customerDeposit: dep } = require('../controllers/depositController');
 const so = require('../controllers/salesOrderController');
 const dlv = require('../controllers/deliveryOrderController');
 
@@ -143,4 +144,16 @@ customerReceipt.get('/:id', protect, authorize('salesPayment', 'view'), rcv.get)
 customerReceipt.post('/', protect, authorize('salesPayment', 'create'), rcv.create);
 customerReceipt.post('/:id/cancel', protect, authorize('salesPayment', 'update'), rcv.cancel);
 
-module.exports = { customerReceipt, quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };
+/** Customer Deposit (/api/customer-deposit) — uang muka / kelebihan bayar customer; izin salesPayment */
+const customerDeposit = express.Router();
+customerDeposit.get('/', protect, authorize('salesPayment', 'view'), dep.list);
+customerDeposit.get('/open', protect, authorize('salesPayment', 'view'), dep.open);
+customerDeposit.post('/from-invoice', protect, authorize('salesPayment', 'create'), dep.fromInvoice);
+customerDeposit.get('/:id', protect, authorize('salesPayment', 'view'), dep.get);
+customerDeposit.post('/', protect, authorize('salesPayment', 'create'), dep.create);
+customerDeposit.post('/:id/apply', protect, authorize('salesPayment', 'create'), dep.apply);
+customerDeposit.post('/:id/refund', protect, authorize('salesPayment', 'create'), dep.refund);
+customerDeposit.post('/:id/refunds/:refundId/cancel', protect, authorize('salesPayment', 'update'), dep.cancelRefund);
+customerDeposit.post('/:id/cancel', protect, authorize('salesPayment', 'update'), dep.cancel);
+
+module.exports = { customerDeposit, customerReceipt, quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };

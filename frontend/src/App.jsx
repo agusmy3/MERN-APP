@@ -46,6 +46,8 @@ import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail';
 import VendorPayment from './pages/VendorPayment';
 import PaymentBatchList from './pages/PaymentBatchList';
 import PaymentBatchDetail from './pages/PaymentBatchDetail';
+import DepositList from './pages/DepositList';
+import DepositDetail from './pages/DepositDetail';
 import PurchaseReturn from './pages/PurchaseReturn';
 import PurchaseReturnDetail from './pages/PurchaseReturnDetail';
 import Settings from './pages/Settings';
@@ -114,6 +116,10 @@ function App() {
         <Route path="/vendor-payment-batch/:id" element={guard('vendorPayment', <PaymentBatchDetail kind="vendor" />)} />
         <Route path="/customer-receipt" element={guard('salesPayment', <PaymentBatchList kind="customer" />)} />
         <Route path="/customer-receipt/:id" element={guard('salesPayment', <PaymentBatchDetail kind="customer" />)} />
+        <Route path="/customer-deposit" element={guard('salesPayment', <DepositList kind="customer" />)} />
+        <Route path="/customer-deposit/:id" element={guard('salesPayment', <DepositDetail kind="customer" />)} />
+        <Route path="/vendor-deposit" element={guard('vendorPayment', <DepositList kind="vendor" />)} />
+        <Route path="/vendor-deposit/:id" element={guard('vendorPayment', <DepositDetail kind="vendor" />)} />
         <Route path="/purchase-return" element={guard('purchaseReturn', <PurchaseReturn />)} />
         {/* :id = 'new' (?gr=) atau id dokumen */}
         <Route path="/purchase-return/:id" element={guard('purchaseReturn', <PurchaseReturnDetail />)} />

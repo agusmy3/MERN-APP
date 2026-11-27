@@ -26,7 +26,8 @@ test('customer receipt: one payment allocated to several invoices, must equal al
   assert.equal(open[0].overdue, true);
 
   const body = (amount, allocations) => ({ customer: customer._id, method: 'TRANSFER', amount, reference: 'TRF-99', allocations });
-  assert.match((await admin.post('/api/customer-receipt', body(1100000, [{ invoice: i1._id, amount: 500000 }, { invoice: i2._id, amount: 500000 }]))).message, /must equal/);
+  // alokasi melebihi uang: ditolak (kelebihan uang = deposit, diuji di deposit.test.js)
+  assert.match((await admin.post('/api/customer-receipt', body(900000, [{ invoice: i1._id, amount: 500000 }, { invoice: i2._id, amount: 500000 }]))).message, /exceeds the money available/);
   assert.match((await admin.post('/api/customer-receipt', body(800000, [{ invoice: i3._id, amount: 800000 }]))).message, /exceeds/);
   const other = ok(await admin.post('/api/customer', { name: 'Lain' }), 201);
   assert.match((await admin.post('/api/customer-receipt', { ...body(500000, [{ invoice: i1._id, amount: 500000 }]), customer: other._id })).message, /does not belong/);

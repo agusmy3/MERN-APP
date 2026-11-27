@@ -127,6 +127,7 @@ const customerSummary = async (req, id, tz) => {
     // posisi kredit: sama dengan GET /api/customer/:id (cukup customer:view)
     const credit = await customerCredit(c._id);
     items.push(item('Receivable', credit.receivable, 'money'));
+    if (credit.deposit > 0) items.push(item('Deposit balance', credit.deposit, 'money'));
     items.push(item('Overdue', credit.overdue.amount, 'money', credit.overdue.amount > 0 ? 'danger' : null));
     if (credit.overdue.count) items.push(item('Overdue invoices', credit.overdue.count, 'number', 'danger'));
     if (credit.limit > 0) {
@@ -163,12 +164,12 @@ const vendorSummary = async (req, id) => {
   ];
   if (canSeePayables(req)) {
     const bills = await PurchaseInvoice.find({ vendor: v._id, status: 'POSTED', paymentStatus: { $in: ['UNPAID', 'PARTIAL'] } })
-      .select('total returnedAmount paidAmount dueDate').lean();
+      .select('total returnedAmount paidAmount writtenOffAmount dueDate').lean();
     const today = startOfToday();
     let payable = 0;
     let overdue = 0;
     bills.forEach((b) => {
-      const bal = round2((b.total || 0) - (b.returnedAmount || 0) - (b.paidAmount || 0));
+      const bal = round2((b.total || 0) - (b.returnedAmount || 0) - (b.paidAmount || 0) - (b.writtenOffAmount || 0));
       if (bal <= 0) return;
       payable += bal;
       if (b.dueDate && b.dueDate < today) overdue += bal;

@@ -7,6 +7,7 @@ const bill = require('../controllers/purchaseInvoiceController');
 const vpay = require('../controllers/vendorPaymentController');
 const prt = require('../controllers/purchaseReturnController');
 const { vendorPaymentBatch: vpb } = require('../controllers/paymentBatchController');
+const { vendorDeposit: vdp } = require('../controllers/depositController');
 // tagihan & pembayaran vendor = data harga beli
 const cost = authorize('vendorPrice', 'view');
 
@@ -77,4 +78,16 @@ vendorPaymentBatch.get('/:id', protect, authorize('vendorPayment', 'view'), cost
 vendorPaymentBatch.post('/', protect, authorize('vendorPayment', 'create'), cost, vpb.create);
 vendorPaymentBatch.post('/:id/cancel', protect, authorize('vendorPayment', 'update'), cost, vpb.cancel);
 
-module.exports = { vendorPaymentBatch, purchaseOrder, goodsReceipt, purchaseInvoice, vendorPayment, purchaseReturn };
+/** Vendor Deposit (/api/vendor-deposit) — uang muka ke vendor; izin vendorPayment + vendorPrice:view */
+const vendorDeposit = express.Router();
+vendorDeposit.get('/', protect, authorize('vendorPayment', 'view'), cost, vdp.list);
+vendorDeposit.get('/open', protect, authorize('vendorPayment', 'view'), cost, vdp.open);
+vendorDeposit.post('/from-invoice', protect, authorize('vendorPayment', 'create'), cost, vdp.fromInvoice);
+vendorDeposit.get('/:id', protect, authorize('vendorPayment', 'view'), cost, vdp.get);
+vendorDeposit.post('/', protect, authorize('vendorPayment', 'create'), cost, vdp.create);
+vendorDeposit.post('/:id/apply', protect, authorize('vendorPayment', 'create'), cost, vdp.apply);
+vendorDeposit.post('/:id/refund', protect, authorize('vendorPayment', 'create'), cost, vdp.refund);
+vendorDeposit.post('/:id/refunds/:refundId/cancel', protect, authorize('vendorPayment', 'update'), cost, vdp.cancelRefund);
+vendorDeposit.post('/:id/cancel', protect, authorize('vendorPayment', 'update'), cost, vdp.cancel);
+
+module.exports = { vendorDeposit, vendorPaymentBatch, purchaseOrder, goodsReceipt, purchaseInvoice, vendorPayment, purchaseReturn };

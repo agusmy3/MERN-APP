@@ -87,3 +87,16 @@ export const getVendorOpenBills = async (vendor, token) => (await axios.get(`${V
 /** { vendor, date, method, amount, reference, note, allocations: [{ invoice, amount }] } */
 export const createVendorPaymentBatch = (data, token) => axios.post(VPB, data, getHeaders(token));
 export const cancelVendorPaymentBatch = (id, reason, token) => axios.post(`${VPB}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Vendor Deposit (uang muka ke vendor) ----------
+
+const VDP = '/api/vendor-deposit';
+export const getVendorDeposits = async (token, params) => (await axios.get(VDP, { ...getHeaders(token), params })).data.data;
+export const getVendorDeposit = async (id, token) => (await axios.get(`${VDP}/${id}`, getHeaders(token))).data.data;
+export const getOpenVendorDeposits = async (vendor, token) => (await axios.get(`${VDP}/open`, { ...getHeaders(token), params: { vendor } })).data.data;
+export const createVendorDeposit = (data, token) => axios.post(VDP, data, getHeaders(token));
+export const vendorDepositFromInvoice = (data, token) => axios.post(`${VDP}/from-invoice`, data, getHeaders(token));
+export const applyVendorDeposit = (id, data, token) => axios.post(`${VDP}/${id}/apply`, data, getHeaders(token));
+export const refundVendorDeposit = (id, data, token) => axios.post(`${VDP}/${id}/refund`, data, getHeaders(token));
+export const cancelVendorDepositRefund = (id, refundId, reason, token) => axios.post(`${VDP}/${id}/refunds/${refundId}/cancel`, { reason }, getHeaders(token));
+export const cancelVendorDeposit = (id, reason, token) => axios.post(`${VDP}/${id}/cancel`, { reason }, getHeaders(token));

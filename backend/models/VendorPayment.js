@@ -11,8 +11,12 @@ const vendorPaymentSchema = new mongoose.Schema({
   vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
   batch: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorPaymentBatch', default: null }, // bagian dari pembayaran gabungan
   date: { type: Date, required: true },
-  method: { type: String, enum: ['CASH', 'TRANSFER', 'OTHER'], required: true },
-  amount: { type: Number, required: true },     // positif
+  // DEPOSIT = dibayar dari uang muka ke vendor (PAYMENT) / kelebihan bayar dipindah ke uang muka (REFUND); null = hanya potongan
+  method: { type: String, enum: ['CASH', 'TRANSFER', 'OTHER', 'DEPOSIT', null], default: null },
+  deposit: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorDeposit', default: null },
+  amount: { type: Number, required: true },     // uang (>= 0); 0 hanya jika ada potongan
+  writeOffAmount: { type: Number, default: 0 }, // potongan dari vendor (mengurangi sisa tagihan, bukan uang keluar)
+  writeOffReason: { type: String, enum: ['DISCOUNT', 'ROUNDING', 'OTHER', null], default: null },
   reference: { type: String, default: '' },
   note: { type: String, default: '' },
   status: { type: String, enum: ['POSTED', 'CANCELLED'], default: 'POSTED' },
@@ -27,5 +31,6 @@ const vendorPaymentSchema = new mongoose.Schema({
 
 vendorPaymentSchema.index({ purchaseInvoice: 1, status: 1 });
 vendorPaymentSchema.index({ vendor: 1, date: -1 });
+vendorPaymentSchema.index({ deposit: 1, status: 1 });
 
 module.exports = mongoose.model('VendorPayment', vendorPaymentSchema);

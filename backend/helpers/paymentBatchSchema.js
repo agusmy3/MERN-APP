@@ -4,13 +4,21 @@ const mongoose = require('mongoose');
  * Schema bersama pembayaran gabungan (dipakai models/CustomerReceipt.js & models/VendorPaymentBatch.js): 1 uang masuk / keluar untuk beberapa invoice / tagihan sekaligus.
  *   CustomerReceipt (RCV-…)      : penerimaan dari 1 customer -> SalesPayment PAYMENT per invoice
  *   VendorPaymentBatch (VPB-…)   : pembayaran ke 1 vendor -> VendorPayment PAYMENT per tagihan
- * Langsung berlaku; jumlah = total alokasi (tidak ada kelebihan / deposit, tidak ada potongan).
+ * Langsung berlaku. Dana = uang baru (`amount`) + saldo deposit yang dipakai (`deposits`); alokasi dibayar dari deposit
+ * dulu lalu uang baru; sisa uang baru = deposit baru (`depositCreated`). Tiap alokasi boleh diberi potongan (write-off).
  * Batal = semua pembayaran alokasinya dibatalkan sekaligus (alasan wajib).
  */
-const makeSchema = (partyField, partyRef, invoiceField, invoiceRef, paymentRef, methods) => {
+const makeSchema = (partyField, partyRef, invoiceField, invoiceRef, paymentRef, methods, depositRef) => {
   const allocationSchema = new mongoose.Schema({
     [invoiceField]: { type: mongoose.Schema.Types.ObjectId, ref: invoiceRef, required: true },
-    payment: { type: mongoose.Schema.Types.ObjectId, ref: paymentRef, required: true },
+    payment: { type: mongoose.Schema.Types.ObjectId, ref: paymentRef, default: null }, // pembayaran pertama (data lama: satu-satunya)
+    payments: [{ type: mongoose.Schema.Types.ObjectId, ref: paymentRef }],            // semua: dari deposit lalu dari uang ini
+    amount: { type: Number, required: true },        // uang + deposit untuk invoice ini
+    writeOff: { type: Number, default: 0 },          // potongan untuk invoice ini
+    writeOffReason: { type: String, default: null },
+  }, { _id: false });
+  const depositUseSchema = new mongoose.Schema({
+    deposit: { type: mongoose.Schema.Types.ObjectId, ref: depositRef, required: true },
     amount: { type: Number, required: true },
   }, { _id: false });
 
@@ -19,7 +27,9 @@ const makeSchema = (partyField, partyRef, invoiceField, invoiceRef, paymentRef, 
     [partyField]: { type: mongoose.Schema.Types.ObjectId, ref: partyRef, required: true },
     date: { type: Date, required: true },
     method: { type: String, enum: methods, required: true },
-    amount: { type: Number, required: true },
+    amount: { type: Number, required: true },       // uang baru (boleh 0 jika semua dari deposit / potongan)
+    deposits: [depositUseSchema],                   // saldo deposit yang ikut dipakai
+    depositCreated: { type: mongoose.Schema.Types.ObjectId, ref: depositRef, default: null }, // kelebihan uang -> deposit baru
     reference: { type: String, default: '' },
     note: { type: String, default: '' },
     status: { type: String, enum: ['POSTED', 'CANCELLED'], default: 'POSTED' },

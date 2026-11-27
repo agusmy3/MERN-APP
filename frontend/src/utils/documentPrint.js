@@ -218,10 +218,11 @@ export const salesOrderHtml = (so, company = {}) => {
 /** Invoice penjualan: + jatuh tempo, retur, pembayaran & sisa tagihan, instruksi bayar */
 export const invoiceHtml = (inv, company = {}) => {
   const extra = [];
-  if (inv.status === 'POSTED' && (inv.returnedAmount || inv.paidAmount)) {
+  if (inv.status === 'POSTED' && (inv.returnedAmount || inv.paidAmount || inv.writtenOffAmount)) {
     if (inv.returnedAmount) extra.push(['Retur', `-${money(inv.returnedAmount)}`]);
     if (inv.paidAmount) extra.push(['Dibayar', `-${money(inv.paidAmount)}`]);
-    extra.push(['SISA TAGIHAN', money((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0)), true]);
+    if (inv.writtenOffAmount) extra.push(['Potongan', `-${money(inv.writtenOffAmount)}`]);
+    extra.push(['SISA TAGIHAN', money((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0) - (inv.writtenOffAmount || 0)), true]);
   }
   const dos = (inv.deliveryOrders?.length ? inv.deliveryOrders : [inv.deliveryOrder]).filter(Boolean);
   const sos = (inv.salesOrders?.length ? inv.salesOrders : [inv.salesOrder]).filter(Boolean);
@@ -273,6 +274,7 @@ export const printInvoice = (inv, company) => printHtml(invoiceHtml(inv, company
  * opts { title, subtitle, partyHeading, partyName, invoiceField, methods }
  */
 export const paymentBatchHtml = (d, company = {}, opts = {}) => {
+  const hasWriteOff = (d.allocations || []).some((a) => a.writeOff > 0);
   const rows = (d.allocations || []).map((a, i) => {
     const inv = a[opts.invoiceField] || {};
     return `<tr>
@@ -282,6 +284,7 @@ export const paymentBatchHtml = (d, company = {}, opts = {}) => {
       <td>${inv.dueDate ? day(inv.dueDate) : ''}</td>
       <td class="r">${money(inv.total)}</td>
       <td class="r"><b>${money(a.amount)}</b></td>
+      ${hasWriteOff ? `<td class="r">${a.writeOff ? money(a.writeOff) : ''}</td>` : ''}
     </tr>`;
   }).join('');
   const info = (label, value) => (value ? `<tr><th>${label}</th><td>${esc(value)}</td></tr>` : '');
@@ -301,9 +304,11 @@ export const paymentBatchHtml = (d, company = {}, opts = {}) => {
     <div class="head"><div class="box"><h3>${esc(opts.partyHeading)}</h3><b>${esc(opts.partyName)}</b></div>
       <div class="box"><h3>Jumlah</h3><b style="font-size:16px">Rp ${money(d.amount)}</b></div></div>
     <table class="l">
-      <thead><tr><th class="r" style="width:28px">#</th><th>Untuk pembayaran</th><th style="width:95px">Tanggal</th><th style="width:95px">Jatuh tempo</th><th class="r" style="width:110px">Total</th><th class="r" style="width:110px">Dibayar</th></tr></thead>
+      <thead><tr><th class="r" style="width:28px">#</th><th>Untuk pembayaran</th><th style="width:95px">Tanggal</th><th style="width:95px">Jatuh tempo</th><th class="r" style="width:110px">Total</th><th class="r" style="width:110px">Dibayar</th>${hasWriteOff ? '<th class="r" style="width:90px">Potongan</th>' : ''}</tr></thead>
       <tbody>${rows}</tbody>
     </table>
+    ${(d.deposits || []).map((x) => `<div class="m" style="margin-top:6px">Termasuk dari deposit ${esc(x.deposit?.no || '')}: Rp ${money(x.amount)}</div>`).join('')}
+    ${d.depositCreated ? `<div class="m" style="margin-top:6px">Kelebihan disimpan sebagai deposit ${esc(d.depositCreated.no || '')}</div>` : ''}
     ${d.note ? `<div style="margin-top:10px"><b>Catatan:</b> <span class="note">${esc(d.note)}</span></div>` : ''}
     <div class="sign"><div>Penerima<div class="line"></div></div><div>Penyetor<div class="line"></div></div></div>
     ${company['company.documentFooter'] ? `<div class="m note" style="margin-top:14px">${esc(company['company.documentFooter'])}</div>` : ''}

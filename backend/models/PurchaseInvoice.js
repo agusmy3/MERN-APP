@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
  * Dibuat langsung POSTED dari 1 / beberapa GR POSTED vendor yang sama (TIDAK mengubah stok), batal = CANCELLED.
  * Harga DIKUNCI = harga PO (diskon & PPN PO); qty = qty GR - yang sudah diretur saat ditagih.
  * Biaya angkut GR ditagih oleh GR.freightVendor (boleh vendor ekspedisi lain), tanpa PPN tambahan.
- * Sisa hutang = total - returnedAmount (retur setelah ditagih) - paidAmount (pembayaran vendor bersih).
+ * Sisa hutang = total - returnedAmount (retur setelah ditagih) - paidAmount (pembayaran vendor bersih) - writtenOffAmount (potongan).
  */
 const lineSchema = new mongoose.Schema({
   goodsReceipt: { type: mongoose.Schema.Types.ObjectId, ref: 'GoodsReceipt', required: true },
@@ -44,6 +44,7 @@ const purchaseInvoiceSchema = new mongoose.Schema({
   total: { type: Number, default: 0 },
   returnedAmount: { type: Number, default: 0 }, // retur pembelian setelah ditagih (nota debit)
   paidAmount: { type: Number, default: 0 },     // pembayaran - refund
+  writtenOffAmount: { type: Number, default: 0 }, // potongan dari vendor saat pembayaran (bukan uang keluar)
   paymentStatus: { type: String, enum: ['UNPAID', 'PARTIAL', 'PAID', 'OVERPAID', null], default: 'UNPAID' },
   note: { type: String, default: '' },
   postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  getVendorBill, getBillable, createVendorBill, cancelVendorBill, createVendorPayment, cancelVendorPayment,
-} from '../services/purchaseService';
+  getVendorBill, getBillable, createVendorBill, cancelVendorBill, createVendorPayment, cancelVendorPayment, getOpenVendorDeposits, vendorDepositFromInvoice } from '../services/purchaseService';
 import { getVendorDropdown } from '../services/vendorService';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
@@ -316,6 +315,7 @@ export default function PurchaseInvoiceDetail() {
                 <>
                   {doc.returnedAmount > 0 && (<><dt className="text-muted">Returned</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.returnedAmount)}</dd></>)}
                   {doc.paidAmount !== 0 && (<><dt className="text-muted">Paid</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.paidAmount)}</dd></>)}
+                  {doc.writtenOffAmount > 0 && (<><dt className="text-muted">Written off</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.writtenOffAmount)}</dd></>)}
                   <dt className="font-semibold">Balance</dt>
                   <dd className={`text-right tabular-nums font-semibold ${doc.overdue ? 'text-danger' : ''}`}>{formatRupiah(doc.balance)}</dd>
                 </>
@@ -362,7 +362,8 @@ export default function PurchaseInvoiceDetail() {
           </section>
           {posted && (
             <InvoicePayments doc={doc} token={user.token} onChanged={load} resource="vendorPayment" invoiceKey="purchaseInvoice"
-              createFn={createVendorPayment} cancelFn={cancelVendorPayment} methods={VENDOR_PAYMENT_METHODS} refundText="dikembalikan oleh vendor" batchPath="/vendor-payment-batch" />
+              createFn={createVendorPayment} cancelFn={cancelVendorPayment} methods={VENDOR_PAYMENT_METHODS} refundText="dikembalikan oleh vendor" batchPath="/vendor-payment-batch"
+              side="purchase" partyId={doc.vendor?._id || doc.vendor} openDepositsFn={getOpenVendorDeposits} fromInvoiceFn={vendorDepositFromInvoice} depositPath="/vendor-deposit" />
           )}
           <section className="rounded-lg border border-line bg-surface p-4">
             <h3 className="font-semibold text-fg mb-2">History</h3>

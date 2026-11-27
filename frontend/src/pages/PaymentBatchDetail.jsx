@@ -12,7 +12,7 @@ import { inputClass } from '../utils/formStyles';
 import { formatRupiah, round2 } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
 import { BATCH_KINDS } from '../components/payment/batchConfig';
-import { BATCH_METHODS, allocateFifo } from '../utils/paymentMeta';
+import { BATCH_METHODS, WRITE_OFF_REASONS, allocateFifo, batchPlan, writeOffLabel } from '../utils/paymentMeta';
 import { printPaymentBatch } from '../utils/documentPrint';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
@@ -24,50 +24,78 @@ const btnDanger = `${btn} border border-danger-line text-danger hover:bg-danger-
 const th = 'px-2 py-2 border-b border-line font-semibold';
 const td = 'px-2 py-1.5 border-t border-line-soft';
 
-/** Form pembayaran baru: pilih pihak, isi jumlah, bagi otomatis ke invoice tertua (bisa diubah per invoice) */
+/** Form pembayaran baru: pilih pihak, isi jumlah (+ deposit), bagi otomatis ke invoice tertua, potongan per invoice */
 function NewBatch({ cfg, token, initialParty }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [parties, setParties] = useState([]);
   const [party, setParty] = useState(initialParty || '');
   const [invoices, setInvoices] = useState(null);
+  const [deposits, setDeposits] = useState([]);
+  const [useDep, setUseDep] = useState({});
   const [alloc, setAlloc] = useState({});
+  const [writeOffs, setWriteOffs] = useState({});
+  const [woReasons, setWoReasons] = useState({});
   const [form, setForm] = useState({ date: toDateInput(), method: 'TRANSFER', amount: '', reference: '', note: '' });
   const [busy, setBusy] = useState(false);
+  const reasons = WRITE_OFF_REASONS[cfg.side];
+  const defaultReason = Object.keys(reasons)[0];
 
   useEffect(() => {
     cfg.loadParties(token).then(setParties).catch(console.error);
   }, [cfg, token]);
   useEffect(() => {
     setInvoices(null);
+    setDeposits([]);
+    setUseDep({});
     setAlloc({});
+    setWriteOffs({});
     if (!party) return;
     cfg.openInvoices(party, token).then(setInvoices).catch((err) => toast.error(err.response?.data?.message || 'Failed to load invoices'));
+    cfg.openDeposits(party, token).then(setDeposits).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg, party, token]);
 
   const outstanding = useMemo(() => round2((invoices || []).reduce((s, i) => s + i.balance, 0)), [invoices]);
-  const allocated = round2(Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0));
-  const amount = round2(Number(form.amount) || 0);
-  const diff = round2(amount - allocated);
+  const plan = batchPlan({ amount: Number(form.amount) || 0, deposits: useDep, alloc, writeOffs, invoices: invoices || [] });
 
+  // bagi ulang dana (uang + deposit) ke invoice tertua; sisa sesudah potongan
+  const reallocate = (amountValue, depValues, woValues = writeOffs) => {
+    const funds = round2((Number(amountValue) || 0) + Object.values(depValues).reduce((s, v) => s + (Number(v) || 0), 0));
+    const rows = (invoices || []).map((i) => ({ ...i, balance: round2(i.balance - (Number(woValues[i._id]) || 0)) }));
+    setAlloc(allocateFifo(rows, funds));
+  };
   const changeAmount = (value) => {
     setForm((f) => ({ ...f, amount: value }));
-    setAlloc(allocateFifo(invoices || [], value));
+    reallocate(value, useDep);
+  };
+  const changeDeposit = (id, value) => {
+    const next = { ...useDep, [id]: value };
+    setUseDep(next);
+    reallocate(form.amount, next);
+  };
+  const changeWriteOff = (id, value) => {
+    const next = { ...writeOffs, [id]: value };
+    setWriteOffs(next);
+    if (!woReasons[id]) setWoReasons((r) => ({ ...r, [id]: defaultReason }));
   };
 
   const submit = async () => {
     if (!party) return toast.warning(`Pilih ${cfg.partyLabel.toLowerCase()}.`);
-    if (!(amount > 0)) return toast.warning('Isi jumlah lebih dari 0.');
-    if (amount > outstanding) return toast.warning(`Jumlah melebihi total sisa ${formatRupiah(outstanding)} (kelebihan bayar belum didukung).`);
-    const over = (invoices || []).find((i) => Number(alloc[i._id] || 0) > i.balance);
-    if (over) return toast.warning(`${over.no}: maksimal ${formatRupiah(over.balance)}.`);
-    if (diff !== 0) return toast.warning(`Total alokasi ${formatRupiah(allocated)} harus sama dengan jumlah ${formatRupiah(amount)}.`);
+    if (!(plan.funds > 0) && !(plan.writeOff > 0)) return toast.warning('Isi jumlah lebih dari 0.');
+    if (plan.error) return toast.warning(plan.error);
+    const depOver = deposits.find((d) => Number(useDep[d._id] || 0) > d.balance);
+    if (depOver) return toast.warning(`Saldo ${depOver.no} hanya ${formatRupiah(depOver.balance)}.`);
     setBusy(true);
     try {
+      const ids = new Set([...Object.keys(alloc), ...Object.keys(writeOffs)]);
       const res = await cfg.create({
-        [cfg.partyField]: party, ...form, amount,
-        allocations: Object.entries(alloc).filter(([, v]) => Number(v) > 0).map(([invoice, v]) => ({ invoice, amount: Number(v) })),
+        [cfg.partyField]: party, ...form, amount: Number(form.amount) || 0,
+        deposits: Object.entries(useDep).filter(([, v]) => Number(v) > 0).map(([deposit, v]) => ({ deposit, amount: Number(v) })),
+        allocations: [...ids].map((invoice) => ({
+          invoice, amount: Number(alloc[invoice]) || 0, writeOff: Number(writeOffs[invoice]) || 0,
+          writeOffReason: Number(writeOffs[invoice]) > 0 ? (woReasons[invoice] || defaultReason) : undefined,
+        })).filter((a) => a.amount > 0 || a.writeOff > 0),
       }, token);
       toast.success(res.data.message);
       navigate(`${cfg.basePath}/${res.data.data._id}`, { replace: true });
@@ -95,8 +123,8 @@ function NewBatch({ cfg, token, initialParty }) {
             {Object.entries(BATCH_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </FormField>
-        <FormField label="Amount" htmlFor="pb-amount" required hint={invoices ? `Total sisa: ${formatRupiah(outstanding)}` : undefined}>
-          <input id="pb-amount" type="number" min="0.01" step="0.01" value={form.amount} disabled={!invoices?.length}
+        <FormField label="Amount (new money)" htmlFor="pb-amount" hint={invoices ? `Total sisa: ${formatRupiah(outstanding)}. Kelebihan jadi deposit.` : undefined}>
+          <input id="pb-amount" type="number" min="0" step="0.01" value={form.amount} disabled={!party}
             onChange={(e) => changeAmount(e.target.value)} className={`${inputClass} text-right tabular-nums`} />
         </FormField>
         <FormField label="Reference" htmlFor="pb-ref">
@@ -110,23 +138,40 @@ function NewBatch({ cfg, token, initialParty }) {
         </div>
       </section>
 
+      {deposits.length > 0 && (
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h3 className="font-semibold text-fg">Use deposit balance</h3>
+          <p className="text-xs text-muted mb-2">Deposit dipakai lebih dulu, lalu uang baru. Deposit yang dipakai harus habis teralokasi.</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {deposits.map((d) => (
+              <label key={d._id} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 min-w-0"><span className="font-mono text-xs font-semibold">{d.no}</span> <span className="text-muted">saldo {formatRupiah(d.balance)}</span></span>
+                <input aria-label={`Use ${d.no}`} type="number" min="0" max={d.balance} step="0.01" value={useDep[d._id] ?? ''}
+                  onChange={(e) => changeDeposit(d._id, e.target.value)} className={`${cellInput} w-32 text-right tabular-nums`} />
+                <button type="button" onClick={() => changeDeposit(d._id, String(d.balance))} className="text-xs text-primary hover:underline cursor-pointer">all</button>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+
       {party && !invoices && <p className="text-muted">Loading...</p>}
       {invoices && (
         <section className="rounded-lg border border-line bg-surface">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-line">
             <div>
               <h3 className="font-semibold text-fg">Open {cfg.invoiceLabel.toLowerCase()}s ({invoices.length})</h3>
-              <p className="text-xs text-muted">Jumlah dibagi otomatis ke jatuh tempo tertua lebih dulu; ubah per baris bila perlu.</p>
+              <p className="text-xs text-muted">Dana dibagi otomatis ke jatuh tempo tertua; ubah per baris bila perlu. Potongan = sisa tagihan yang direlakan (tanpa uang).</p>
             </div>
             {invoices.length > 0 && (
               <div className="flex gap-2 text-sm">
-                <button type="button" onClick={() => changeAmount(String(outstanding))} className="px-3 py-1.5 rounded border border-line hover:bg-subtle cursor-pointer">Pay all</button>
-                <button type="button" onClick={() => { setForm((f) => ({ ...f, amount: '' })); setAlloc({}); }} className="px-3 py-1.5 rounded border border-line hover:bg-subtle cursor-pointer">Clear</button>
+                <button type="button" onClick={() => changeAmount(String(Math.max(0, round2(outstanding - plan.depositTotal - plan.writeOff))))} className="px-3 py-1.5 rounded border border-line hover:bg-subtle cursor-pointer">Pay all</button>
+                <button type="button" onClick={() => { setForm((f) => ({ ...f, amount: '' })); setAlloc({}); setWriteOffs({}); setUseDep({}); }} className="px-3 py-1.5 rounded border border-line hover:bg-subtle cursor-pointer">Clear</button>
               </div>
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 760 }}>
+            <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 980 }}>
               <thead className="bg-head text-head-fg text-left">
                 <tr>
                   <th className={th}>{cfg.invoiceLabel}</th>
@@ -134,15 +179,18 @@ function NewBatch({ cfg, token, initialParty }) {
                   <th className={th}>Due</th>
                   <th className={`${th} text-right`}>Total</th>
                   <th className={`${th} text-right`}>Balance</th>
-                  <th className={`${th} w-44 text-right`}>Pay</th>
+                  <th className={`${th} w-40 text-right`}>Pay</th>
+                  <th className={`${th} w-32 text-right`}>Write-off</th>
+                  <th className={`${th} w-44`}>Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {invoices.map((i) => {
                   const v = alloc[i._id] ?? '';
-                  const over = Number(v) > i.balance;
+                  const wo = writeOffs[i._id] ?? '';
+                  const over = round2((Number(v) || 0) + (Number(wo) || 0)) > i.balance;
                   return (
-                    <tr key={i._id} className={over ? 'bg-danger-soft' : Number(v) > 0 ? 'bg-highlight' : 'hover:bg-subtle'}>
+                    <tr key={i._id} className={over ? 'bg-danger-soft' : (Number(v) > 0 || Number(wo) > 0) ? 'bg-highlight' : 'hover:bg-subtle'}>
                       <td className={td}>
                         <Link to={`${cfg.invoicePath}/${i._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{i.no}</Link>
                         {i.vendorInvoiceNo && <div className="text-xs text-muted">Faktur {i.vendorInvoiceNo}</div>}
@@ -155,17 +203,30 @@ function NewBatch({ cfg, token, initialParty }) {
                         <input aria-label={`Pay ${i.no}`} type="number" min="0" max={i.balance} step="0.01" value={v}
                           onChange={(e) => setAlloc((a) => ({ ...a, [i._id]: e.target.value }))} className={`${cellInput} text-right tabular-nums`} />
                       </td>
+                      <td className={`${td} text-right`}>
+                        <input aria-label={`Write-off ${i.no}`} type="number" min="0" step="0.01" value={wo} placeholder="0"
+                          onChange={(e) => changeWriteOff(i._id, e.target.value)} className={`${cellInput} text-right tabular-nums`} />
+                      </td>
+                      <td className={td}>
+                        <select aria-label={`Write-off reason ${i.no}`} value={woReasons[i._id] || defaultReason} disabled={!(Number(wo) > 0)}
+                          onChange={(e) => setWoReasons((r) => ({ ...r, [i._id]: e.target.value }))} className={cellInput}>
+                          {Object.entries(reasons).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                        </select>
+                      </td>
                     </tr>
                   );
                 })}
-                {!invoices.length && <tr><td colSpan={6} className="text-center py-8 text-muted"><i className="fa fa-check mr-1 text-success-fg"></i>Tidak ada yang belum lunas.</td></tr>}
+                {!invoices.length && <tr><td colSpan={8} className="text-center py-8 text-muted"><i className="fa fa-check mr-1 text-success-fg"></i>Tidak ada yang belum lunas. Uang yang dicatat menjadi deposit.</td></tr>}
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-4 px-4 py-3 border-t border-line text-sm">
-            <span>Allocated <b className="tabular-nums">{formatRupiah(allocated)}</b> of {formatRupiah(amount)}</span>
-            {diff !== 0 && amount > 0 && <span className="text-danger">Selisih {formatRupiah(diff)}</span>}
-            <button type="button" onClick={submit} disabled={busy || !(amount > 0)} className={btnPrimary}>
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 px-4 py-3 border-t border-line text-sm">
+            <span>Funds <b className="tabular-nums">{formatRupiah(plan.funds)}</b>{plan.depositTotal > 0 ? <span className="text-muted"> (deposit {formatRupiah(plan.depositTotal)})</span> : null}</span>
+            <span>Allocated <b className="tabular-nums">{formatRupiah(plan.allocated)}</b></span>
+            {plan.writeOff > 0 && <span>Write-off <b className="tabular-nums text-warning-fg">{formatRupiah(plan.writeOff)}</b></span>}
+            {plan.error ? <span className="text-danger">{plan.error}</span>
+              : plan.leftover > 0 && <span className="text-primary">Sisa {formatRupiah(plan.leftover)} → deposit baru</span>}
+            <button type="button" onClick={submit} disabled={busy || !!plan.error || (!(plan.funds > 0) && !(plan.writeOff > 0))} className={btnPrimary}>
               <i className="fa fa-check"></i> Save payment
             </button>
           </div>
@@ -275,7 +336,7 @@ export default function PaymentBatchDetail({ kind }) {
       />
       {panel && (
         <ReasonPanel title={`Cancel ${doc.no}`} confirmLabel="Cancel payment" busy={busy} onConfirm={cancel} onClose={() => setPanel(false)}
-          description={`Semua pembayaran di dokumen ini (${doc.allocations.length} ${cfg.invoiceLabel.toLowerCase()}) dibatalkan; sisa tagihannya kembali.`} />
+          description={`Semua pembayaran di dokumen ini (${doc.allocations.length} ${cfg.invoiceLabel.toLowerCase()}) dibatalkan; sisa tagihan & saldo deposit yang dipakai kembali${doc.depositCreated ? ', deposit dari kelebihan ikut batal' : ''}.`} />
       )}
 
       <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -284,13 +345,13 @@ export default function PaymentBatchDetail({ kind }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 640 }}>
               <thead className="bg-head text-head-fg text-left">
-                <tr><th className={th}>{cfg.invoiceLabel}</th><th className={th}>Date</th><th className={th}>Due</th><th className={`${th} text-right`}>Total</th><th className={th}>Payment</th><th className={`${th} text-right`}>Amount</th></tr>
+                <tr><th className={th}>{cfg.invoiceLabel}</th><th className={th}>Date</th><th className={th}>Due</th><th className={`${th} text-right`}>Total</th><th className={th}>Payment</th><th className={`${th} text-right`}>Amount</th><th className={`${th} text-right`}>Write-off</th></tr>
               </thead>
               <tbody>
                 {doc.allocations.map((a) => {
                   const inv = a[cfg.invoiceField] || {};
                   return (
-                    <tr key={a.payment?._id || inv._id} className="hover:bg-subtle">
+                    <tr key={inv._id || a.payment?._id} className="hover:bg-subtle">
                       <td className={td}>
                         <Link to={`${cfg.invoicePath}/${inv._id}`} className="font-mono text-xs font-semibold text-primary hover:underline">{inv.no}</Link>
                         {inv.vendorInvoiceNo && <div className="text-xs text-muted">Faktur {inv.vendorInvoiceNo}</div>}
@@ -298,15 +359,32 @@ export default function PaymentBatchDetail({ kind }) {
                       <td className={td}>{formatDay(inv.date)}</td>
                       <td className={td}>{inv.dueDate ? formatDay(inv.dueDate) : '-'}</td>
                       <td className={`${td} text-right tabular-nums text-muted`}>{formatRupiah(inv.total)}</td>
-                      <td className={`${td} font-mono text-xs ${a.payment?.status === 'CANCELLED' ? 'line-through text-muted' : ''}`}>{a.payment?.no}</td>
+                      <td className={`${td} font-mono text-xs`}>
+                        {(a.payments?.length ? a.payments : [a.payment].filter(Boolean)).map((p) => (
+                          <div key={p._id} className={p.status === 'CANCELLED' ? 'line-through text-muted' : ''}>
+                            {p.no}{p.method === 'DEPOSIT' ? <span className="text-muted"> · deposit</span> : null}
+                          </div>
+                        ))}
+                      </td>
                       <td className={`${td} text-right tabular-nums font-medium`}>{formatRupiah(a.amount)}</td>
+                      <td className={`${td} text-right tabular-nums`}>
+                        {a.writeOff > 0 ? <span title={writeOffLabel(a.writeOffReason)} className="text-warning-fg">{formatRupiah(a.writeOff)}</span> : <span className="text-muted">-</span>}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <div className="flex justify-end px-4 py-3 border-t border-line text-sm">Total <b className="ml-2 tabular-nums">{formatRupiah(doc.amount)}</b></div>
+          <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 px-4 py-3 border-t border-line text-sm">
+            <span>New money <b className="tabular-nums">{formatRupiah(doc.amount)}</b></span>
+            {(doc.deposits || []).map((d) => (
+              <span key={d.deposit?._id}>+ deposit <Link to={`${cfg.depositPath}/${d.deposit?._id}`} className="text-primary hover:underline">{d.deposit?.no}</Link> <b className="tabular-nums">{formatRupiah(d.amount)}</b></span>
+            ))}
+            {doc.depositCreated && (
+              <span>Overpayment → <Link to={`${cfg.depositPath}/${doc.depositCreated._id}`} className="text-primary hover:underline">{doc.depositCreated.no}</Link>{doc.depositCreated.status === 'CANCELLED' ? ' (cancelled)' : ''}</span>
+            )}
+          </div>
         </section>
 
         <aside className="space-y-4 min-w-0">

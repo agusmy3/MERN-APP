@@ -303,7 +303,8 @@ exports.getInvoice = async (req, res) => {
         .select('no date status total').sort({ date: 1, _id: 1 }).lean();
       doc.payments = await SalesPayment.find({ salesInvoice: doc._id })
         .populate('batch', 'no')
-        .select('no type date method amount reference note status cancelReason createdBy')
+        .populate('deposit', 'no')
+        .select('no type date method amount writeOffAmount writeOffReason deposit batch reference note status cancelReason createdBy')
         .populate('createdBy', 'name')
         .sort({ date: 1, _id: 1 }).lean();
       if (doc.status === 'POSTED') {

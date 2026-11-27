@@ -168,7 +168,7 @@ const payablesWidget = async (scoped) => {
   if (scoped) match.gudangs = { $in: scoped.$in.map((id) => new mongoose.Types.ObjectId(String(id))) };
   const rows = await PurchaseInvoice.aggregate([
     { $match: match },
-    { $project: { balance: { $subtract: [{ $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] }, { $ifNull: ['$paidAmount', 0] }] }, overdue: { $lt: ['$dueDate', today] }, dueSoon: { $and: [{ $gte: ['$dueDate', today] }, { $lt: ['$dueDate', week] }] } } },
+    { $project: { balance: { $subtract: ['$total', { $add: [{ $ifNull: ['$returnedAmount', 0] }, { $ifNull: ['$paidAmount', 0] }, { $ifNull: ['$writtenOffAmount', 0] }] }] }, overdue: { $lt: ['$dueDate', today] }, dueSoon: { $and: [{ $gte: ['$dueDate', today] }, { $lt: ['$dueDate', week] }] } } },
     {
       $group: {
         _id: null,
@@ -190,7 +190,7 @@ const receivablesWidget = async (g) => {
   today.setHours(0, 0, 0, 0);
   const rows = await SalesInvoice.aggregate([
     { $match: { status: 'POSTED', paymentStatus: { $in: ['UNPAID', 'PARTIAL'] }, ...g } },
-    { $project: { balance: { $subtract: [{ $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] }, { $ifNull: ['$paidAmount', 0] }] }, overdue: { $lt: ['$dueDate', today] } } },
+    { $project: { balance: { $subtract: ['$total', { $add: [{ $ifNull: ['$returnedAmount', 0] }, { $ifNull: ['$paidAmount', 0] }, { $ifNull: ['$writtenOffAmount', 0] }] }] }, overdue: { $lt: ['$dueDate', today] } } },
     {
       $group: {
         _id: null,
@@ -202,7 +202,15 @@ const receivablesWidget = async (g) => {
     },
   ]);
   const r = rows[0] || {};
-  return { outstanding: round2(r.outstanding || 0), count: r.count || 0, overdue: round2(r.overdue || 0), overdueCount: r.overdueCount || 0 };
+  // saldo deposit customer (uang muka / kelebihan bayar belum dipakai; tidak terikat gudang)
+  const [dep] = await require('../models/CustomerDeposit').aggregate([
+    { $match: { status: 'POSTED' } },
+    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }] }] } } } },
+  ]);
+  return {
+    outstanding: round2(r.outstanding || 0), count: r.count || 0, overdue: round2(r.overdue || 0), overdueCount: r.overdueCount || 0,
+    deposits: round2(dep?.bal || 0),
+  };
 };
 
 /** Nilai GR (pembelian) per bulan, 6 bulan terakhir termasuk bulan ini (net setelah pembatalan) */

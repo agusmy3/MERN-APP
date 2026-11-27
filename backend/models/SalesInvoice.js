@@ -66,10 +66,11 @@ const salesInvoiceSchema = new mongoose.Schema({
   shippingDpp: { type: Number, default: 0 },           // tanpa PPN
   shippingTotal: { type: Number, default: 0 },         // termasuk PPN
   cogs: { type: Number, default: null },               // HPP penjualan, diisi saat post (data biaya)
-  // piutang (helpers/salesHelper.js invoiceBalance): sisa = total - returnedAmount - paidAmount
+  // piutang (helpers/salesHelper.js invoiceBalance): sisa = total - returnedAmount - paidAmount - writtenOffAmount
   dueDate: { type: Date, default: null },
   returnedAmount: { type: Number, default: 0 },        // nilai retur POSTED (termasuk PPN)
   paidAmount: { type: Number, default: 0 },            // pembayaran POSTED dikurangi refund
+  writtenOffAmount: { type: Number, default: 0 },      // potongan / penghapusan saat pembayaran (bukan uang masuk)
   paymentStatus: { type: String, enum: ['UNPAID', 'PARTIAL', 'PAID', 'OVERPAID', null], default: null }, // null = belum diposting
   note: { type: String },
   postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

@@ -596,7 +596,7 @@ exports.lookupSale = async (req, res) => {
     const no = String(req.query.no || '').trim().toUpperCase();
     if (!no) return errorResponse(res, 'Enter the receipt number', 400);
     const inv = await SalesInvoice.findOne({ no, source: 'POS' })
-      .select('no date status outlet shift customer lines subtotal dpp total paidAmount returnedAmount')
+      .select('no date status outlet shift customer lines subtotal dpp total paidAmount writtenOffAmount returnedAmount')
       .populate('customer', 'name')
       .populate('lines.sku', 'sku variantValues')
       .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })

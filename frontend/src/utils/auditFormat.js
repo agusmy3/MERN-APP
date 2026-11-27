@@ -33,6 +33,8 @@ export const ENTITY_META = {
   vendorPayment: { label: 'Vendor Payment', icon: 'fa-money-check-dollar' },
   vendorPaymentBatch: { label: 'Vendor Payment Batch', icon: 'fa-money-check-dollar' },
   customerReceipt: { label: 'Customer Receipt', icon: 'fa-hand-holding-dollar' },
+  customerDeposit: { label: 'Customer Deposit', icon: 'fa-piggy-bank' },
+  vendorDeposit: { label: 'Vendor Deposit', icon: 'fa-vault' },
   purchaseReturn: { label: 'Purchase Return', icon: 'fa-truck-arrow-right' },
   costRevaluation: { label: 'Cost Revaluation', icon: 'fa-scale-balanced' },
   reorderRule: { label: 'Reorder Level', icon: 'fa-bell' },

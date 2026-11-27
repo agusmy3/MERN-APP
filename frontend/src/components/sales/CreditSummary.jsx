@@ -3,7 +3,7 @@ import { formatDay } from '../../utils/dateHelper';
 
 /**
  * Posisi kredit customer (dari backend customerCredit):
- * { limit, receivable, uninvoiced, exposure, available, overdue: { count, amount, oldestDueDate } }.
+ * { limit, receivable, uninvoiced, deposit, exposure (= piutang + SO belum ditagih - deposit), available, overdue }.
  * `orderTotal` (opsional) = SO yang sedang dibuat, ditambahkan ke exposure untuk melihat sisa setelahnya.
  */
 export default function CreditSummary({ credit, orderTotal = null, blockOverdue = true, className = '' }) {
@@ -27,6 +27,7 @@ export default function CreditSummary({ credit, orderTotal = null, blockOverdue 
         {row('Credit limit', credit.limit > 0 ? formatNumber(credit.limit) : 'No limit')}
         {row('Unpaid invoices', formatNumber(credit.receivable))}
         {row('Orders not yet invoiced', formatNumber(credit.uninvoiced))}
+        {credit.deposit > 0 && row('Deposit balance', `−${formatNumber(credit.deposit)}`)}
         {orderTotal !== null && row('This order', formatNumber(orderTotal))}
         {row(orderTotal !== null ? 'Total after this order' : 'Total exposure', formatNumber(after), true)}
         {credit.limit > 0 && row('Available', formatNumber(round2(credit.limit - after)), true)}

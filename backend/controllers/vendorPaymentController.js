@@ -9,6 +9,9 @@ const { nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
 const { invoiceBalance } = require('../helpers/salesHelper');
 const { gudangScope } = require('../helpers/gudangAccess');
+const { parsePaymentInput, assertWriteOffAllowed, applyToInvoice, recordPayment, reversePayment } = require('../helpers/paymentHelper');
+
+const SIDE = 'purchase';
 
 /**
  * Pembayaran vendor (lihat models/VendorPayment.js). Izin vendorPayment: view, create (catat), update (batalkan)
@@ -16,6 +19,8 @@ const { gudangScope } = require('../helpers/gudangAccess');
  */
 const TYPES = ['PAYMENT', 'REFUND'];
 const METHODS = ['CASH', 'TRANSFER', 'OTHER'];
+const FILTER_METHODS = [...METHODS, 'DEPOSIT'];
+const parsePaymentBody = (body) => parsePaymentInput(SIDE, body, METHODS);
 const SORTABLE_FIELDS = ['no', 'date', 'amount', 'createdDate'];
 
 const handleError = (res, error) => {
@@ -37,10 +42,6 @@ const loadBill = async (req, id) => {
   return bill;
 };
 
-const applyToBill = (bill, delta) => {
-  bill.paidAmount = round2((bill.paidAmount || 0) + delta);
-  bill.paymentStatus = invoiceBalance(bill).paymentStatus;
-};
 
 /** GET /api/vendor-payment — filter search (no / referensi / catatan / tagihan / vendor), status, type, method, vendor, purchaseInvoice, from, to; + totalNet */
 exports.getPayments = async (req, res) => {
@@ -62,7 +63,7 @@ exports.getPayments = async (req, res) => {
     }
     if (['POSTED', 'CANCELLED'].includes(req.query.status)) filter.status = req.query.status;
     if (TYPES.includes(req.query.type)) filter.type = req.query.type;
-    if (METHODS.includes(req.query.method)) filter.method = req.query.method;
+    if (FILTER_METHODS.includes(req.query.method)) filter.method = req.query.method;
     for (const key of ['vendor', 'purchaseInvoice']) {
       if (!req.query[key]) continue;
       if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
@@ -99,52 +100,49 @@ exports.getPayments = async (req, res) => {
 };
 
 /**
- * POST /api/vendor-payment  body: { purchaseInvoice, type (PAYMENT|REFUND), date, method, amount, reference, note }
- * PAYMENT <= sisa hutang; REFUND (uang kembali dari vendor) <= kelebihan bayar.
+ * POST /api/vendor-payment  body: { purchaseInvoice, type (PAYMENT|REFUND), date, method (+ DEPOSIT & deposit untuk PAYMENT),
+ *   amount, writeOffAmount, writeOffReason, reference, note }
+ * PAYMENT: uang + potongan dari vendor <= sisa hutang (potongan > setting butuh vendorPayment:approve);
+ * REFUND (uang kembali dari vendor) <= kelebihan bayar (memindah ke uang muka: POST /api/vendor-deposit/from-invoice).
  */
 exports.createPayment = async (req, res) => {
   try {
     const { purchaseInvoice } = req.body;
     if (!mongoose.isValidObjectId(purchaseInvoice)) return errorResponse(res, 'Please select a vendor bill', 400);
-    const type = req.body.type === 'REFUND' ? 'REFUND' : 'PAYMENT';
-    if (!METHODS.includes(req.body.method)) return errorResponse(res, 'Please select a payment method', 400);
-    const amountErr = checkAmount(req.body.amount, 'Amount', { min: 0, exclusive: true });
-    if (amountErr) return errorResponse(res, amountErr, 400);
-    const amount = round2(req.body.amount);
-    const date = req.body.date ? new Date(req.body.date) : new Date();
-    if (Number.isNaN(date.getTime())) return errorResponse(res, 'Invalid payment date', 400);
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (date > endOfToday) return errorResponse(res, 'Payment date cannot be in the future', 400);
+    const p = parsePaymentBody(req.body);
+    if (p.error) return errorResponse(res, p.error, 400);
 
     const doc = await runInTransaction(async () => {
       await lock(ref('purchaseInvoice', purchaseInvoice));
       const bill = await loadBill(req, purchaseInvoice);
       if (bill.status !== 'POSTED') throw new HttpError('Payments can only be recorded for posted vendor bills', 400);
-      const { balance } = invoiceBalance(bill);
-      if (type === 'PAYMENT') {
-        if (balance <= 0) throw new HttpError(`${bill.no} has nothing left to pay`, 400);
-        if (amount > balance) throw new HttpError(`Amount ${fmt(amount)} exceeds the outstanding balance ${fmt(balance)}`, 400);
-      } else {
-        if (balance >= 0) throw new HttpError(`${bill.no} is not overpaid; nothing to refund`, 400);
-        if (amount > -balance) throw new HttpError(`Refund ${fmt(amount)} exceeds the overpaid amount ${fmt(-balance)}`, 400);
+      const batchId = audit.newBatchId();
+      if (p.type === 'PAYMENT') {
+        await assertWriteOffAllowed(req, SIDE, p.writeOff.writeOffAmount, p.writeOff.writeOffReason);
+        const { payment } = await recordPayment(req, SIDE, bill, {
+          date: p.date, method: p.method, amount: p.amount, ...p.writeOff, depositId: req.body.deposit,
+          reference: trimText(req.body.reference, 100), note: p.note, batchId,
+        });
+        return payment;
       }
+      const { balance } = invoiceBalance(bill);
+      if (balance >= 0) throw new HttpError(`${bill.no} is not overpaid; nothing to refund`, 400);
+      if (p.amount > -balance) throw new HttpError(`Refund ${fmt(p.amount)} exceeds the overpaid amount ${fmt(-balance)}`, 400);
       const doc = await VendorPayment.create({
-        no: await nextDocNo(type === 'REFUND' ? 'VRF' : 'VPAY'),
-        type,
+        no: await nextDocNo('VRF'),
+        type: 'REFUND',
         purchaseInvoice: bill._id,
         vendor: bill.vendor,
-        date,
-        method: req.body.method,
-        amount,
+        date: p.date,
+        method: p.method,
+        amount: p.amount,
         reference: trimText(req.body.reference, 100),
-        note: trimText(req.body.note),
+        note: p.note,
         createdBy: req.user._id,
       });
       const before = await audit.snap('purchaseInvoice', [bill]);
-      applyToBill(bill, type === 'REFUND' ? -amount : amount);
+      applyToInvoice(bill, -p.amount);
       await bill.save();
-      const batchId = audit.newBatchId();
       await audit.logCreate(req, 'vendorPayment', [doc], { batchId });
       await audit.logUpdate(req, 'purchaseInvoice', before, [bill], { batchId });
       return doc;
@@ -169,18 +167,12 @@ exports.cancelPayment = async (req, res) => {
         const batch = await mongoose.model('VendorPaymentBatch').findById(doc.batch).select('no').lean();
         throw new HttpError(`${doc.no} is part of combined payment ${batch?.no || ''}. Cancel that payment instead.`, 400);
       }
-      await lock(ref('purchaseInvoice', doc.purchaseInvoice));
-      const bill = await loadBill(req, doc.purchaseInvoice);
-      const before = await audit.snap('vendorPayment', [doc]);
-      const billBefore = await audit.snap('purchaseInvoice', [bill]);
-      if (bill.status === 'POSTED') applyToBill(bill, doc.type === 'REFUND' ? doc.amount : -doc.amount);
-      await bill.save();
-      Object.assign(doc, { status: 'CANCELLED', cancelReason: reason, cancelledBy: req.user._id, cancelledDate: new Date() });
-      await doc.save();
-      const batchId = audit.newBatchId();
-      await audit.logUpdate(req, 'vendorPayment', before, [doc], { batchId });
-      await audit.logUpdate(req, 'purchaseInvoice', billBefore, [bill], { batchId });
-      return doc;
+      if (doc.type === 'REFUND' && doc.method === 'DEPOSIT') {
+        const dep = await mongoose.model('VendorDeposit').findById(doc.deposit).select('no').lean();
+        throw new HttpError(`${doc.no} moved the overpayment to vendor deposit ${dep?.no || ''}. Cancel that deposit instead.`, 400);
+      }
+      await loadBill(req, doc.purchaseInvoice); // akses gudang
+      return reversePayment(req, SIDE, doc, reason, { batchId: audit.newBatchId() });
     });
     return successResponse(res, doc, `${doc.no} cancelled`);
   } catch (error) {

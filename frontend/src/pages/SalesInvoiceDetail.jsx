@@ -744,6 +744,7 @@ export default function SalesInvoiceDetail() {
                   <dt className="text-muted">Total</dt><dd className="text-right tabular-nums">{formatRupiah(doc.total)}</dd>
                   {doc.returnedAmount > 0 && (<><dt className="text-muted">Returned</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.returnedAmount)}</dd></>)}
                   {doc.paidAmount !== 0 && (<><dt className="text-muted">Paid</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.paidAmount)}</dd></>)}
+                  {doc.writtenOffAmount > 0 && (<><dt className="text-muted">Written off</dt><dd className="text-right tabular-nums">−{formatRupiah(doc.writtenOffAmount)}</dd></>)}
                   <dt className="font-semibold">Balance</dt>
                   <dd className={`text-right tabular-nums font-semibold ${doc.balance < 0 ? 'text-danger' : ''}`}>{formatRupiah(doc.balance)}</dd>
                 </dl>

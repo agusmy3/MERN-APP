@@ -68,7 +68,8 @@ const soUninvoicedValue = (so, invoicedQty, shippingBilled) => {
  * Posisi kredit customer:
  * - receivable : sisa tagihan invoice POSTED yang belum lunas (total - retur - dibayar)
  * - uninvoiced : nilai SO OPEN / PARTIAL + barang terkirim (SO DELIVERED / CLOSED) yang belum ditagih
- * - exposure   = receivable + uninvoiced;  available = limit - exposure (limit 0 = tanpa batas -> null)
+ * - deposit    : saldo deposit customer (uang muka / kelebihan bayar yang belum dipakai)
+ * - exposure   = receivable + uninvoiced - deposit (negatif = saldo deposit lebih besar);  available = limit - exposure (limit 0 = tanpa batas -> null)
  * - overdue    : invoice belum lunas yang lewat jatuh tempo { count, amount, oldestDueDate }
  * excludeSo = SO yang sedang dikonfirmasi (dihitung terpisah oleh pemanggil).
  */
@@ -81,12 +82,12 @@ const customerCredit = async (customerId, { excludeSo = null } = {}) => {
   const cid = toId(customerId);
 
   const unpaid = await SalesInvoice.find({ customer: cid, status: 'POSTED', paymentStatus: { $in: ['UNPAID', 'PARTIAL'] } })
-    .select('total returnedAmount paidAmount dueDate').lean();
+    .select('total returnedAmount paidAmount writtenOffAmount dueDate').lean();
   const today = startOfToday();
   let receivable = 0;
   const overdue = { count: 0, amount: 0, oldestDueDate: null };
   unpaid.forEach((inv) => {
-    const bal = round2((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0));
+    const bal = round2((inv.total || 0) - (inv.returnedAmount || 0) - (inv.paidAmount || 0) - (inv.writtenOffAmount || 0));
     if (bal <= 0) return;
     receivable += bal;
     if (inv.dueDate && inv.dueDate < today) {
@@ -131,11 +132,18 @@ const customerCredit = async (customerId, { excludeSo = null } = {}) => {
 
   receivable = round2(receivable);
   uninvoiced = round2(uninvoiced);
-  const exposure = round2(receivable + uninvoiced);
+  const [dep] = await require('../models/CustomerDeposit').aggregate([
+    { $match: { customer: cid, status: 'POSTED' } },
+    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }] }] } } } },
+  ]);
+  const deposit = round2(dep?.bal || 0);
+  // boleh negatif: deposit melebihi piutang + SO menjadi ruang untuk pesanan berikutnya
+  const exposure = round2(receivable + uninvoiced - deposit);
   return {
     limit,
     receivable,
     uninvoiced,
+    deposit,
     exposure,
     available: limit > 0 ? round2(limit - exposure) : null,
     overdue: { ...overdue, amount: round2(overdue.amount) },

@@ -107,7 +107,7 @@ const sumTotals = (lines) => {
 };
 
 const populateDoc = (query) => query
-  .populate('salesInvoice', 'no date total returnedAmount paidAmount paymentStatus status')
+  .populate('salesInvoice', 'no date total returnedAmount paidAmount writtenOffAmount paymentStatus status')
   .populate('customer', 'code name')
   .populate('gudang', 'code name')
   .populate('lines.sku', 'sku variantValues isActive')

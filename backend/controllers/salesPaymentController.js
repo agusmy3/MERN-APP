@@ -9,9 +9,14 @@ const { nextDocNo } = require('../helpers/stockHelper');
 const { checkAmount, round2 } = require('../helpers/number');
 const { invoiceBalance } = require('../helpers/salesHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
+const { parsePaymentInput, assertWriteOffAllowed, applyToInvoice, recordPayment, reversePayment } = require('../helpers/paymentHelper');
+
+const SIDE = 'sales';
 
 const TYPES = ['PAYMENT', 'REFUND'];
 const METHODS = ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'];
+const FILTER_METHODS = [...METHODS, 'DEPOSIT'];
+const parsePaymentBody = (body) => parsePaymentInput(SIDE, body, METHODS);
 const SORTABLE_FIELDS = ['no', 'date', 'amount', 'createdDate'];
 
 const handleError = (res, error) => {
@@ -24,11 +29,6 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const trimText = (v, max = 500) => (v === undefined || v === null ? '' : String(v).trim().slice(0, max));
 const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
-/** Terapkan perubahan paidAmount ke invoice + status bayar (di dalam transaksi) */
-const applyToInvoice = (inv, delta) => {
-  inv.paidAmount = round2((inv.paidAmount || 0) + delta);
-  inv.paymentStatus = invoiceBalance(inv).paymentStatus;
-};
 
 /**
  * GET /api/sales-payment — filter search (no / referensi / catatan / invoice / customer), status, type,
@@ -51,7 +51,7 @@ exports.getPayments = async (req, res) => {
     }
     if (['POSTED', 'CANCELLED'].includes(req.query.status)) filter.status = req.query.status;
     if (TYPES.includes(req.query.type)) filter.type = req.query.type;
-    if (METHODS.includes(req.query.method)) filter.method = req.query.method;
+    if (FILTER_METHODS.includes(req.query.method)) filter.method = req.query.method;
     for (const key of ['customer', 'salesInvoice']) {
       if (!req.query[key]) continue;
       if (!mongoose.isValidObjectId(req.query[key])) return errorResponse(res, `Invalid ${key}`, 400);
@@ -99,23 +99,17 @@ exports.getPayments = async (req, res) => {
 };
 
 /**
- * POST /api/sales-payment  body: { salesInvoice, type (PAYMENT|REFUND), date, method, amount, reference, note }
- * PAYMENT <= sisa tagihan; REFUND <= kelebihan bayar. Invoice dikunci (bentrok dengan retur / pembatalan).
+ * POST /api/sales-payment  body: { salesInvoice, type (PAYMENT|REFUND), date, method (+ DEPOSIT & deposit untuk PAYMENT),
+ *   amount, writeOffAmount, writeOffReason, reference, note }
+ * PAYMENT: uang + potongan <= sisa tagihan (potongan > setting / piutang tak tertagih butuh salesPayment:approve);
+ * REFUND <= kelebihan bayar (memindah kelebihan ke deposit: POST /api/customer-deposit/from-invoice).
  */
 exports.createPayment = async (req, res) => {
   try {
     const { salesInvoice } = req.body;
     if (!mongoose.isValidObjectId(salesInvoice)) return errorResponse(res, 'Please select a sales invoice', 400);
-    const type = req.body.type === 'REFUND' ? 'REFUND' : 'PAYMENT';
-    if (!METHODS.includes(req.body.method)) return errorResponse(res, 'Please select a payment method', 400);
-    const amountErr = checkAmount(req.body.amount, 'Amount', { min: 0, exclusive: true });
-    if (amountErr) return errorResponse(res, amountErr, 400);
-    const amount = round2(req.body.amount);
-    const date = req.body.date ? new Date(req.body.date) : new Date();
-    if (Number.isNaN(date.getTime())) return errorResponse(res, 'Invalid payment date', 400);
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (date > endOfToday) return errorResponse(res, 'Payment date cannot be in the future', 400);
+    const p = parsePaymentBody(req.body);
+    if (p.error) return errorResponse(res, p.error, 400);
 
     const doc = await runInTransaction(async () => {
       await lock(ref('salesInvoice', salesInvoice));
@@ -123,33 +117,36 @@ exports.createPayment = async (req, res) => {
       if (!inv) throw new HttpError('Sales invoice not found', 404);
       assertGudang(req, inv.gudang);
       if (inv.status !== 'POSTED') throw new HttpError('Payments can only be recorded for posted invoices', 400);
-      const { balance } = invoiceBalance(inv);
-      if (type === 'PAYMENT') {
-        if (balance <= 0) throw new HttpError(`${inv.no} has nothing left to pay`, 400);
-        if (amount > balance) throw new HttpError(`Amount ${fmt(amount)} exceeds the outstanding balance ${fmt(balance)}`, 400);
-      } else {
-        if (balance >= 0) throw new HttpError(`${inv.no} is not overpaid; nothing to refund`, 400);
-        if (amount > -balance) throw new HttpError(`Refund ${fmt(amount)} exceeds the overpaid amount ${fmt(-balance)}`, 400);
+      const batchId = audit.newBatchId();
+      if (p.type === 'PAYMENT') {
+        await assertWriteOffAllowed(req, SIDE, p.writeOff.writeOffAmount, p.writeOff.writeOffReason);
+        const { payment } = await recordPayment(req, SIDE, inv, {
+          date: p.date, method: p.method, amount: p.amount, ...p.writeOff, depositId: req.body.deposit,
+          reference: trimText(req.body.reference, 100), note: p.note, extra: { gudang: inv.gudang }, batchId,
+        });
+        return payment;
       }
-
+      const { balance } = invoiceBalance(inv);
+      if (balance >= 0) throw new HttpError(`${inv.no} is not overpaid; nothing to refund`, 400);
+      if (p.amount > -balance) throw new HttpError(`Refund ${fmt(p.amount)} exceeds the overpaid amount ${fmt(-balance)}`, 400);
       const doc = await SalesPayment.create({
-        no: await nextDocNo(type === 'REFUND' ? 'RFD' : 'PAY'),
-        type,
+        no: await nextDocNo('RFD'),
+        type: 'REFUND',
         salesInvoice: inv._id,
         customer: inv.customer,
         gudang: inv.gudang,
-        date,
-        method: req.body.method,
-        amount,
+        date: p.date,
+        method: p.method,
+        amount: p.amount,
         reference: trimText(req.body.reference, 100),
-        note: trimText(req.body.note),
+        note: p.note,
         createdBy: req.user._id,
       });
       const invBefore = await audit.snap('salesInvoice', [inv]);
-      applyToInvoice(inv, type === 'REFUND' ? -amount : amount);
+      applyToInvoice(inv, -p.amount);
       await inv.save();
-      await audit.logCreate(req, 'salesPayment', [doc]);
-      await audit.logUpdate(req, 'salesInvoice', invBefore, [inv]);
+      await audit.logCreate(req, 'salesPayment', [doc], { batchId });
+      await audit.logUpdate(req, 'salesInvoice', invBefore, [inv], { batchId });
       return doc;
     });
     return successResponse(res, doc, `${doc.no} recorded`, 201);
@@ -158,7 +155,7 @@ exports.createPayment = async (req, res) => {
   }
 };
 
-/** POST /api/sales-payment/:id/cancel { reason } — batalkan pembayaran / refund, tagihan invoice dihitung ulang */
+/** POST /api/sales-payment/:id/cancel { reason } — batalkan pembayaran / refund, tagihan invoice (& saldo deposit) dihitung ulang */
 exports.cancelPayment = async (req, res) => {
   try {
     const cancelReason = trimText(req.body.reason);
@@ -173,26 +170,15 @@ exports.cancelPayment = async (req, res) => {
         const batch = await mongoose.model('CustomerReceipt').findById(doc.batch).select('no').lean();
         throw new HttpError(`${doc.no} is part of combined payment ${batch?.no || ''}. Cancel that payment instead.`, 400);
       }
+      if (doc.type === 'REFUND' && doc.method === 'DEPOSIT') {
+        const dep = await mongoose.model('CustomerDeposit').findById(doc.deposit).select('no').lean();
+        throw new HttpError(`${doc.no} moved the overpayment to deposit ${dep?.no || ''}. Cancel that deposit instead.`, 400);
+      }
       if (doc.shift) {
         const shift = await require('../models/PosShift').findById(doc.shift).select('status no').lean();
         if (shift?.status === 'CLOSED') throw new HttpError(`Payment belongs to POS shift ${shift.no}, which is already closed`, 400);
       }
-      await lock(ref('salesInvoice', doc.salesInvoice));
-      const inv = await SalesInvoice.findById(doc.salesInvoice);
-      if (!inv) throw new HttpError('Sales invoice no longer exists', 400);
-
-      const before = await audit.snap('salesPayment', [doc]);
-      const invBefore = await audit.snap('salesInvoice', [inv]);
-      applyToInvoice(inv, doc.type === 'REFUND' ? doc.amount : -doc.amount);
-      await inv.save();
-      doc.status = 'CANCELLED';
-      doc.cancelledBy = req.user._id;
-      doc.cancelledDate = new Date();
-      doc.cancelReason = cancelReason;
-      await doc.save();
-      await audit.logUpdate(req, 'salesPayment', before, [doc]);
-      await audit.logUpdate(req, 'salesInvoice', invBefore, [inv]);
-      return doc;
+      return reversePayment(req, SIDE, doc, cancelReason, { batchId: audit.newBatchId() });
     });
     return successResponse(res, doc, `${doc.no} cancelled`);
   } catch (error) {

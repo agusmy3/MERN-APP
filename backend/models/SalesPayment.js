@@ -5,7 +5,8 @@ const mongoose = require('mongoose');
  *   POSTED --cancel--> CANCELLED
  * - PAYMENT : invoice.paidAmount += amount; amount <= sisa tagihan
  * - REFUND  : invoice.paidAmount -= amount (mengembalikan kelebihan bayar, mis. setelah retur);
- *             amount <= kelebihan bayar
+ *             amount <= kelebihan bayar; method DEPOSIT = kelebihan dipindah ke deposit customer
+ * - writeOffAmount (PAYMENT): invoice.writtenOffAmount += potongan; amount + potongan <= sisa tagihan
  * Status bayar invoice dihitung ulang (helpers/salesHelper.js invoiceBalance). Satu invoice boleh
  * dibayar beberapa kali (cicil). gudang disalin dari invoice (untuk akses gudang).
  */
@@ -16,10 +17,15 @@ const salesPaymentSchema = new mongoose.Schema({
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   date: { type: Date, required: true },
-  method: { type: String, required: true, enum: ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER'] },
+  // DEPOSIT = dibayar dari saldo deposit customer (PAYMENT) / kelebihan bayar dipindah ke deposit (REFUND);
+  // null = hanya potongan (amount 0)
+  method: { type: String, enum: ['CASH', 'CARD', 'QRIS', 'TRANSFER', 'OTHER', 'DEPOSIT', null], default: null },
+  deposit: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomerDeposit', default: null },
   shift: { type: mongoose.Schema.Types.ObjectId, ref: 'PosShift', default: null }, // POS: masuk laci shift ini
   batch: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomerReceipt', default: null }, // bagian dari penerimaan gabungan
-  amount: { type: Number, required: true },            // selalu positif
+  amount: { type: Number, required: true },            // uang (>= 0); 0 hanya jika ada potongan
+  writeOffAmount: { type: Number, default: 0 },        // potongan / penghapusan (mengurangi sisa tagihan, bukan uang masuk)
+  writeOffReason: { type: String, enum: ['DISCOUNT', 'BANK_FEE', 'ROUNDING', 'BAD_DEBT', null], default: null },
   reference: { type: String, default: '' },            // no. bukti transfer / kuitansi
   note: { type: String, default: '' },
   status: { type: String, required: true, enum: ['POSTED', 'CANCELLED'], default: 'POSTED' },
@@ -36,5 +42,6 @@ salesPaymentSchema.index({ salesInvoice: 1, status: 1 });
 salesPaymentSchema.index({ status: 1, date: -1 });
 salesPaymentSchema.index({ customer: 1 });
 salesPaymentSchema.index({ shift: 1, status: 1 });
+salesPaymentSchema.index({ deposit: 1, status: 1 });
 
 module.exports = mongoose.model('SalesPayment', salesPaymentSchema);

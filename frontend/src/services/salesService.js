@@ -157,3 +157,18 @@ export const getCustomerOpenInvoices = async (customer, token) => (await axios.g
 /** { customer, date, method, amount, reference, note, allocations: [{ invoice, amount }] } */
 export const createCustomerReceipt = (data, token) => axios.post(RCV, data, getHeaders(token));
 export const cancelCustomerReceipt = (id, reason, token) => axios.post(`${RCV}/${id}/cancel`, { reason }, getHeaders(token));
+
+// ---------- Customer Deposit (uang muka / kelebihan bayar) ----------
+
+const DEP = '/api/customer-deposit';
+export const getCustomerDeposits = async (token, params) => (await axios.get(DEP, { ...getHeaders(token), params })).data.data;
+export const getCustomerDeposit = async (id, token) => (await axios.get(`${DEP}/${id}`, getHeaders(token))).data.data;
+/** deposit bersaldo milik customer (terlama dulu) */
+export const getOpenCustomerDeposits = async (customer, token) => (await axios.get(`${DEP}/open`, { ...getHeaders(token), params: { customer } })).data.data;
+export const createCustomerDeposit = (data, token) => axios.post(DEP, data, getHeaders(token));
+/** kelebihan bayar invoice -> deposit: { salesInvoice, amount?, date, note } */
+export const customerDepositFromInvoice = (data, token) => axios.post(`${DEP}/from-invoice`, data, getHeaders(token));
+export const applyCustomerDeposit = (id, data, token) => axios.post(`${DEP}/${id}/apply`, data, getHeaders(token));
+export const refundCustomerDeposit = (id, data, token) => axios.post(`${DEP}/${id}/refund`, data, getHeaders(token));
+export const cancelCustomerDepositRefund = (id, refundId, reason, token) => axios.post(`${DEP}/${id}/refunds/${refundId}/cancel`, { reason }, getHeaders(token));
+export const cancelCustomerDeposit = (id, reason, token) => axios.post(`${DEP}/${id}/cancel`, { reason }, getHeaders(token));
