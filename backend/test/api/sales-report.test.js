@@ -37,7 +37,7 @@ test('sales report: net of returns, grouping, cost only with vendorPrice:view', 
   const get = (q, user = admin) => user.get(`/api/sales-report/sales?tz=Asia/Jakarta&${q}`);
 
   const byDay = ok(await get('groupBy=day'));
-  assert.deepEqual(byDay.totals, { sales: 460000, returns: 90000, net: 370000, invoiceCount: 2, shipping: 0, writeOff: 0, badDebt: 0, cogs: 240000, grossProfit: 130000, margin: 35.14 });
+  assert.deepEqual(byDay.totals, { sales: 460000, returns: 90000, net: 370000, invoiceCount: 2, shipping: 0, writeOff: 0, badDebt: 0, depositForfeited: 0, cogs: 240000, grossProfit: 130000, margin: 35.14 });
   assert.equal(byDay.rows.length, 1);
 
   const byCustomer = ok(await get('groupBy=customer'));

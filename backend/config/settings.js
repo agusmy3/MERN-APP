@@ -56,6 +56,17 @@ const SETTINGS = [
     description: 'Potongan (pembulatan, biaya transfer, potongan tunai) per invoice / tagihan saat mencatat pembayaran. '
       + 'Di atas nilai ini, dan semua penghapusan piutang tak tertagih, butuh izin Sales Payment / Vendor Payment: Approve. 0 = selalu butuh persetujuan.',
   },
+  {
+    key: 'payment.depositAgeAlertDays',
+    label: 'Deposit age alert (days)',
+    group: 'Payment',
+    type: 'number',
+    default: 60,
+    min: 0,
+    max: 3650,
+    description: 'Deposit customer / uang muka vendor yang masih bersaldo lebih lama dari ini ditandai di daftar deposit '
+      + 'dan dashboard (segera dipakai, ditagih kembali, atau dikonfirmasi). 0 = tanpa peringatan.',
+  },
   // identitas perusahaan: dicetak di kop dokumen (SO, invoice, quotation, surat jalan)
   { key: 'company.name', label: 'Company name', group: 'Company', type: 'text', default: '', maxLength: 120, description: 'Kop dokumen cetak (Sales Order, Invoice, Quotation, Surat Jalan).' },
   {

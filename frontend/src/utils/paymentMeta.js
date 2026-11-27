@@ -34,7 +34,8 @@ export const DEPOSIT_SOURCES = {
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 /** Saldo deposit yang masih bisa dipakai */
-export const depositBalance = (d) => (d?.status === 'POSTED' ? r2((d.amount || 0) - (d.usedAmount || 0) - (d.refundedAmount || 0)) : 0);
+export const depositBalance = (d) => (d?.status === 'POSTED'
+  ? r2((d.amount || 0) - (d.usedAmount || 0) - (d.refundedAmount || 0) - (d.writtenOffAmount || 0)) : 0);
 
 /**
  * Ringkasan pembayaran gabungan di form: uang baru + deposit dipakai vs alokasi (+ potongan per invoice).
@@ -53,3 +54,10 @@ export const batchPlan = ({ amount = 0, deposits = {}, alloc = {}, writeOffs = {
   else if (depositTotal > allocated) error = 'Deposit yang dipakai harus habis dialokasikan ke invoice';
   return { funds, depositTotal, allocated, writeOff, leftover: error ? 0 : r2(funds - allocated), error };
 };
+
+/** Alasan hapus saldo deposit (backend helpers/depositSchema.js DEPOSIT_WRITE_OFF_REASONS) */
+export const DEPOSIT_WRITE_OFF_REASONS = {
+  sales: { FORFEITED: 'Hangus (tidak dipakai / tidak diminta kembali)', OTHER: 'Lainnya' },
+  purchase: { VENDOR_DISPUTE: 'Vendor tidak mengakui', VENDOR_CLOSED: 'Vendor tutup / tidak bisa dihubungi', OTHER: 'Lainnya' },
+};
+export const depositWriteOffLabel = (reason) => DEPOSIT_WRITE_OFF_REASONS.purchase[reason] || DEPOSIT_WRITE_OFF_REASONS.sales[reason] || reason || '';

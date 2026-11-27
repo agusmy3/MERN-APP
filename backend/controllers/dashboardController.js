@@ -205,7 +205,7 @@ const receivablesWidget = async (g) => {
   // saldo deposit customer (uang muka / kelebihan bayar belum dipakai; tidak terikat gudang)
   const [dep] = await require('../models/CustomerDeposit').aggregate([
     { $match: { status: 'POSTED' } },
-    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }] }] } } } },
+    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }, { $ifNull: ['$writtenOffAmount', 0] }] }] } } } },
   ]);
   return {
     outstanding: round2(r.outstanding || 0), count: r.count || 0, overdue: round2(r.overdue || 0), overdueCount: r.overdueCount || 0,
@@ -344,6 +344,10 @@ exports.getDashboard = async (req, res) => {
     if (can('salesInvoice')) jobs.push(salesWidgets(tz, canSeeCost, gAgg).then((w) => Object.assign(data, w)));
     if (can('salesInvoice')) jobs.push(receivablesWidget(gAgg).then((w) => { data.receivables = w; }));
     if (can('purchaseInvoice') && canSeeCost) jobs.push(payablesWidget(scoped).then((w) => { data.payables = w; }));
+    // deposit bersaldo yang sudah lama (setting payment.depositAgeAlertDays): segera dipakai / ditagih / dikonfirmasi
+    const { agedDepositSummary } = require('./depositController');
+    if (can('salesPayment')) jobs.push(agedDepositSummary('sales').then((w) => { if (w) (data.agedDeposits ||= {}).customer = w; }));
+    if (can('vendorPayment') && canSeeCost) jobs.push(agedDepositSummary('purchase').then((w) => { if (w) (data.agedDeposits ||= {}).vendor = w; }));
 
     // pekerjaan tertunda: draft yang menunggu diposting
     const pending = {};

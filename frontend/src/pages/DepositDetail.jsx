@@ -11,7 +11,7 @@ import { inputClass } from '../utils/formStyles';
 import { formatRupiah, round2 } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
 import { DEPOSIT_KINDS } from '../components/payment/depositConfig';
-import { BATCH_METHODS, DEPOSIT_SOURCES, allocateFifo } from '../utils/paymentMeta';
+import { BATCH_METHODS, DEPOSIT_SOURCES, DEPOSIT_WRITE_OFF_REASONS, allocateFifo, depositWriteOffLabel } from '../utils/paymentMeta';
 
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary disabled:bg-transparent disabled:border-transparent`;
@@ -221,6 +221,53 @@ function RefundPanel({ cfg, doc, token, onDone, onClose }) {
   );
 }
 
+/** Hapus saldo deposit (vendor tidak mengakui / tutup, atau hangus); butuh Approve, catatan wajib */
+function WriteOffPanel({ cfg, doc, token, onDone, onClose }) {
+  const toast = useToast();
+  const reasons = DEPOSIT_WRITE_OFF_REASONS[cfg.side];
+  const [form, setForm] = useState({ date: toDateInput(), amount: doc.balance, reason: Object.keys(reasons)[0], note: '' });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const submit = async (e) => {
+    e.preventDefault();
+    const amount = Number(form.amount);
+    if (!(amount > 0) || amount > doc.balance) return toast.warning(`Isi jumlah 0 - ${formatRupiah(doc.balance)}.`);
+    if (!form.note.trim()) return toast.warning('Catatan wajib: siapa yang mengonfirmasi, bukti, dsb.');
+    setBusy(true);
+    try {
+      const res = await cfg.writeOff(doc._id, { ...form, amount }, token);
+      toast.success(res.data.message);
+      await onDone();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to write off');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="mb-4 rounded-lg border border-danger-line bg-danger-soft p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 max-w-5xl">
+      <div className="sm:col-span-2 lg:col-span-4">
+        <h3 className="font-semibold text-danger">Write off deposit balance</h3>
+        <p className="text-sm text-fg">{cfg.writeOffHint} Bisa dibatalkan bila ternyata saldonya kembali.</p>
+      </div>
+      <label className="text-xs text-muted">Date<input type="date" max={toDateInput()} value={form.date} onChange={(e) => set('date', e.target.value)} className={inputClass} /></label>
+      <label className="text-xs text-muted">Amount<input type="number" min="0.01" step="0.01" max={doc.balance} value={form.amount} onChange={(e) => set('amount', e.target.value)} className={`${inputClass} text-right tabular-nums`} /></label>
+      <label className="text-xs text-muted sm:col-span-2">Reason
+        <select value={form.reason} onChange={(e) => set('reason', e.target.value)} className={inputClass}>
+          {Object.entries(reasons).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </label>
+      <label className="text-xs text-muted sm:col-span-2 lg:col-span-4">Note (required)
+        <textarea rows={2} value={form.note} maxLength={500} placeholder="Mis. dikonfirmasi oleh ..., bukti ..., sudah ditagih tanggal ..." onChange={(e) => set('note', e.target.value)} className={inputClass} />
+      </label>
+      <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className={btnGhost}>Close</button>
+        <button type="submit" disabled={busy} className={btnDanger}><i className="fa fa-eraser"></i> Write off</button>
+      </div>
+    </form>
+  );
+}
+
 /** Deposit: kind = 'customer' | 'vendor'; /:id = 'new' (?customer= / ?vendor=) atau id dokumen */
 export default function DepositDetail({ kind }) {
   const cfg = DEPOSIT_KINDS[kind];
@@ -236,6 +283,8 @@ export default function DepositDetail({ kind }) {
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [refundCancel, setRefundCancel] = useState(null);
+  const [woCancel, setWoCancel] = useState(null);
+  const [woReason, setWoReason] = useState('');
   const [refundReason, setRefundReason] = useState('');
 
   const load = useCallback(async () => {
@@ -285,6 +334,21 @@ export default function DepositDetail({ kind }) {
     }
   };
 
+  const cancelWriteOff = async () => {
+    if (!woReason.trim()) return toast.warning('Isi alasan pembatalan.');
+    setBusy(true);
+    try {
+      const res = await cfg.cancelWriteOff(id, woCancel, woReason.trim(), user.token);
+      toast.success(res.data.message);
+      setWoCancel(null);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to cancel write-off');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const usages = useMemo(() => doc?.usages || [], [doc]);
 
   if (isNew) {
@@ -308,7 +372,7 @@ export default function DepositDetail({ kind }) {
   }
   if (!doc) return <div className="p-6 text-muted">Loading...</div>;
   const posted = doc.status === 'POSTED';
-  const canCancel = posted && perm.canUpdate && doc.source !== 'BATCH' && !(doc.usedAmount > 0) && !(doc.refundedAmount > 0);
+  const canCancel = posted && perm.canUpdate && doc.source !== 'BATCH' && !(doc.usedAmount > 0) && !(doc.refundedAmount > 0) && !(doc.writtenOffAmount > 0);
 
   return (
     <div className="h-full p-4 flex flex-col overflow-auto">
@@ -316,7 +380,7 @@ export default function DepositDetail({ kind }) {
         fallbackTitle={cfg.title}
         parentPath={cfg.basePath}
         title={doc.no}
-        subtitle={`${cfg.partyName(doc[cfg.partyField])} · saldo ${formatRupiah(doc.balance)}`}
+        subtitle={`${cfg.partyName(doc[cfg.partyField])} · saldo ${formatRupiah(doc.balance)}${doc.ageDays !== null && doc.ageDays !== undefined ? ` · ${doc.ageDays} hari` : ''}`}
         actions={(
           <>
             {posted
@@ -328,6 +392,9 @@ export default function DepositDetail({ kind }) {
                 <button type="button" onClick={() => setPanel(panel === 'refund' ? null : 'refund')} className={btnGhost}><i className="fa fa-arrow-rotate-left"></i> Refund</button>
               </>
             )}
+            {posted && perm.canApprove && doc.balance > 0 && (
+              <button type="button" onClick={() => setPanel(panel === 'writeOff' ? null : 'writeOff')} className={btnDanger}><i className="fa fa-eraser"></i> Write off balance</button>
+            )}
             {canCancel && (
               <button type="button" onClick={() => setPanel(panel === 'cancel' ? null : 'cancel')} disabled={busy} className={btnDanger}><i className="fa fa-ban"></i> Cancel</button>
             )}
@@ -335,6 +402,12 @@ export default function DepositDetail({ kind }) {
         )}
       />
       {panel === 'apply' && <ApplyPanel cfg={cfg} doc={doc} token={user.token} onDone={done} onClose={() => setPanel(null)} />}
+      {doc.aged && posted && (
+        <div className="mb-4 rounded-lg border border-line bg-warning-soft text-warning-fg px-4 py-2 text-sm max-w-5xl">
+          <i className="fa fa-clock mr-1.5"></i>Saldo sudah {doc.ageDays} hari belum dipakai. Segera pakai, tagih kembali, atau cetak konfirmasi saldo (halaman daftar deposit).
+        </div>
+      )}
+      {panel === 'writeOff' && <WriteOffPanel cfg={cfg} doc={doc} token={user.token} onDone={done} onClose={() => setPanel(null)} />}
       {panel === 'refund' && <RefundPanel cfg={cfg} doc={doc} token={user.token} onDone={done} onClose={() => setPanel(null)} />}
       {panel === 'cancel' && (
         <ReasonPanel title={`Cancel ${doc.no}`} confirmLabel="Cancel deposit" busy={busy} onConfirm={cancel} onClose={() => setPanel(null)}
@@ -343,8 +416,8 @@ export default function DepositDetail({ kind }) {
 
       <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4 min-w-0">
-          <section className="rounded-lg border border-line bg-surface p-4 grid gap-3 grid-cols-2 sm:grid-cols-4 text-sm">
-            {[['Amount', doc.amount], ['Used', doc.usedAmount], ['Refunded', doc.refundedAmount], ['Balance', doc.balance]].map(([label, v]) => (
+          <section className="rounded-lg border border-line bg-surface p-4 grid gap-3 grid-cols-2 sm:grid-cols-5 text-sm">
+            {[['Amount', doc.amount], ['Used', doc.usedAmount], ['Refunded', doc.refundedAmount], ['Written off', doc.writtenOffAmount], ['Balance', doc.balance]].map(([label, v]) => (
               <div key={label}>
                 <div className="text-xs uppercase tracking-wider text-muted">{label}</div>
                 <div className={`text-lg font-semibold tabular-nums ${label === 'Balance' && v > 0 ? 'text-primary' : 'text-fg'}`}>{formatRupiah(v || 0)}</div>
@@ -378,6 +451,39 @@ export default function DepositDetail({ kind }) {
               </table>
             </div>
           </section>
+
+          {(doc.writeOffs || []).length > 0 && (
+            <section className="rounded-lg border border-line bg-surface p-4 text-sm">
+              <h3 className="font-semibold text-fg mb-2">Written off</h3>
+              <ul className="divide-y divide-line-soft">
+                {doc.writeOffs.map((w) => {
+                  const cancelled = w.status === 'CANCELLED';
+                  return (
+                    <li key={w._id} className={`py-1.5 ${cancelled ? 'opacity-60' : ''}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{formatDay(w.date)} · {depositWriteOffLabel(w.reason)} · {w.createdBy?.name || '-'}</span>
+                        <span className={`tabular-nums text-danger ${cancelled ? 'line-through' : ''}`}>{formatRupiah(w.amount)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2 text-xs text-muted">
+                        <span className="break-words">{w.note}</span>
+                        {cancelled ? <span className="text-danger" title={w.cancelReason}>cancelled</span>
+                          : posted && perm.canApprove && woCancel !== w._id && (
+                            <button type="button" onClick={() => { setWoCancel(w._id); setWoReason(''); }} className="hover:text-danger cursor-pointer">cancel</button>
+                          )}
+                      </div>
+                      {woCancel === w._id && (
+                        <div className="mt-1.5 flex gap-2">
+                          <input value={woReason} autoFocus placeholder="Alasan pembatalan" onChange={(e) => setWoReason(e.target.value)} className={`${inputClass} py-1`} />
+                          <button type="button" onClick={cancelWriteOff} disabled={busy} className="px-3 py-1.5 rounded text-sm border border-danger-line text-danger hover:bg-danger-soft cursor-pointer">OK</button>
+                          <button type="button" onClick={() => setWoCancel(null)} className="px-3 py-1.5 rounded text-sm border border-line cursor-pointer">×</button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           {(doc.refunds || []).length > 0 && (
             <section className="rounded-lg border border-line bg-surface p-4 text-sm">

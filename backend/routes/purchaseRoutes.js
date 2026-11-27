@@ -88,6 +88,8 @@ vendorDeposit.post('/', protect, authorize('vendorPayment', 'create'), cost, vdp
 vendorDeposit.post('/:id/apply', protect, authorize('vendorPayment', 'create'), cost, vdp.apply);
 vendorDeposit.post('/:id/refund', protect, authorize('vendorPayment', 'create'), cost, vdp.refund);
 vendorDeposit.post('/:id/refunds/:refundId/cancel', protect, authorize('vendorPayment', 'update'), cost, vdp.cancelRefund);
+vendorDeposit.post('/:id/write-off', protect, authorize('vendorPayment', 'approve'), cost, vdp.writeOff);
+vendorDeposit.post('/:id/write-offs/:writeOffId/cancel', protect, authorize('vendorPayment', 'approve'), cost, vdp.cancelWriteOff);
 vendorDeposit.post('/:id/cancel', protect, authorize('vendorPayment', 'update'), cost, vdp.cancel);
 
 module.exports = { vendorDeposit, vendorPaymentBatch, purchaseOrder, goodsReceipt, purchaseInvoice, vendorPayment, purchaseReturn };

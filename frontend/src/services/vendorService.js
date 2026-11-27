@@ -41,3 +41,6 @@ export const getVendorDropdown = async (token) => {
   const res = await axios.get(`${API}/dropdown`, getHeaders(token));
   return res.data.data;
 };
+
+/** Detail 1 vendor (butuh izin vendor:view) */
+export const getSingleVendor = (id, token) => axios.get(`${API}/${id}`, getHeaders(token));

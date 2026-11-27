@@ -200,7 +200,7 @@ const depositBalances = async (side, partyIds = null) => {
   if (partyIds) match[s.partyField] = { $in: partyIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
   const rows = await model(s.Deposit).aggregate([
     { $match: match },
-    { $group: { _id: `$${s.partyField}`, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }] }] } } } },
+    { $group: { _id: `$${s.partyField}`, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }, { $ifNull: ['$writtenOffAmount', 0] }] }] } } } },
   ]);
   return new Map(rows.map((r) => [String(r._id), round2(r.bal)]));
 };

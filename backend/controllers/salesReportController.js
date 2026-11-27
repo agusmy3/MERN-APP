@@ -171,9 +171,18 @@ exports.getSalesReport = async (req, res) => {
       { $match: { ...match, writeOffAmount: { $gt: 0 } } },
       { $group: { _id: null, v: { $sum: '$writeOffAmount' }, bad: { $sum: { $cond: [{ $eq: ['$writeOffReason', 'BAD_DEBT'] }, '$writeOffAmount', 0] } } } },
     ]);
+    // deposit customer yang dinyatakan hangus (tanggal hapus): pendapatan lain-lain, bukan penjualan; tidak terikat gudang
+    const depMatch = { status: 'POSTED' };
+    if (match.customer) depMatch.customer = match.customer;
+    const forfeited = await require('../models/CustomerDeposit').aggregate([
+      { $match: depMatch },
+      { $unwind: '$writeOffs' },
+      { $match: { 'writeOffs.status': 'POSTED', 'writeOffs.date': match.date } },
+      { $group: { _id: null, v: { $sum: '$writeOffs.amount' } } },
+    ]);
     const totals = {
       sales: sum('sales'), returns: sum('returns'), net: sum('net'), invoiceCount, shipping: round2(ship[0]?.v || 0),
-      writeOff: round2(wo[0]?.v || 0), badDebt: round2(wo[0]?.bad || 0),
+      writeOff: round2(wo[0]?.v || 0), badDebt: round2(wo[0]?.bad || 0), depositForfeited: round2(forfeited[0]?.v || 0),
     };
     if (canSeeCost) {
       totals.cogs = sum('cogs');

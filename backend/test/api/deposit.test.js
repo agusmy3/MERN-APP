@@ -210,3 +210,49 @@ test('vendor side: down payment to vendor, pay a bill from it with a vendor disc
   assert.equal((await noCost.get('/api/vendor-deposit')).status, 403);
   assert.ok(await t.model('AuditLog').exists({ entity: 'vendorDeposit', entityId: dep._id }));
 });
+
+test('deposit write-off (vendor not acknowledging / customer forfeit): approve only, note required, cancel; aging alerts', async () => {
+  const admin = await t.loginAs();
+  const m = await createMasters(admin);
+  const vdep = ok(await admin.post('/api/vendor-deposit', { vendor: m.vendor._id, method: 'TRANSFER', amount: 75000 }), 201);
+
+  const clerk = await t.loginAs({ vendorPayment: ['create', 'update'], vendorPrice: [] }, 'Clerk VDP');
+  assert.equal((await clerk.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'VENDOR_DISPUTE', note: 'x' })).status, 403);
+  assert.match((await admin.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'FORFEITED', note: 'x' })).message, /reason/);
+  assert.match((await admin.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'VENDOR_DISPUTE' })).message, /note is required/);
+  assert.match((await admin.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'VENDOR_DISPUTE', note: 'x', amount: 80000 })).message, /exceeds/);
+  const w = ok(await admin.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'VENDOR_DISPUTE', note: 'Vendor menyangkal transfer 1 Nov' }));
+  assert.deepEqual([w.writtenOffAmount, w.writeOffs.length], [75000, 1]);
+  let d = ok(await admin.get(`/api/vendor-deposit/${vdep._id}`));
+  assert.deepEqual([d.balance, d.writeOffs[0].reason], [0, 'VENDOR_DISPUTE']);
+  assert.equal(ok(await admin.get(`/api/vendor-deposit?vendor=${m.vendor._id}&hasBalance=true`)).dataVendorDeposit.length, 0);
+  assert.match((await admin.post(`/api/vendor-deposit/${vdep._id}/cancel`, { reason: 'x' })).message, /write-offs/);
+  assert.match((await admin.post(`/api/vendor-deposit/${vdep._id}/write-off`, { reason: 'VENDOR_CLOSED', note: 'x' })).message, /no balance/);
+  ok(await admin.post(`/api/vendor-deposit/${vdep._id}/write-offs/${d.writeOffs[0]._id}/cancel`, { reason: 'Vendor akhirnya mengakui' }));
+  d = ok(await admin.get(`/api/vendor-deposit/${vdep._id}`));
+  assert.deepEqual([d.balance, d.writtenOffAmount], [75000, 0]);
+  assert.ok(await t.model('AuditLog').exists({ entity: 'vendorDeposit', entityId: vdep._id, 'changes.field': 'writtenOffAmount' }));
+
+  // umur: deposit 90 hari lalu (setting default 60) -> aged + ringkasan dashboard
+  await t.model('VendorDeposit').updateOne({ _id: vdep._id }, { date: new Date(Date.now() - 90 * 86400000) });
+  const aged = ok(await admin.get(`/api/vendor-deposit?aged=true&vendor=${m.vendor._id}`));
+  assert.equal(aged.dataVendorDeposit.length, 1);
+  assert.equal(aged.alertDays, 60);
+  assert.ok(aged.dataVendorDeposit[0].aged && aged.dataVendorDeposit[0].ageDays >= 89);
+  const dash = ok(await admin.get('/api/dashboard'));
+  assert.ok(dash.agedDeposits.vendor.count >= 1 && dash.agedDeposits.vendor.amount >= 75000);
+  ok(await admin.put('/api/setting', { values: { 'payment.depositAgeAlertDays': 0 } }));
+  assert.equal(ok(await admin.get('/api/dashboard')).agedDeposits, undefined);
+  ok(await admin.put('/api/setting', { values: { 'payment.depositAgeAlertDays': 60 } }));
+
+  // customer: saldo hangus -> laporan penjualan (pendapatan lain, bukan penjualan)
+  const customer = ok(await admin.post('/api/customer', { name: 'DP Hangus' }), 201);
+  const cdep = ok(await admin.post('/api/customer-deposit', { customer: customer._id, method: 'CASH', amount: 40000 }), 201);
+  assert.match((await admin.post(`/api/customer-deposit/${cdep._id}/write-off`, { reason: 'VENDOR_DISPUTE', note: 'x' })).message, /reason/);
+  ok(await admin.post(`/api/customer-deposit/${cdep._id}/write-off`, { reason: 'FORFEITED', amount: 15000, note: 'DP pesanan batal, tidak diminta kembali' }));
+  assert.equal(ok(await admin.get(`/api/customer-deposit/${cdep._id}`)).balance, 25000);
+  assert.equal(ok(await admin.get(`/api/customer/${customer._id}`)).credit.deposit, 25000);
+  const today = new Date().toLocaleDateString('en-CA');
+  const rep = ok(await admin.get(`/api/sales-report/sales?from=${today}&to=${today}&customer=${customer._id}`)).totals;
+  assert.deepEqual([rep.net, rep.depositForfeited], [0, 15000]);
+});

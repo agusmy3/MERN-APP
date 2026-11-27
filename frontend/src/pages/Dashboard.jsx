@@ -113,6 +113,16 @@ export default function Dashboard() {
                 sub={`${d.receivables.count} invoice${d.receivables.overdueCount ? ` · ${formatRupiahCompact(d.receivables.overdue)} overdue (${d.receivables.overdueCount})` : ''}${d.receivables.deposits ? ` · deposit ${formatRupiahCompact(d.receivables.deposits)}` : ''}`}
                 tone={d.receivables.overdueCount ? 'border-danger-line bg-danger-soft' : ''} />
             )}
+            {d.agedDeposits?.customer?.count > 0 && (
+              <Kpi label="Old customer deposits" icon="fa-piggy-bank" value={formatRupiahCompact(d.agedDeposits.customer.amount)} to="/customer-deposit?show=aged"
+                sub={`${d.agedDeposits.customer.count} deposit > ${d.agedDeposits.customer.days} hari belum dipakai`}
+                tone="border-warning-fg/40 bg-warning-soft" />
+            )}
+            {d.agedDeposits?.vendor?.count > 0 && (
+              <Kpi label="Old vendor deposits" icon="fa-vault" value={formatRupiahCompact(d.agedDeposits.vendor.amount)} to="/vendor-deposit?show=aged"
+                sub={`${d.agedDeposits.vendor.count} uang muka > ${d.agedDeposits.vendor.days} hari: pakai, tagih, atau konfirmasi`}
+                tone="border-warning-fg/40 bg-warning-soft" />
+            )}
             {d.payables && (
               <Kpi label="Payables" icon="fa-money-check-dollar" value={formatRupiahCompact(d.payables.outstanding)}
                 to={d.payables.overdueCount ? '/purchase-invoice?paymentStatus=OVERDUE' : '/purchase-invoice?paymentStatus=OPEN'}

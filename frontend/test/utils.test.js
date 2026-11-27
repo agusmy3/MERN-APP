@@ -367,3 +367,22 @@ test('payment helpers: deposit balance, write-off labels, combined payment plan'
   assert.match(batchPlan({ amount: 0, deposits: { d1: 500 }, alloc: { a: 100 }, invoices }).error, /Deposit/);
   assert.match(batchPlan({ amount: 300000, alloc: { a: 300000 }, writeOffs: { a: 1 }, invoices }).error, /INV-A/);
 });
+
+test('deposit write-off labels & balance with write-offs', async () => {
+  const { depositBalance, depositWriteOffLabel } = await import('../src/utils/paymentMeta.js');
+  assert.equal(depositBalance({ status: 'POSTED', amount: 100000, usedAmount: 10000, refundedAmount: 0, writtenOffAmount: 90000 }), 0);
+  assert.equal(depositWriteOffLabel('VENDOR_DISPUTE'), 'Vendor tidak mengakui');
+  assert.match(depositWriteOffLabel('FORFEITED'), /Hangus/);
+});
+
+test('deposit balance confirmation print: totals, escaping, signature block', async () => {
+  const { depositConfirmationHtml } = await import('../src/utils/documentPrint.js');
+  const html = depositConfirmationHtml([
+    { no: 'VDP-1', date: '2026-10-01', amount: 100000, usedAmount: 40000, balance: 60000, reference: 'TRF<1>' },
+    { no: 'VDP-2', date: '2026-11-01', amount: 25000, balance: 25000 },
+  ], { 'company.name': 'PT Kita' }, { title: 'KONFIRMASI SALDO UANG MUKA', text: 'Mohon diperiksa', partyHeading: 'Vendor', partyName: 'CV A&B' });
+  assert.match(html, /85\.000/);
+  assert.match(html, /TRF&lt;1&gt;/);
+  assert.match(html, /CV A&amp;B/);
+  assert.match(html, /PT Kita/);
+});

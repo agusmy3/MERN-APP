@@ -122,6 +122,11 @@ function SalesTab({ token, gudangs, customers }) {
                   Potongan pembayaran {formatRupiah(data.totals.writeOff)}{data.totals.badDebt > 0 ? ` (piutang tak tertagih ${formatRupiah(data.totals.badDebt)})` : ''}
                 </div>
               )}
+              {label === 'Net sales' && data.totals.depositForfeited > 0 && (
+                <div className="text-xs text-muted" title="Saldo deposit customer yang dinyatakan hangus pada periode ini: pendapatan lain-lain, bukan penjualan">
+                  + deposit hangus {formatRupiah(data.totals.depositForfeited)}
+                </div>
+              )}
             </div>
           ))}
         </div>

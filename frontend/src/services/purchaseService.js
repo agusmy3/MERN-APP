@@ -100,3 +100,5 @@ export const applyVendorDeposit = (id, data, token) => axios.post(`${VDP}/${id}/
 export const refundVendorDeposit = (id, data, token) => axios.post(`${VDP}/${id}/refund`, data, getHeaders(token));
 export const cancelVendorDepositRefund = (id, refundId, reason, token) => axios.post(`${VDP}/${id}/refunds/${refundId}/cancel`, { reason }, getHeaders(token));
 export const cancelVendorDeposit = (id, reason, token) => axios.post(`${VDP}/${id}/cancel`, { reason }, getHeaders(token));
+export const writeOffVendorDeposit = (id, data, token) => axios.post(`${VDP}/${id}/write-off`, data, getHeaders(token));
+export const cancelVendorDepositWriteOff = (id, writeOffId, reason, token) => axios.post(`${VDP}/${id}/write-offs/${writeOffId}/cancel`, { reason }, getHeaders(token));

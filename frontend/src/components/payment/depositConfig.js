@@ -1,12 +1,12 @@
 import {
   getCustomerDropdown, getCustomerDeposits, getCustomerDeposit, createCustomerDeposit, applyCustomerDeposit,
-  refundCustomerDeposit, cancelCustomerDepositRefund, cancelCustomerDeposit, getCustomerOpenInvoices, getSalesOrders,
+  refundCustomerDeposit, cancelCustomerDepositRefund, cancelCustomerDeposit, writeOffCustomerDeposit, cancelCustomerDepositWriteOff, getCustomer, getOpenCustomerDeposits, getCustomerOpenInvoices, getSalesOrders,
 } from '../../services/salesService';
 import {
   getVendorDeposits, getVendorDeposit, createVendorDeposit, applyVendorDeposit, refundVendorDeposit,
-  cancelVendorDepositRefund, cancelVendorDeposit, getVendorOpenBills, getPurchaseOrders,
+  cancelVendorDepositRefund, cancelVendorDeposit, writeOffVendorDeposit, cancelVendorDepositWriteOff, getOpenVendorDeposits, getVendorOpenBills, getPurchaseOrders,
 } from '../../services/purchaseService';
-import { getVendorDropdown } from '../../services/vendorService';
+import { getVendorDropdown, getSingleVendor } from '../../services/vendorService';
 
 /**
  * Konfigurasi deposit / uang muka (halaman DepositList / DepositDetail):
@@ -32,6 +32,14 @@ export const DEPOSIT_KINDS = {
     refund: refundCustomerDeposit,
     cancelRefund: cancelCustomerDepositRefund,
     cancel: cancelCustomerDeposit,
+    writeOff: writeOffCustomerDeposit,
+    cancelWriteOff: cancelCustomerDepositWriteOff,
+    side: 'sales',
+    openDeposits: getOpenCustomerDeposits,
+    loadParty: (id, token) => getCustomer(id, token),
+    writeOffHint: 'Saldo yang tidak akan dipakai / diminta kembali dinyatakan hangus (pendapatan lain-lain, bukan penjualan).',
+    confirmTitle: 'KONFIRMASI SALDO DEPOSIT',
+    confirmText: 'Berikut saldo deposit / uang muka Bapak/Ibu yang tercatat pada kami. Mohon diperiksa dan ditandatangani sebagai tanda setuju.',
     openInvoices: getCustomerOpenInvoices,
     // pesanan aktif customer (uang muka untuk SO tsb, info saja)
     loadOrders: async (party, token) => (await getSalesOrders(token, { customer: party, status: 'ACTIVE', pageSize: 100 })).dataSalesOrder || [],
@@ -63,6 +71,14 @@ export const DEPOSIT_KINDS = {
     refund: refundVendorDeposit,
     cancelRefund: cancelVendorDepositRefund,
     cancel: cancelVendorDeposit,
+    writeOff: writeOffVendorDeposit,
+    cancelWriteOff: cancelVendorDepositWriteOff,
+    side: 'purchase',
+    openDeposits: getOpenVendorDeposits,
+    loadParty: async (id, token) => (await getSingleVendor(id, token)).data.data,
+    writeOffHint: 'Saldo yang tidak akan kembali (vendor tidak mengakui / tutup) dicatat sebagai kerugian uang muka.',
+    confirmTitle: 'KONFIRMASI SALDO UANG MUKA',
+    confirmText: 'Berikut uang muka yang telah kami bayarkan dan belum diperhitungkan dengan tagihan. Mohon diperiksa, lalu tanda tangani sebagai konfirmasi saldo.',
     openInvoices: getVendorOpenBills,
     loadOrders: async (party, token) => (await getPurchaseOrders(token, { vendor: party, status: 'ACTIVE', pageSize: 100 })).dataPurchaseOrder || [],
     orderField: 'purchaseOrder',

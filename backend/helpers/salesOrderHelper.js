@@ -134,7 +134,7 @@ const customerCredit = async (customerId, { excludeSo = null } = {}) => {
   uninvoiced = round2(uninvoiced);
   const [dep] = await require('../models/CustomerDeposit').aggregate([
     { $match: { customer: cid, status: 'POSTED' } },
-    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }] }] } } } },
+    { $group: { _id: null, bal: { $sum: { $subtract: ['$amount', { $add: [{ $ifNull: ['$usedAmount', 0] }, { $ifNull: ['$refundedAmount', 0] }, { $ifNull: ['$writtenOffAmount', 0] }] }] } } } },
   ]);
   const deposit = round2(dep?.bal || 0);
   // boleh negatif: deposit melebihi piutang + SO menjadi ruang untuk pesanan berikutnya

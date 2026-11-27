@@ -317,3 +317,41 @@ export const paymentBatchHtml = (d, company = {}, opts = {}) => {
 };
 
 export const printPaymentBatch = (d, company, opts) => printHtml(paymentBatchHtml(d, company, opts));
+
+/**
+ * Surat konfirmasi saldo deposit / uang muka 1 customer / vendor (ditandatangani pihak tsb sebagai bukti bila nanti ada
+ * sengketa). deposits = deposit bersaldo ({ no, date, amount, usedAmount, refundedAmount, balance, reference, note }).
+ * opts { title, text, partyHeading, partyName, partyAddress, asOf }
+ */
+export const depositConfirmationHtml = (deposits, company = {}, opts = {}) => {
+  const total = deposits.reduce((s, d) => s + (d.balance || 0), 0);
+  const rows = deposits.map((d, i) => `<tr>
+      <td class="r">${i + 1}</td>
+      <td><b>${esc(d.no)}</b>${d.reference ? `<div class="m">Ref. ${esc(d.reference)}</div>` : ''}</td>
+      <td>${day(d.date)}</td>
+      <td class="r">${money(d.amount)}</td>
+      <td class="r">${money((d.usedAmount || 0) + (d.refundedAmount || 0) + (d.writtenOffAmount || 0))}</td>
+      <td class="r"><b>${money(d.balance)}</b></td>
+    </tr>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(opts.title)}</title>
+  <style>${BASE_CSS}</style></head><body>
+    ${companyHead(company)}
+    <div class="head">
+      <div><h1>${esc(opts.title)}</h1><div class="m">Per ${day(opts.asOf || new Date())}</div></div>
+    </div>
+    <div class="head"><div class="box"><h3>${esc(opts.partyHeading)}</h3><b>${esc(opts.partyName)}</b>${opts.partyAddress ? `<div class="note">${esc(opts.partyAddress)}</div>` : ''}</div>
+      <div class="box"><h3>Total saldo</h3><b style="font-size:16px">Rp ${money(total)}</b></div></div>
+    <p class="note">${esc(opts.text)}</p>
+    <table class="l">
+      <thead><tr><th class="r" style="width:28px">#</th><th>No. deposit</th><th style="width:95px">Tanggal</th><th class="r" style="width:120px">Jumlah</th><th class="r" style="width:120px">Terpakai / kembali</th><th class="r" style="width:120px">Saldo</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="m">Tidak ada saldo.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="5" class="r"><b>TOTAL SALDO</b></td><td class="r"><b>${money(total)}</b></td></tr></tfoot>
+    </table>
+    <p class="note" style="margin-top:12px">Saldo di atas: [ ] Sesuai &nbsp;&nbsp; [ ] Tidak sesuai, catatan: ..............................................................</p>
+    <div class="sign"><div>${esc(company['company.name'] || 'Perusahaan')}<div class="line"></div></div><div>${esc(opts.partyName)}<div class="line"></div></div></div>
+    ${company['company.documentFooter'] ? `<div class="m note" style="margin-top:14px">${esc(company['company.documentFooter'])}</div>` : ''}
+    <div class="m" style="margin-top:12px">Dicetak ${dayjs().format('DD/MM/YYYY HH:mm')}</div>
+  </body></html>`;
+};
+
+export const printDepositConfirmation = (deposits, company, opts) => printHtml(depositConfirmationHtml(deposits, company, opts));

@@ -172,3 +172,5 @@ export const applyCustomerDeposit = (id, data, token) => axios.post(`${DEP}/${id
 export const refundCustomerDeposit = (id, data, token) => axios.post(`${DEP}/${id}/refund`, data, getHeaders(token));
 export const cancelCustomerDepositRefund = (id, refundId, reason, token) => axios.post(`${DEP}/${id}/refunds/${refundId}/cancel`, { reason }, getHeaders(token));
 export const cancelCustomerDeposit = (id, reason, token) => axios.post(`${DEP}/${id}/cancel`, { reason }, getHeaders(token));
+export const writeOffCustomerDeposit = (id, data, token) => axios.post(`${DEP}/${id}/write-off`, data, getHeaders(token));
+export const cancelCustomerDepositWriteOff = (id, writeOffId, reason, token) => axios.post(`${DEP}/${id}/write-offs/${writeOffId}/cancel`, { reason }, getHeaders(token));

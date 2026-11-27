@@ -154,6 +154,8 @@ customerDeposit.post('/', protect, authorize('salesPayment', 'create'), dep.crea
 customerDeposit.post('/:id/apply', protect, authorize('salesPayment', 'create'), dep.apply);
 customerDeposit.post('/:id/refund', protect, authorize('salesPayment', 'create'), dep.refund);
 customerDeposit.post('/:id/refunds/:refundId/cancel', protect, authorize('salesPayment', 'update'), dep.cancelRefund);
+customerDeposit.post('/:id/write-off', protect, authorize('salesPayment', 'approve'), dep.writeOff);
+customerDeposit.post('/:id/write-offs/:writeOffId/cancel', protect, authorize('salesPayment', 'approve'), dep.cancelWriteOff);
 customerDeposit.post('/:id/cancel', protect, authorize('salesPayment', 'update'), dep.cancel);
 
 module.exports = { customerDeposit, customerReceipt, quotation, salesOrder, deliveryOrder, customer, salesInvoice, salesReturn, salesPayment, priceList, salesReport };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import usePermission from '../hooks/usePermission';
 import useDataTable from '../hooks/useDataTable';
@@ -13,16 +13,28 @@ import { formatRupiah } from '../utils/formatHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { DEPOSIT_KINDS } from '../components/payment/depositConfig';
 import { DEPOSIT_SOURCES } from '../utils/paymentMeta';
+import useToast from '../hooks/useToast';
+import { getSettings } from '../services/purchaseService';
+import { printDepositConfirmation } from '../utils/documentPrint';
 
 const selectClass = `${inputClass} sm:w-auto`;
 
-/** Daftar deposit: kind = 'customer' (/customer-deposit) | 'vendor' (/vendor-deposit); default hanya yang bersaldo */
+/**
+ * Daftar deposit: kind = 'customer' (/customer-deposit) | 'vendor' (/vendor-deposit); default hanya yang bersaldo,
+ * ?show=aged = bersaldo & lebih lama dari setting. Pilih 1 pihak -> cetak konfirmasi saldo.
+ */
 export default function DepositList({ kind }) {
   const cfg = DEPOSIT_KINDS[kind];
   const { user } = useAuth();
   const navigate = useNavigate();
   const perm = usePermission(cfg.resource);
-  const [filters, setFilters] = useState({ hasBalance: 'true', status: '', [cfg.partyField]: '', from: '', to: '' });
+  const toast = useToast();
+  const [searchParams] = useSearchParams();
+  const aged0 = searchParams.get('show') === 'aged';
+  const [filters, setFilters] = useState({
+    hasBalance: aged0 ? '' : 'true', aged: aged0 ? 'true' : '', status: '', [cfg.partyField]: searchParams.get(cfg.partyField) || '', from: '', to: '',
+  });
+  const [alertDays, setAlertDays] = useState(0);
   const [parties, setParties] = useState([]);
   const [totalBalance, setTotalBalance] = useState(null);
 
@@ -35,6 +47,7 @@ export default function DepositList({ kind }) {
     Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
     const data = await cfg.list(user.token, params);
     setTotalBalance(data.totalBalance);
+    setAlertDays(data.alertDays || 0);
     return { items: data[cfg.listKey], total: data.totalData };
   }, [cfg, user.token, filters]);
 
@@ -42,6 +55,27 @@ export default function DepositList({ kind }) {
   const setFilter = (key, value) => {
     setFilters((f) => ({ ...f, [key]: value }));
     table.setCurrentPage(1);
+  };
+
+  // surat konfirmasi saldo deposit untuk 1 pihak (bukti bila nanti ada sengketa)
+  const printConfirmation = async () => {
+    const partyId = filters[cfg.partyField];
+    if (!partyId) return;
+    try {
+      const [deposits, company, party] = await Promise.all([
+        cfg.openDeposits(partyId, user.token),
+        getSettings(user.token).then((x) => x.values).catch(() => ({})),
+        cfg.loadParty(partyId, user.token).catch(() => null),
+      ]);
+      const fallback = parties.find((p) => p._id === partyId);
+      const address = party ? [party.address ?? party.companyAddress, party.kelurahan, party.kecamatan, party.kota, party.provinsi].filter(Boolean).join(', ') : '';
+      printDepositConfirmation(deposits, company, {
+        title: cfg.confirmTitle, text: cfg.confirmText, partyHeading: cfg.partyLabel,
+        partyName: cfg.partyName(party || fallback), partyAddress: address,
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load deposits');
+    }
   };
 
   const money = (v, d) => <span className={d.status === 'CANCELLED' ? 'line-through text-muted' : ''}>{formatRupiah(v || 0)}</span>;
@@ -64,6 +98,11 @@ export default function DepositList({ kind }) {
     {
       key: 'balance', header: 'Balance', width: 140, className: 'text-right tabular-nums font-semibold',
       render: (d) => (d.status === 'CANCELLED' ? <span className="text-muted">-</span> : formatRupiah(d.balance)),
+    },
+    {
+      key: 'age', header: 'Age', width: 100, className: 'text-right tabular-nums',
+      render: (d) => (d.ageDays === null || d.ageDays === undefined ? <span className="text-muted">-</span>
+        : <span className={d.aged ? 'px-1.5 py-0.5 rounded bg-warning-soft text-warning-fg' : ''} title={d.aged ? `Lebih dari ${alertDays} hari` : undefined}>{d.ageDays} d</span>),
     },
     {
       key: 'status', header: 'Status', width: 110,
@@ -96,10 +135,15 @@ export default function DepositList({ kind }) {
             <input type="search" placeholder={`Search no., reference, ${cfg.partyLabel.toLowerCase()}...`} aria-label="Search"
               value={table.searchInput} onChange={(e) => table.setSearchInput(e.target.value)} className={`${inputClass} pl-9`} />
           </div>
-          <select aria-label="Show" value={filters.hasBalance ? 'balance' : filters.status}
-            onChange={(e) => { setFilters((f) => ({ ...f, hasBalance: e.target.value === 'balance' ? 'true' : '', status: e.target.value === 'balance' ? '' : e.target.value })); table.setCurrentPage(1); }}
+          <select aria-label="Show" value={filters.aged ? 'aged' : filters.hasBalance ? 'balance' : filters.status}
+            onChange={(e) => {
+              const v = e.target.value;
+              setFilters((f) => ({ ...f, hasBalance: v === 'balance' ? 'true' : '', aged: v === 'aged' ? 'true' : '', status: ['balance', 'aged'].includes(v) ? '' : v }));
+              table.setCurrentPage(1);
+            }}
             className={selectClass}>
             <option value="balance">With balance</option>
+            {alertDays > 0 && <option value="aged">{`Older than ${alertDays} days`}</option>}
             <option value="">All</option>
             <option value="POSTED">Posted</option>
             <option value="CANCELLED">Cancelled</option>
@@ -116,6 +160,11 @@ export default function DepositList({ kind }) {
           {totalBalance !== null && (
             <span className="ml-auto text-sm">Total balance <b className="tabular-nums">{formatRupiah(totalBalance)}</b></span>
           )}
+          <button type="button" onClick={printConfirmation} disabled={!filters[cfg.partyField]}
+            title={filters[cfg.partyField] ? 'Surat konfirmasi saldo untuk ditandatangani' : `Pilih 1 ${cfg.partyLabel.toLowerCase()} dulu`}
+            className="px-3 py-2 rounded text-sm border border-line hover:bg-subtle cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            <i className="fa fa-print"></i> Balance confirmation
+          </button>
         </div>
         <DataTable columns={columns} data={table.items} sortField={table.sortField} sortOrder={table.sortOrder}
           onSort={table.toggleSort} onSortSelect={table.setSort} startIndex={table.startIndex} loading={table.loading} emptyText="No deposit" />
