@@ -11,7 +11,7 @@ const qtyFmt = (n) => Number(n || 0).toLocaleString('id-ID', { maximumFractionDi
 const day = (d) => (d ? dayjs(d).format('DD MMM YYYY') : '-');
 const variantOf = (sku) => (sku?.variantValues || []).map((v) => v.value).join(' / ');
 const addressOf = (a) => (a
-  ? [[a.alamat ?? a.address, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
+  ? [[a.alamat ?? a.address, a.kelurahan, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
   : '');
 /** qty & satuan baris (kemasan jual): "10" + "DUS (240 PCS)" */
 const lineQty = (l) => qtyFmt(l.qtyUom ?? l.qty);

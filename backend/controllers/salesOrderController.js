@@ -17,7 +17,7 @@ const { salesLineSubtotal, salesTotals, netLineRevenue, soOutstanding } = requir
 const { committedQty, customerCredit } = require('../helpers/salesOrderHelper');
 const { resolvePrices } = require('../helpers/priceHelper');
 const { loadUnits, applyUnits, resolveUnitPrices, priceForLine, unitKey, unitOptions } = require('../helpers/packageHelper');
-const { parseLocation } = require('../helpers/locationHelper');
+const { parseLocation, resolveRegion } = require('../helpers/locationHelper');
 const { assertGudang, applyGudangFilter } = require('../helpers/gudangAccess');
 const { MAX_LINES } = require('../config/stock');
 
@@ -42,6 +42,7 @@ const parseShipTo = (input) => {
   if (typeof input !== 'object') throw new HttpError('Invalid shipping address', 400);
   const loc = parseLocation({
     alamat: input.alamat ?? '', provinsi: input.provinsi ?? '', kota: input.kota ?? '', kecamatan: input.kecamatan ?? '',
+    kelurahan: input.kelurahan ?? '', regionCode: input.regionCode ?? null,
     kodePos: input.kodePos ?? '', latitude: input.latitude ?? null, longitude: input.longitude ?? null,
   });
   return { name: trimText(input.name, 120), phone: trimText(input.phone, 40), ...loc, alamat: trimText(loc.alamat, 500) };
@@ -131,7 +132,7 @@ const resolveRefs = async (parsed) => {
     [...new Set(owners.map((s) => String(s.produk)))].map((id) => ref('produk', id))
   );
   const customer = await Customer.findById(parsed.customer)
-    .select('name phone address provinsi kota kecamatan kodePos latitude longitude isActive isWalkIn').lean();
+    .select('name phone address provinsi kota kecamatan kelurahan regionCode kodePos latitude longitude isActive isWalkIn').lean();
   if (!customer) throw new HttpError('Please select a valid customer', 400);
   if (customer.isWalkIn) throw new HttpError('Sales orders need a named customer, not the walk-in customer', 400);
   if (customer.isActive === false) throw new HttpError(`Customer ${customer.name} is inactive`, 400);
@@ -165,7 +166,8 @@ const applyPrices = async (parsed, quotePrices = null) => {
 /** Alamat kirim default = alamat customer */
 const customerShipTo = (c) => ({
   name: c.name || '', phone: c.phone || '', alamat: c.address || '', provinsi: c.provinsi || '', kota: c.kota || '',
-  kecamatan: c.kecamatan || '', kodePos: c.kodePos || '', latitude: c.latitude ?? null, longitude: c.longitude ?? null,
+  kecamatan: c.kecamatan || '', kelurahan: c.kelurahan || '', regionCode: c.regionCode || null,
+  kodePos: c.kodePos || '', latitude: c.latitude ?? null, longitude: c.longitude ?? null,
 });
 
 const fillSo = (doc, parsed, settings, customer) => {
@@ -274,7 +276,7 @@ const confirm = async (doc, req, settings) => {
 };
 
 const populateSo = (query) => query
-  .populate('customer', 'code name phone address provinsi kota kecamatan kodePos npwp termDays creditLimit isActive')
+  .populate('customer', 'code name phone address provinsi kota kecamatan kelurahan kodePos npwp termDays creditLimit isActive')
   .populate('gudang', 'code name isActive')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })
@@ -513,7 +515,7 @@ exports.getCustomerShipTo = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.customerId)) return errorResponse(res, 'Invalid customer', 400);
     const c = await Customer.findById(req.params.customerId)
-      .select('name phone address provinsi kota kecamatan kodePos latitude longitude termDays').lean();
+      .select('name phone address provinsi kota kecamatan kelurahan regionCode kodePos latitude longitude termDays').lean();
     if (!c) return errorResponse(res, 'Customer not found', 404);
     const excludeSo = mongoose.isValidObjectId(req.query.exclude) ? req.query.exclude : null;
     const credit = await customerCredit(c._id, { excludeSo });
@@ -539,6 +541,7 @@ exports.createSalesOrder = async (req, res) => {
     assertGudang(req, parsed.gudang);
     const doc = await runInTransaction(async () => {
       const { customer } = await resolveRefs(parsed);
+      await resolveRegion(parsed.shipTo);
       await applyPrices(parsed);
       const doc = new SalesOrder({ no: await nextDocNo('SO'), createdBy: req.user._id });
       const settings = await getSettings();
@@ -562,6 +565,7 @@ exports.updateSalesOrder = async (req, res) => {
       const parsed = parseSo(req.body);
       assertGudang(req, parsed.gudang);
       const { customer } = await resolveRefs(parsed);
+      await resolveRegion(parsed.shipTo, doc.shipTo);
       await applyPrices(parsed, await quotationPrices(doc.quotation));
       const before = await audit.snap('salesOrder', [doc]);
       const settings = await getSettings();

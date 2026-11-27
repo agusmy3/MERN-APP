@@ -107,6 +107,8 @@ const ENTITIES = {
       provinsi: { label: 'Province' },
       kota: { label: 'City / Regency' },
       kecamatan: { label: 'District' },
+      kelurahan: { label: 'Village' },
+      regionCode: { label: 'Region Code' },
       kodePos: { label: 'Postal Code' },
       latitude: { label: 'Latitude', format: 'coord' },
       longitude: { label: 'Longitude', format: 'coord' },
@@ -140,6 +142,8 @@ const ENTITIES = {
       provinsi: { label: 'Province' },
       kota: { label: 'City / Regency' },
       kecamatan: { label: 'District' },
+      kelurahan: { label: 'Village' },
+      regionCode: { label: 'Region Code' },
       kodePos: { label: 'Postal Code' },
       latitude: { label: 'Latitude', format: 'coord' },
       longitude: { label: 'Longitude', format: 'coord' },
@@ -184,6 +188,8 @@ const ENTITIES = {
       provinsi: { label: 'Province' },
       kota: { label: 'City / Regency' },
       kecamatan: { label: 'District' },
+      kelurahan: { label: 'Village' },
+      regionCode: { label: 'Region Code' },
       kodePos: { label: 'Postal Code' },
       latitude: { label: 'Latitude', format: 'coord' },
       longitude: { label: 'Longitude', format: 'coord' },
@@ -295,6 +301,8 @@ const ENTITIES = {
       provinsi: { label: 'Province' },
       kota: { label: 'City / Regency' },
       kecamatan: { label: 'District' },
+      kelurahan: { label: 'Village' },
+      regionCode: { label: 'Region Code' },
       kodePos: { label: 'Postal Code' },
       latitude: { label: 'Latitude', format: 'coord' },
       longitude: { label: 'Longitude', format: 'coord' },
@@ -642,7 +650,7 @@ const normalizeValue = (def, value, texts) => {
   if (def.format === 'address') {
     // mis. "Budi · 0812 · Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310"
     if (!value) return null;
-    const place = [value.alamat, value.kecamatan, value.kota, value.provinsi].filter(Boolean).join(', ');
+    const place = [value.alamat, value.kelurahan, value.kecamatan, value.kota, value.provinsi].filter(Boolean).join(', ');
     const text = [value.name, value.phone, [place, value.kodePos].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
     return text || null;
   }

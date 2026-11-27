@@ -31,6 +31,8 @@ const shipToSchema = new mongoose.Schema({
   provinsi: { type: String, default: '' },
   kota: { type: String, default: '' },
   kecamatan: { type: String, default: '' },
+  kelurahan: { type: String, default: '' },
+  regionCode: { type: String, default: null },
   kodePos: { type: String, default: '' },
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },

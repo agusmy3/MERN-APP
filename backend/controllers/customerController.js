@@ -3,7 +3,7 @@ const Counter = require('../models/Counter');
 const { successResponse, errorResponse } = require('../helpers/responseHelper');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
-const { parseRegion } = require('../helpers/locationHelper');
+const { parseRegion, resolveRegion } = require('../helpers/locationHelper');
 const { hasPermission } = require('../config/permissions');
 const { checkAmount, round2 } = require('../helpers/number');
 const { customerCredit } = require('../helpers/salesOrderHelper');
@@ -47,7 +47,7 @@ const parseFields = (body) => {
     if (err) throw new HttpError(err, 400);
     out.creditLimit = round2(body.creditLimit);
   } else if (body.creditLimit === '' || body.creditLimit === null) out.creditLimit = 0;
-  Object.assign(out, parseRegion(body)); // provinsi, kota, kecamatan, kodePos, latitude, longitude
+  Object.assign(out, parseRegion(body)); // wilayah (regionCode + nama), kodePos, latitude, longitude
   return out;
 };
 
@@ -78,7 +78,7 @@ exports.getCustomers = async (req, res) => {
     const filter = {};
     if (req.query.search) {
       const rx = { $regex: escapeRegex(req.query.search), $options: 'i' };
-      filter.$or = ['code', 'name', 'phone', 'email', 'address', 'kota', 'npwp'].map((f) => ({ [f]: rx }));
+      filter.$or = ['code', 'name', 'phone', 'email', 'address', 'kota', 'kecamatan', 'kelurahan', 'npwp'].map((f) => ({ [f]: rx }));
     }
     const [totalData, dataCustomer] = await Promise.all([
       Customer.countDocuments(filter),
@@ -116,6 +116,7 @@ exports.createCustomer = async (req, res) => {
     if (!fields.name) return errorResponse(res, 'Customer name is required', 400);
     assertCreditLimitChange(req, 0, fields.creditLimit);
     const customer = await runInTransaction(async () => {
+      await resolveRegion(fields);
       const code = String(req.body.code || '').trim() || await nextCustomerCode();
       const customer = await Customer.create({
         ...fields,
@@ -146,6 +147,7 @@ exports.updateCustomer = async (req, res) => {
       assertCreditLimitChange(req, customer.creditLimit, fields.creditLimit);
       if (customer.isWalkIn) delete fields.creditLimit;
       const before = await audit.snap('customer', [customer]);
+      await resolveRegion(fields, customer);
       Object.assign(customer, fields, await parsePriceList(req.body));
       if (req.body.code) customer.code = String(req.body.code).trim();
       if (req.body.isActive !== undefined) customer.isActive = req.body.isActive !== false;

@@ -9,10 +9,12 @@ const gudangSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true, uppercase: true, trim: true }, // mis. MAIN, JKT-01
   name: { type: String, required: true, trim: true },
   alamat: { type: String },
-  // wilayah (teks bebas untuk sekarang; bisa diganti master wilayah kelak)
+  // wilayah: dipilih dari master regions (regionCode), nama disalin; data lama tanpa kode = teks bebas
   provinsi: { type: String, trim: true },
   kota: { type: String, trim: true },        // kota / kabupaten
   kecamatan: { type: String, trim: true },
+  kelurahan: { type: String, trim: true },   // kelurahan / desa
+  regionCode: { type: String, default: null, index: true }, // kode wilayah terdalam yang dipilih (master regions)
   kodePos: { type: String, trim: true },     // 5 digit
   // koordinat (WGS84, derajat desimal); keduanya terisi atau keduanya null
   latitude: { type: Number, default: null, min: -90, max: 90 },

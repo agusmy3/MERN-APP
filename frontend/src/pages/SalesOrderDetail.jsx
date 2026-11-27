@@ -32,6 +32,8 @@ import { AuditDetail } from '../components/AuditInfo';
 import UnitCell from '../components/sales/UnitCell';
 import { unitFieldsFromDoc, unitFieldsFromSearch, nextUnitFor, withUnit, payloadUnit, priceItems, priceKey, baseQty } from '../utils/salesLines';
 import { inputClass } from '../utils/formStyles';
+import RegionFields from '../components/RegionFields';
+import { EMPTY_REGION } from '../utils/regionMeta';
 import { formatNumber, formatRupiah, round2, variantLabel } from '../utils/formatHelper';
 import { formatDate2, formatDay, toDateInput } from '../utils/dateHelper';
 import {
@@ -48,7 +50,7 @@ const btnDanger = `${btn} border border-danger-line text-danger hover:bg-danger-
 
 const isBlank = (v) => v === '' || v === null || v === undefined;
 const hasValue = (v) => v !== null && v !== undefined;
-const EMPTY_SHIP = { name: '', phone: '', alamat: '', provinsi: '', kota: '', kecamatan: '', kodePos: '', latitude: '', longitude: '' };
+const EMPTY_SHIP = { name: '', phone: '', alamat: '', ...EMPTY_REGION };
 const shipFrom = (s) => Object.fromEntries(Object.keys(EMPTY_SHIP).map((k) => [k, s?.[k] ?? '']));
 
 const lineFromDoc = (l) => ({
@@ -606,18 +608,10 @@ export default function SalesOrderDetail() {
                     <input id="ship-alamat" value={form.shipTo.alamat} maxLength={500} onChange={(e) => setShip('alamat', e.target.value)} className={inputClass} />
                   </FormField>
                 </div>
-                <FormField label="Province" htmlFor="ship-prov">
-                  <input id="ship-prov" value={form.shipTo.provinsi} onChange={(e) => setShip('provinsi', e.target.value)} className={inputClass} />
-                </FormField>
-                <FormField label="City / Regency" htmlFor="ship-kota">
-                  <input id="ship-kota" value={form.shipTo.kota} onChange={(e) => setShip('kota', e.target.value)} className={inputClass} />
-                </FormField>
-                <FormField label="District" htmlFor="ship-kec">
-                  <input id="ship-kec" value={form.shipTo.kecamatan} onChange={(e) => setShip('kecamatan', e.target.value)} className={inputClass} />
-                </FormField>
-                <FormField label="Postal code" htmlFor="ship-pos">
-                  <input id="ship-pos" value={form.shipTo.kodePos} inputMode="numeric" maxLength={5} onChange={(e) => setShip('kodePos', e.target.value.replace(/\D/g, ''))} className={inputClass} />
-                </FormField>
+                <div className="sm:col-span-2 lg:col-span-4 grid gap-4">
+                  <RegionFields form={form.shipTo} idPrefix="ship" showCoordinates={false}
+                    setForm={(update) => setForm((f) => ({ ...f, shipTo: typeof update === 'function' ? update(f.shipTo) : update }))} />
+                </div>
               </fieldset>
             </section>
           )}

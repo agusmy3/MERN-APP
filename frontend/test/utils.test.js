@@ -124,10 +124,40 @@ test('region helpers: postal code & coordinate pairs, address line', async () =>
   assert.match(regionError({ kodePos: '', latitude: '-6.2', longitude: '' }), /latitude dan longitude/);
   assert.equal(regionError({ kodePos: '10310', latitude: '-6.2', longitude: '106.8' }), null);
   assert.deepEqual(regionFrom({ kota: 'Bandung', latitude: 0, longitude: null }),
-    { provinsi: '', kota: 'Bandung', kecamatan: '', kodePos: '', latitude: '0', longitude: '' });
+    { provinsi: '', kota: 'Bandung', kecamatan: '', kelurahan: '', regionCode: '', kodePos: '', latitude: '0', longitude: '' });
   assert.equal(addressLine({ alamat: 'Jl. Mawar 1', kecamatan: 'Menteng', kota: 'Jakarta Pusat', provinsi: 'DKI Jakarta', kodePos: '10310' }),
     'Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310');
   assert.equal(addressLine({ address: 'Jl. A' }), 'Jl. A');
+  assert.equal(addressLine({ alamat: 'Jl. Dago 1', kelurahan: 'Cipaganti', kecamatan: 'Coblong', kota: 'Kota Bandung', provinsi: 'Jawa Barat' }),
+    'Jl. Dago 1, Cipaganti, Coblong, Kota Bandung, Jawa Barat');
+});
+
+test('region picker helpers: chain, pick level, legacy text, from path', async () => {
+  const { regionChain, pickRegion, legacyRegionText, regionFromPath, EMPTY_REGION } = await import('../src/utils/regionMeta.js');
+  assert.deepEqual(regionChain('32.73.02.1001'), ['32', '32.73', '32.73.02', '32.73.02.1001']);
+  assert.deepEqual(regionChain(''), []);
+
+  // data lama (teks tanpa kode) -> pilih provinsi: teks lama dibuang
+  const legacy = { ...EMPTY_REGION, provinsi: 'Jabar', kota: 'Bandung', kodePos: '40100' };
+  assert.deepEqual(legacyRegionText(legacy).map((x) => x.value), ['Jabar', 'Bandung']);
+  let f = pickRegion(legacy, 0, { kode: '32', name: 'Jawa Barat' });
+  assert.deepEqual([f.regionCode, f.provinsi, f.kota, f.kodePos], ['32', 'Jawa Barat', '', '40100']);
+  f = pickRegion(f, 1, { kode: '32.73', name: 'Kota Bandung' });
+  f = pickRegion(f, 2, { kode: '32.73.02', name: 'Coblong' });
+  f = pickRegion(f, 3, { kode: '32.73.02.1001', name: 'Cipaganti', kodePos: '40131' });
+  assert.deepEqual([f.regionCode, f.kelurahan, f.kodePos], ['32.73.02.1001', 'Cipaganti', '40131']);
+  assert.equal(legacyRegionText(f).length, 0);
+  // kosongkan kota -> kode kembali ke provinsi, tingkat di bawahnya kosong
+  f = pickRegion(f, 1, null);
+  assert.deepEqual([f.regionCode, f.provinsi, f.kota, f.kecamatan, f.kelurahan], ['32', 'Jawa Barat', '', '', '']);
+  // hasil migrasi sebagian: kode sampai kota, teks kecamatan lama masih ada
+  assert.deepEqual(legacyRegionText({ ...EMPTY_REGION, regionCode: '32.73', provinsi: 'Jawa Barat', kota: 'Kota Bandung', kecamatan: 'Tidak Ada' }),
+    [{ label: 'District', value: 'Tidak Ada' }]);
+
+  const p = regionFromPath(EMPTY_REGION, [
+    { kode: '32', name: 'Jawa Barat' }, { kode: '32.73', name: 'Kota Bandung' }, { kode: '32.73.02', name: 'Coblong' },
+  ]);
+  assert.deepEqual([p.regionCode, p.provinsi, p.kecamatan, p.kelurahan], ['32.73.02', 'Jawa Barat', 'Coblong', '']);
 });
 
 test('delivery note html: no prices, escapes text, pickup vs delivery', async () => {

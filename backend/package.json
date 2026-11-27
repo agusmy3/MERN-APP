@@ -19,6 +19,7 @@
     "migrate:sales-lines": "node scripts/migrate-sales-lines.js",
     "migrate:audit-gudang": "node scripts/migrate-audit-gudang.js",
     "regions:import": "node scripts/import-regions.js",
+    "migrate:region-codes": "node scripts/migrate-region-codes.js",
     "seed:defaults": "node scripts/seed-defaults.js",
     "stock:reconcile": "node scripts/stock-reconcile.js",
     "rs:init": "node scripts/init-replica-set.js",

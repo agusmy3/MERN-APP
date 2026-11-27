@@ -11,7 +11,7 @@ const { runInTransaction, HttpError, lock, ref } = require('../helpers/transacti
 
 const SORTABLE_FIELDS = ['code', 'name', 'provinsi', 'kota', 'createdDate', 'updatedDate'];
 
-const { parseLocation } = require('../helpers/locationHelper');
+const { parseLocation, resolveRegion } = require('../helpers/locationHelper');
 
 const handleError = (res, error) => {
   if (error instanceof HttpError) return errorResponse(res, error.message, error.status);
@@ -57,6 +57,7 @@ exports.getGudang = async (req, res) => {
         { provinsi: { $regex: search, $options: 'i' } },
         { kota: { $regex: search, $options: 'i' } },
         { kecamatan: { $regex: search, $options: 'i' } },
+        { kelurahan: { $regex: search, $options: 'i' } },
         { kodePos: { $regex: search, $options: 'i' } },
         { deskripsi: { $regex: search, $options: 'i' } },
       ];
@@ -98,6 +99,7 @@ exports.createGudang = async (req, res) => {
   try {
     const location = parseLocation(req.body);
     const gudang = await runInTransaction(async () => {
+      await resolveRegion(location);
       const gudang = await Gudang.create({
         code: req.body.code,
         name: req.body.name,
@@ -125,7 +127,7 @@ exports.updateGudang = async (req, res) => {
       const before = await audit.snap('gudang', [gudang]);
       gudang.code = req.body.code || gudang.code;
       gudang.name = req.body.name || gudang.name;
-      Object.assign(gudang, parseLocation(req.body));
+      Object.assign(gudang, await resolveRegion(parseLocation(req.body), gudang));
       if (req.body.isActive !== undefined) gudang.isActive = req.body.isActive !== false;
       gudang.updatedDate = new Date();
       gudang.updatedBy = req.user._id;

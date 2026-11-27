@@ -90,6 +90,87 @@ const toItem = (r) => ({
   ...(r.isActive === false ? { isActive: false } : {}),
 });
 
+// ---------- mencocokkan teks wilayah lama (bebas) ke master ----------
+const PREFIX = {
+  1: /^(provinsi|prov|daerah khusus ibukota|daerah khusus|dki|daerah istimewa|d ?i)\s+/,
+  2: /^(kota administrasi|kabupaten administrasi|kota adm|kab adm|kabupaten|kab|kota|kodya)\s+/,
+  3: /^(kecamatan|kec)\s+/,
+  4: /^(kelurahan|kel|desa|ds)\s+/,
+};
+const PROVINCE_ALIAS = {
+  jabar: '32', jateng: '33', jatim: '35', jogja: '34', diy: '34', ntb: '52', ntt: '53', babel: '19', 'bangka belitung': '19',
+  kepri: '21', sumut: '12', sumbar: '13', sumsel: '16', kalbar: '61', kalteng: '62', kalsel: '63', kaltim: '64', kaltara: '65',
+  sulut: '71', sulteng: '72', sulsel: '73', sultra: '74', sulbar: '76', nad: '11', 'nanggroe aceh darussalam': '11',
+};
+/** "Kab. Bandung" -> "bandung", "DKI Jakarta" -> "jakarta", "Kec. Coblong" -> "coblong" */
+const normRegion = (text, level) => {
+  let x = String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  for (let prev = null; prev !== x;) { prev = x; x = x.replace(PREFIX[level], '').trim(); }
+  return x;
+};
+
+/**
+ * Cocokkan teks wilayah (provinsi, kota, kecamatan, kelurahan) ke master, dari atas ke bawah; berhenti di tingkat
+ * yang tidak cocok / ambigu. Kota ambigu (Kota vs Kabupaten Bandung) diputuskan dari kata "kota"/"kab" di teks,
+ * lalu dari kecamatan yang ada di dalamnya. Provinsi kosong -> kota dicari di seluruh Indonesia (harus unik).
+ * -> { regionCode, names: { provinsi, kota, kecamatan, kelurahan } (tingkat yang cocok), level, issue }
+ */
+async function matchRegion(input) {
+  const want = { 1: input.provinsi, 2: input.kota, 3: input.kecamatan, 4: input.kelurahan };
+  const result = { regionCode: null, names: {}, level: 0, issue: null };
+  const accept = (r) => {
+    result.regionCode = r._id;
+    result.level = r.level;
+    result.names[['provinsi', 'kota', 'kecamatan', 'kelurahan'][r.level - 1]] = r.name;
+  };
+  const childrenOf = (parent) => Region.find({ parent, isActive: true }).select('name level parent').lean();
+  const candidates = (list, level) => {
+    const key = normRegion(want[level], level);
+    return key ? list.filter((r) => normRegion(r.name, level) === key) : [];
+  };
+
+  let current = null;
+  if (normRegion(want[1], 1)) {
+    const provinces = await childrenOf(null);
+    const alias = PROVINCE_ALIAS[normRegion(want[1], 1)];
+    current = alias ? provinces.find((p) => p._id === alias) : candidates(provinces, 1)[0];
+    if (!current) { result.issue = `province "${want[1]}" not found`; return result; }
+    accept(current);
+  }
+  if (!normRegion(want[2], 2)) return result;
+  let cities = current ? candidates(await childrenOf(current._id), 2)
+    : candidates(await Region.find({ level: 2, isActive: true }).select('name level parent').lean(), 2);
+  if (cities.length > 1) {
+    const raw = String(want[2]).toLowerCase();
+    const typed = cities.filter((c) => (/\bkab/.test(raw) ? /^Kabupaten/ : /\bkota\b/.test(raw) ? /^Kota/ : /./).test(c.name));
+    if (typed.length) cities = typed;
+  }
+  if (cities.length > 1 && normRegion(want[3], 3)) {
+    const withDistrict = [];
+    for (const c of cities) if (candidates(await childrenOf(c._id), 3).length) withDistrict.push(c);
+    if (withDistrict.length) cities = withDistrict;
+  }
+  if (cities.length !== 1) { result.issue = `city / regency "${want[2]}" ${cities.length ? 'is ambiguous' : 'not found'}`; return result; }
+  if (!current) {
+    const prov = await Region.findById(cities[0].parent).lean();
+    accept(prov);
+  }
+  accept(cities[0]);
+  current = cities[0];
+  for (const level of [3, 4]) {
+    if (!normRegion(want[level], level)) return result;
+    const found = candidates(await childrenOf(current._id), level);
+    if (found.length !== 1) {
+      result.issue = `${level === 3 ? 'district' : 'village'} "${want[level]}" ${found.length ? 'is ambiguous' : 'not found'}`;
+      return result;
+    }
+    accept(found[0]);
+    current = found[0];
+  }
+  return result;
+}
+
 module.exports = {
+  normRegion, matchRegion,
   DATA_FILE, LEVEL_LABEL, CODE_RX, levelOf, parentOf, ancestorCodes, readRegionFile, importRegions, regionPath, centerOf, toItem,
 };

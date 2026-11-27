@@ -138,7 +138,7 @@ const fill = (doc, parsed, settings) => {
 };
 
 const populateQuotation = (query) => query
-  .populate('customer', 'code name phone email address provinsi kota kecamatan kodePos npwp termDays isWalkIn isActive')
+  .populate('customer', 'code name phone email address provinsi kota kecamatan kelurahan kodePos npwp termDays isWalkIn isActive')
   .populate('gudang', 'code name isActive')
   .populate('lines.sku', 'sku variantValues isActive hargaJual')
   .populate({ path: 'lines.produk', select: 'name uom', populate: { path: 'uom', select: 'code' } })

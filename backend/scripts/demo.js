@@ -21,6 +21,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 const mongoose = require('mongoose');
 const { runInTransaction } = require('../helpers/transaction');
+const { matchRegion } = require('../helpers/regionHelper');
 const { applyMovements, nextDocNo } = require('../helpers/stockHelper');
 const { buildComboKey, generateSkuCode, cartesian } = require('../helpers/skuHelper');
 const { lineSubtotal, poTotals } = require('../helpers/purchaseHelper');
@@ -103,8 +104,15 @@ async function main() {
   const summary = await runInTransaction(async () => {
     const batchId = audit.newBatchId();
     const log = (entity, docs) => audit.logCreate(req, entity, docs, { batchId });
+    // wilayah dari master (regions): teks demo dicocokkan -> regionCode + nama resmi
+    const withRegion = async (data) => {
+      if (!data.provinsi) return data;
+      const m = await matchRegion(data);
+      if (!m.regionCode || m.issue) throw new Error(`Wilayah demo tidak cocok (${m.issue}). Jalankan npm run regions:import`);
+      return { ...data, ...m.names, regionCode: m.regionCode };
+    };
     const create = async (Model, entity, data) => {
-      const doc = await Model.create({ ...data, ...by });
+      const doc = await Model.create({ ...(await withRegion(data)), ...by });
       await log(entity, [doc]);
       return doc;
     };
@@ -115,22 +123,22 @@ async function main() {
     const gudang = {
       main: await create(Gudang, 'gudang', {
         code: 'MAIN', name: 'Gudang Utama Jakarta', alamat: 'Jl. Gudang Raya No. 10', provinsi: 'DKI Jakarta', kota: 'Jakarta Selatan',
-        kecamatan: 'Kebayoran Baru', kodePos: '12160', latitude: -6.2441, longitude: 106.7991,
+        kecamatan: 'Kebayoran Baru', kelurahan: 'Melawai', kodePos: '12160', latitude: -6.2441, longitude: 106.7991,
       }),
       sby: await create(Gudang, 'gudang', {
         code: 'SBY', name: 'Gudang Surabaya', alamat: 'Jl. Gudang Timur No. 20', provinsi: 'Jawa Timur', kota: 'Surabaya',
-        kecamatan: 'Genteng', kodePos: '60275', latitude: -7.2575, longitude: 112.7521,
+        kecamatan: 'Genteng', kelurahan: 'Genteng', kodePos: '60275', latitude: -7.2575, longitude: 112.7521,
       }),
     };
     const outlet = {
       jkt: await create(Outlet, 'outlet', {
         code: 'TOKO-JKT', name: 'Toko Jakarta (Demo)', gudang: gudang.main._id, phone: '021-5550-0001',
-        alamat: 'Jl. Pasar Baru No. 5', provinsi: 'DKI Jakarta', kota: 'Jakarta Pusat', kecamatan: 'Sawah Besar', kodePos: '10710',
+        alamat: 'Jl. Pasar Baru No. 5', provinsi: 'DKI Jakarta', kota: 'Jakarta Pusat', kecamatan: 'Sawah Besar', kelurahan: 'Pasar Baru', kodePos: '10710',
         latitude: -6.1615, longitude: 106.8338, receiptHeader: 'TOKO DEMO\nNPWP 00.000.000.0-000.000', receiptFooter: 'Terima kasih atas kunjungan Anda',
       }),
       sby: await create(Outlet, 'outlet', {
         code: 'TOKO-SBY', name: 'Toko Surabaya (Demo)', gudang: gudang.sby._id, phone: '031-5550-0002',
-        alamat: 'Jl. Tunjungan No. 12', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Genteng', kodePos: '60275',
+        alamat: 'Jl. Tunjungan No. 12', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Genteng', kelurahan: 'Ketabang', kodePos: '60272',
         latitude: -7.2620, longitude: 112.7408, receiptFooter: 'Barang yang sudah dibeli dapat ditukar dalam 3 hari dengan struk', receiptWidth: 80,
       }),
     };
@@ -159,8 +167,8 @@ async function main() {
       sembako: await create(Kategori, 'kategori', { name: 'Sembako', deskripsi: 'Kebutuhan pokok, dijual per berat' }),
     };
     const vendor = {
-      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1', provinsi: 'Jawa Barat', kota: 'Bandung', kecamatan: 'Coblong', kodePos: '40132', termDays: 30 }),
-      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2', provinsi: 'DKI Jakarta', kota: 'Jakarta Utara', kecamatan: 'Penjaringan', kodePos: '14440', termDays: 14 }),
+      sandang: await create(Vendor, 'vendor', { companyName: 'CV Sandang Makmur (Demo)', picName: 'Budi', picContact: '0812-0000-0001', companyAddress: 'Jl. Contoh No. 1', provinsi: 'Jawa Barat', kota: 'Bandung', kecamatan: 'Coblong', kelurahan: 'Lebak Gede', kodePos: '40132', termDays: 30 }),
+      elektro: await create(Vendor, 'vendor', { companyName: 'PT Elektro Sentosa (Demo)', picName: 'Sari', picContact: '0812-0000-0002', companyAddress: 'Jl. Contoh No. 2', provinsi: 'DKI Jakarta', kota: 'Jakarta Utara', kecamatan: 'Penjaringan', kelurahan: 'Penjaringan', kodePos: '14440', termDays: 14 }),
       pangan: await create(Vendor, 'vendor', { companyName: 'UD Pangan Jaya (Demo)', picName: 'Andi', picContact: '0812-0000-0003', companyAddress: 'Jl. Contoh No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Genteng', kodePos: '60275' }),
     };
 
@@ -279,8 +287,8 @@ async function main() {
     });
     const customer = {
       walkIn: await Customer.findOne({ isWalkIn: true }),
-      maju: await create(Customer, 'customer', { code: 'CUST00001', name: 'CV Maju Jaya (Demo)', phone: '0813-0000-1001', address: 'Jl. Niaga No. 8', provinsi: 'DKI Jakarta', kota: 'Jakarta Barat', kecamatan: 'Tambora', kodePos: '11220', latitude: -6.1450123, longitude: 106.8058456, npwp: '01.234.567.8-901.000', termDays: 30, priceList: grosir._id }),
-      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174', termDays: 14, creditLimit: 25000000 }),
+      maju: await create(Customer, 'customer', { code: 'CUST00001', name: 'CV Maju Jaya (Demo)', phone: '0813-0000-1001', address: 'Jl. Niaga No. 8', provinsi: 'DKI Jakarta', kota: 'Jakarta Barat', kecamatan: 'Tambora', kelurahan: 'Tambora', kodePos: '11220', latitude: -6.1450123, longitude: 106.8058456, npwp: '01.234.567.8-901.000', termDays: 30, priceList: grosir._id }),
+      sinar: await create(Customer, 'customer', { code: 'CUST00002', name: 'Toko Sinar Abadi (Demo)', phone: '0813-0000-1002', address: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kelurahan: 'Bubutan', kodePos: '60174', termDays: 14, creditLimit: 25000000 }),
       budi: await create(Customer, 'customer', { code: 'CUST00003', name: 'Budi Santoso (Demo)', phone: '0813-0000-1003' }),
     };
     if (!customer.walkIn) throw new Error('Customer walk-in belum ada. Jalankan npm run init.');
@@ -369,7 +377,10 @@ async function main() {
     const so = new SalesOrder({
       no: await nextDocNo('SO'), customer: customer.sinar._id, gudang: gudang.main._id, date: new Date(Date.now() - 2 * DAY),
       requestedDate: new Date(Date.now() + 2 * DAY), customerPoNo: 'PO-SA-0099', deliveryMethod: 'DELIVERY',
-      shipTo: { name: 'Toko Sinar Abadi', phone: '0813-0000-1002', alamat: 'Jl. Pahlawan No. 3', provinsi: 'Jawa Timur', kota: 'Surabaya', kecamatan: 'Bubutan', kodePos: '60174' },
+      shipTo: {
+        name: 'Toko Sinar Abadi', phone: '0813-0000-1002', alamat: 'Jl. Pahlawan No. 3', provinsi: customer.sinar.provinsi, kota: customer.sinar.kota,
+        kecamatan: customer.sinar.kecamatan, kelurahan: customer.sinar.kelurahan, regionCode: customer.sinar.regionCode, kodePos: '60174',
+      },
       status: 'OPEN', taxRate, priceIncludesTax: soPit, lines: soLines,
       ...salesTotals(soLines, { taxRate, priceIncludesTax: soPit, shippingCharge: 25000 }),
       note: 'Data demo', confirmedBy: admin._id, confirmedDate: new Date(Date.now() - 2 * DAY), ...by,

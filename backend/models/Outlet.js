@@ -11,10 +11,12 @@ const outletSchema = new mongoose.Schema({
   gudang: { type: mongoose.Schema.Types.ObjectId, ref: 'Gudang', required: true },
   phone: { type: String, trim: true, default: '' },
   alamat: { type: String },
-  // wilayah (teks bebas, sama dengan Gudang)
+  // wilayah (sama dengan Gudang: regionCode + nama dari master regions)
   provinsi: { type: String, trim: true },
   kota: { type: String, trim: true },        // kota / kabupaten
   kecamatan: { type: String, trim: true },
+  kelurahan: { type: String, trim: true },   // kelurahan / desa
+  regionCode: { type: String, default: null, index: true }, // kode wilayah terdalam yang dipilih (master regions)
   kodePos: { type: String, trim: true },     // 5 digit
   latitude: { type: Number, default: null, min: -90, max: 90 },
   longitude: { type: Number, default: null, min: -180, max: 180 },

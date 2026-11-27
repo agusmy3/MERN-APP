@@ -12,6 +12,8 @@ import { AuditDetail } from '../components/AuditInfo';
 import { historyAside } from '../utils/historyAside';
 import { auditColumn, actionColumn } from '../utils/tableColumns';
 import { inputClass } from '../utils/formStyles';
+import RegionFields from '../components/RegionFields';
+import { EMPTY_REGION, regionFrom, regionError, mapUrl } from '../utils/regionMeta';
 
 const EMPTY_FORM = {
   code: '',
@@ -24,12 +26,7 @@ const EMPTY_FORM = {
   receiptWidth: 58,
   autoPrint: false,
   alamat: '',
-  provinsi: '',
-  kota: '',
-  kecamatan: '',
-  kodePos: '',
-  latitude: '',
-  longitude: '',
+  ...EMPTY_REGION,
   deskripsi: '',
   isActive: true,
 };
@@ -37,8 +34,6 @@ const EMPTY_FORM = {
 const hasCoord = (row) => row.latitude !== null && row.latitude !== undefined
   && row.longitude !== null && row.longitude !== undefined;
 
-// link peta (dibuka user di tab baru; tidak ada request otomatis ke layanan luar)
-const mapUrl = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
 
 /**
  * Master Outlet / toko POS: lokasi + gudang sumber stok + pengaturan struk. Kasir ditugaskan ke outlet
@@ -75,12 +70,7 @@ export default function Outlet() {
       receiptWidth: row.receiptWidth || 58,
       autoPrint: row.autoPrint === true,
       alamat: row.alamat || '',
-      provinsi: row.provinsi || '',
-      kota: row.kota || '',
-      kecamatan: row.kecamatan || '',
-      kodePos: row.kodePos || '',
-      latitude: hasCoord(row) ? String(row.latitude) : '',
-      longitude: hasCoord(row) ? String(row.longitude) : '',
+      ...regionFrom(row),
       deskripsi: row.deskripsi || '',
       isActive: row.isActive !== false,
     }),
@@ -91,12 +81,9 @@ export default function Outlet() {
         toast.warning('Pilih gudang sumber stok.');
         return null;
       }
-      if (form.kodePos && !/^\d{5}$/.test(form.kodePos)) {
-        toast.warning('Kode pos harus 5 digit angka.');
-        return null;
-      }
-      if (!form.latitude !== !form.longitude) {
-        toast.warning('Isi latitude dan longitude sekaligus, atau kosongkan keduanya.');
+      const regionErr = regionError(form);
+      if (regionErr) {
+        toast.warning(regionErr);
         return null;
       }
       return form;
@@ -115,6 +102,7 @@ export default function Outlet() {
     { key: 'name', header: 'Name', sortField: 'name', width: 200 },
     { key: 'gudang', header: 'Warehouse', width: 120, render: (row) => row.gudang?.code || '-' },
     { key: 'alamat', header: 'Address', width: 240 },
+    { key: 'kelurahan', header: 'Village', width: 150 },
     { key: 'kecamatan', header: 'District', width: 150 },
     { key: 'kota', header: 'City / Regency', sortField: 'kota', width: 170 },
     { key: 'provinsi', header: 'Province', sortField: 'provinsi', width: 160 },
@@ -212,69 +200,7 @@ export default function Outlet() {
           />
         </FormField>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Province" htmlFor="outlet-provinsi">
-            <input id="outlet-provinsi" name="provinsi" autoComplete="off" placeholder="e.g. DKI Jakarta"
-              value={form.provinsi} onChange={crud.handleChange} className={inputClass} />
-          </FormField>
-          <FormField label="City / Regency" htmlFor="outlet-kota">
-            <input id="outlet-kota" name="kota" autoComplete="off" placeholder="e.g. Jakarta Selatan"
-              value={form.kota} onChange={crud.handleChange} className={inputClass} />
-          </FormField>
-          <FormField label="District" htmlFor="outlet-kecamatan">
-            <input id="outlet-kecamatan" name="kecamatan" autoComplete="off" placeholder="Kecamatan"
-              value={form.kecamatan} onChange={crud.handleChange} className={inputClass} />
-          </FormField>
-          <FormField label="Postal Code" htmlFor="outlet-kodepos" hint="5 digit.">
-            <input id="outlet-kodepos" name="kodePos" autoComplete="off" inputMode="numeric" maxLength={5} placeholder="12345"
-              value={form.kodePos}
-              onChange={(e) => crud.setForm((prev) => ({ ...prev, kodePos: e.target.value.replace(/\D/g, '').slice(0, 5) }))}
-              className={inputClass} />
-          </FormField>
-        </div>
-
-        <FormField
-          label="Coordinates"
-          htmlFor="outlet-lat"
-          hint={'Derajat desimal (WGS84). Bisa tempel langsung "lat, long" dari Google Maps ke kolom Latitude.'}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              id="outlet-lat"
-              aria-label="Latitude"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="Latitude, e.g. -6.2088"
-              value={form.latitude}
-              onChange={(e) => {
-                const v = e.target.value;
-                // "lat, long" ditempel sekaligus -> pecah ke dua kolom
-                const parts = v.split(',').map((x) => x.trim());
-                if (parts.length === 2 && parts.every((x) => x !== '' && !Number.isNaN(Number(x)))) {
-                  crud.setForm((prev) => ({ ...prev, latitude: parts[0], longitude: parts[1] }));
-                } else {
-                  crud.setForm((prev) => ({ ...prev, latitude: v }));
-                }
-              }}
-              className={inputClass}
-            />
-            <input
-              aria-label="Longitude"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="Longitude, e.g. 106.8456"
-              value={form.longitude}
-              onChange={(e) => crud.setForm((prev) => ({ ...prev, longitude: e.target.value }))}
-              className={inputClass}
-            />
-          </div>
-          {form.latitude && form.longitude && !Number.isNaN(Number(form.latitude)) && !Number.isNaN(Number(form.longitude)) && (
-            <a href={mapUrl(form.latitude, form.longitude)} target="_blank" rel="noopener noreferrer"
-              className="inline-block mt-1 text-xs text-primary hover:underline">
-              <i className="fa fa-location-dot mr-1"></i>Lihat di Google Maps
-            </a>
-          )}
-        </FormField>
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="outlet" />
 
         <fieldset className="rounded border border-line p-3 space-y-3">
           <legend className="px-1 text-sm font-semibold text-fg">POS & receipt</legend>

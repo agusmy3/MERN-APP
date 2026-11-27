@@ -14,6 +14,8 @@ const customerSchema = new mongoose.Schema({
   provinsi: { type: String, trim: true, default: '' },
   kota: { type: String, trim: true, default: '' },        // kota / kabupaten
   kecamatan: { type: String, trim: true, default: '' },
+  kelurahan: { type: String, trim: true, default: '' },   // kelurahan / desa
+  regionCode: { type: String, default: null, index: true }, // kode wilayah terdalam yang dipilih (master regions); nama wilayah diisi dari master
   kodePos: { type: String, trim: true, default: '' },     // 5 digit
   latitude: { type: Number, default: null, min: -90, max: 90 },
   longitude: { type: Number, default: null, min: -180, max: 180 },

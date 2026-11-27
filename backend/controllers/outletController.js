@@ -4,7 +4,7 @@ const Gudang = require('../models/Gudang');
 const { successResponse, errorResponse } = require('../helpers/responseHelper');
 const audit = require('../helpers/auditLogger');
 const { runInTransaction, HttpError, lock, ref } = require('../helpers/transaction');
-const { parseLocation } = require('../helpers/locationHelper');
+const { parseLocation, resolveRegion } = require('../helpers/locationHelper');
 
 const SORTABLE_FIELDS = ['code', 'name', 'provinsi', 'kota', 'createdDate', 'updatedDate'];
 
@@ -53,7 +53,7 @@ exports.getOutlets = async (req, res) => {
     const filter = {};
     if (req.query.search) {
       const rx = { $regex: escapeRegex(req.query.search), $options: 'i' };
-      filter.$or = ['code', 'name', 'alamat', 'provinsi', 'kota', 'kecamatan', 'kodePos', 'phone'].map((f) => ({ [f]: rx }));
+      filter.$or = ['code', 'name', 'alamat', 'provinsi', 'kota', 'kecamatan', 'kelurahan', 'kodePos', 'phone'].map((f) => ({ [f]: rx }));
     }
     const [totalData, dataOutlet] = await Promise.all([
       Outlet.countDocuments(filter),
@@ -88,6 +88,7 @@ exports.createOutlet = async (req, res) => {
     const pos = parsePos(req.body);
     const outlet = await runInTransaction(async () => {
       const gudang = await resolveGudang(req.body.gudang);
+      await resolveRegion(location);
       const outlet = await Outlet.create({
         code: req.body.code,
         name: req.body.name,
@@ -123,6 +124,7 @@ exports.updateOutlet = async (req, res) => {
       }
       outlet.code = req.body.code || outlet.code;
       outlet.name = req.body.name || outlet.name;
+      await resolveRegion(location, outlet);
       Object.assign(outlet, location, pos);
       if (req.body.isActive !== undefined) outlet.isActive = req.body.isActive !== false;
       outlet.updatedDate = new Date();

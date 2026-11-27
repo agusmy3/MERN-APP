@@ -87,6 +87,13 @@ test('demo: master, stock, users per role with scoped access, sample transaction
   assert.match(r.out, /sudah berisi data/);
 
   assert.equal(await t.model('Gudang').countDocuments(), 2);
+  // wilayah dari master: kode + nama resmi
+  const main = await t.model('Gudang').findOne({ code: 'MAIN' }).lean();
+  assert.equal(main.kelurahan, 'Melawai');
+  assert.equal(main.kota, 'Kota Administrasi Jakarta Selatan');
+  assert.match(main.regionCode, /^31\.74\.07\.\d{4}$/); // kelurahan Melawai, Kebayoran Baru
+  assert.equal((await t.model('Vendor').findOne({ companyName: /Pangan/ }).lean()).regionCode, '35.78.07'); // kecamatan Genteng, Surabaya
+  assert.equal((await t.model('SalesOrder').findOne({ customerPoNo: 'PO-SA-0099' }).lean()).shipTo.kelurahan, 'Bubutan');
   assert.equal(await t.model('Outlet').countDocuments(), 2);
   assert.ok(await t.model('Kategori').countDocuments() >= 2);
   assert.ok(await t.model('Produk').countDocuments() >= 5);
@@ -98,7 +105,7 @@ test('demo: master, stock, users per role with scoped access, sample transaction
   const so = await t.model('SalesOrder').findOne().lean();
   assert.equal(so.status, 'PARTIAL');
   assert.equal(await t.model('DeliveryOrder').countDocuments({ status: 'POSTED', invoice: null }), 1);
-  assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).kota, 'Surabaya');
+  assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).kota, 'Kota Surabaya'); // nama resmi dari master wilayah
   assert.equal((await t.model('Customer').findOne({ code: 'CUST00002' }).lean()).creditLimit, 25000000);
   assert.equal(await t.model('Quotation').countDocuments({ status: 'SENT' }), 1);
   assert.ok(await t.model('ProdukSku').exists({ 'packages.konversi': 24 }));

@@ -92,5 +92,5 @@ export const DELIVERY_METHODS = {
 
 /** Alamat 1 baris: "Jl. Mawar 1, Menteng, Jakarta Pusat, DKI Jakarta 10310" */
 export const addressLine = (a) => (a
-  ? [[a.alamat ?? a.address, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
+  ? [[a.alamat ?? a.address, a.kelurahan, a.kecamatan, a.kota, a.provinsi].filter(Boolean).join(', '), a.kodePos].filter(Boolean).join(' ')
   : '');

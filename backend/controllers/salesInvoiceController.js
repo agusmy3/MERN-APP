@@ -174,7 +174,7 @@ const fillInvoice = (doc, parsed, settings, customer) => {
 };
 
 const populateDoc = (query) => query
-  .populate('customer', 'code name phone address provinsi kota kecamatan kodePos npwp isWalkIn isActive')
+  .populate('customer', 'code name phone address provinsi kota kecamatan kelurahan kodePos npwp isWalkIn isActive')
   .populate('gudang', 'code name isActive')
   .populate('salesOrders', 'no customerPoNo deliveryMethod')
   .populate('deliveryOrders', 'no date')
