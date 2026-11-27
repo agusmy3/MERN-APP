@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyWithReload } from '../utils/lazyPage';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -15,7 +16,7 @@ import { REORDER_STATUS } from '../utils/reorderMeta';
 import usePermission from '../hooks/usePermission';
 
 // widget peta memuat Leaflet: chunk terpisah
-const MapWidget = lazy(() => import('../components/map/MapWidget'));
+const MapWidget = lazyWithReload(() => import('../components/map/MapWidget'));
 
 const getDashboard = async (token) => (await axios.get('/api/dashboard', {
   headers: { Authorization: `Bearer ${token}` },

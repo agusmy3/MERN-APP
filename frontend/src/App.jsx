@@ -1,70 +1,70 @@
-import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Kategori from './pages/Kategori';
-import Produk from './pages/Produk';
-import ProdukDetail from './pages/ProdukDetail';
-import Menu from './pages/Menu';
-import Vendor from './pages/Vendor';
-import Customer from './pages/Customer';
-import SalesInvoice from './pages/SalesInvoice';
-import SalesInvoiceDetail from './pages/SalesInvoiceDetail';
-import SalesReturn from './pages/SalesReturn';
-import SalesOrder from './pages/SalesOrder';
-import Quotation from './pages/Quotation';
-import QuotationDetail from './pages/QuotationDetail';
-import SalesOrderDetail from './pages/SalesOrderDetail';
-import DeliveryOrder from './pages/DeliveryOrder';
-import DeliveryOrderDetail from './pages/DeliveryOrderDetail';
-import SalesReturnDetail from './pages/SalesReturnDetail';
-import SalesPayment from './pages/SalesPayment';
-import PriceList from './pages/PriceList';
-import PriceListDetail from './pages/PriceListDetail';
-import SalesReport from './pages/SalesReport';
-import Outlet from './pages/Outlet';
-import Pos from './pages/Pos';
-import PosShift from './pages/PosShift';
-import Uom from './pages/Uom';
-import Variant from './pages/Variant';
-import Users from './pages/Users';
-import Roles from './pages/Roles';
-import Appearance from './pages/Appearance';
-import AuditLog from './pages/AuditLog';
-import Gudang from './pages/Gudang';
-import StockAdjustment from './pages/StockAdjustment';
-import StockAdjustmentDetail from './pages/StockAdjustmentDetail';
-import StockTransfer from './pages/StockTransfer';
-import StockTransferDetail from './pages/StockTransferDetail';
-import StockMovement from './pages/StockMovement';
-import PurchaseOrder from './pages/PurchaseOrder';
-import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
-import GoodsReceipt from './pages/GoodsReceipt';
-import GoodsReceiptDetail from './pages/GoodsReceiptDetail';
-import PurchaseInvoice from './pages/PurchaseInvoice';
-import PurchaseInvoiceDetail from './pages/PurchaseInvoiceDetail';
-import VendorPayment from './pages/VendorPayment';
-import PaymentBatchList from './pages/PaymentBatchList';
-import PaymentBatchDetail from './pages/PaymentBatchDetail';
-import DepositList from './pages/DepositList';
-import DepositDetail from './pages/DepositDetail';
-import PurchaseReturn from './pages/PurchaseReturn';
-import PurchaseReturnDetail from './pages/PurchaseReturnDetail';
-import Settings from './pages/Settings';
-import StockValuation from './pages/StockValuation';
-import Reorder from './pages/Reorder';
-import CostRevaluation from './pages/CostRevaluation';
-import CostRevaluationDetail from './pages/CostRevaluationDetail';
-import NotFound from './pages/NotFound';
 import PublicLayout from './layouts/PublicLayout';
 import ProtectedLayout from './layouts/ProtectedLayout';
 import RequirePermission from './components/RequirePermission';
+import { lazyWithReload } from './utils/lazyPage';
+
+// Halaman dimuat per rute (chunk terpisah, diunduh saat pertama dibuka); Login & Dashboard ikut bundle utama.
+const Kategori = lazyWithReload(() => import('./pages/Kategori'));
+const Produk = lazyWithReload(() => import('./pages/Produk'));
+const ProdukDetail = lazyWithReload(() => import('./pages/ProdukDetail'));
+const Menu = lazyWithReload(() => import('./pages/Menu'));
+const Vendor = lazyWithReload(() => import('./pages/Vendor'));
+const Customer = lazyWithReload(() => import('./pages/Customer'));
+const SalesInvoice = lazyWithReload(() => import('./pages/SalesInvoice'));
+const SalesInvoiceDetail = lazyWithReload(() => import('./pages/SalesInvoiceDetail'));
+const SalesReturn = lazyWithReload(() => import('./pages/SalesReturn'));
+const SalesOrder = lazyWithReload(() => import('./pages/SalesOrder'));
+const Quotation = lazyWithReload(() => import('./pages/Quotation'));
+const QuotationDetail = lazyWithReload(() => import('./pages/QuotationDetail'));
+const SalesOrderDetail = lazyWithReload(() => import('./pages/SalesOrderDetail'));
+const DeliveryOrder = lazyWithReload(() => import('./pages/DeliveryOrder'));
+const DeliveryOrderDetail = lazyWithReload(() => import('./pages/DeliveryOrderDetail'));
+const SalesReturnDetail = lazyWithReload(() => import('./pages/SalesReturnDetail'));
+const SalesPayment = lazyWithReload(() => import('./pages/SalesPayment'));
+const PriceList = lazyWithReload(() => import('./pages/PriceList'));
+const PriceListDetail = lazyWithReload(() => import('./pages/PriceListDetail'));
+const SalesReport = lazyWithReload(() => import('./pages/SalesReport'));
+const Outlet = lazyWithReload(() => import('./pages/Outlet'));
+const Pos = lazyWithReload(() => import('./pages/Pos'));
+const PosShift = lazyWithReload(() => import('./pages/PosShift'));
+const Uom = lazyWithReload(() => import('./pages/Uom'));
+const Variant = lazyWithReload(() => import('./pages/Variant'));
+const Users = lazyWithReload(() => import('./pages/Users'));
+const Roles = lazyWithReload(() => import('./pages/Roles'));
+const Appearance = lazyWithReload(() => import('./pages/Appearance'));
+const AuditLog = lazyWithReload(() => import('./pages/AuditLog'));
+const Gudang = lazyWithReload(() => import('./pages/Gudang'));
+const StockAdjustment = lazyWithReload(() => import('./pages/StockAdjustment'));
+const StockAdjustmentDetail = lazyWithReload(() => import('./pages/StockAdjustmentDetail'));
+const StockTransfer = lazyWithReload(() => import('./pages/StockTransfer'));
+const StockTransferDetail = lazyWithReload(() => import('./pages/StockTransferDetail'));
+const StockMovement = lazyWithReload(() => import('./pages/StockMovement'));
+const PurchaseOrder = lazyWithReload(() => import('./pages/PurchaseOrder'));
+const PurchaseOrderDetail = lazyWithReload(() => import('./pages/PurchaseOrderDetail'));
+const GoodsReceipt = lazyWithReload(() => import('./pages/GoodsReceipt'));
+const GoodsReceiptDetail = lazyWithReload(() => import('./pages/GoodsReceiptDetail'));
+const PurchaseInvoice = lazyWithReload(() => import('./pages/PurchaseInvoice'));
+const PurchaseInvoiceDetail = lazyWithReload(() => import('./pages/PurchaseInvoiceDetail'));
+const VendorPayment = lazyWithReload(() => import('./pages/VendorPayment'));
+const PaymentBatchList = lazyWithReload(() => import('./pages/PaymentBatchList'));
+const PaymentBatchDetail = lazyWithReload(() => import('./pages/PaymentBatchDetail'));
+const DepositList = lazyWithReload(() => import('./pages/DepositList'));
+const DepositDetail = lazyWithReload(() => import('./pages/DepositDetail'));
+const PurchaseReturn = lazyWithReload(() => import('./pages/PurchaseReturn'));
+const PurchaseReturnDetail = lazyWithReload(() => import('./pages/PurchaseReturnDetail'));
+const Settings = lazyWithReload(() => import('./pages/Settings'));
+const StockValuation = lazyWithReload(() => import('./pages/StockValuation'));
+const Reorder = lazyWithReload(() => import('./pages/Reorder'));
+const CostRevaluation = lazyWithReload(() => import('./pages/CostRevaluation'));
+const CostRevaluationDetail = lazyWithReload(() => import('./pages/CostRevaluationDetail'));
+const NotFound = lazyWithReload(() => import('./pages/NotFound'));
+const MapPage = lazyWithReload(() => import('./pages/MapPage'));
 
 // Halaman yang butuh izin 'view' untuk resource-nya (key = backend/config/permissions.js)
 const guard = (resource, element) => <RequirePermission resource={resource}>{element}</RequirePermission>;
-// halaman Peta memuat Leaflet: chunk terpisah, hanya diunduh saat dibuka
-const MapPage = lazy(() => import('./pages/MapPage'));
-const lazyPage = (el) => <Suspense fallback={<div className="p-6 text-muted">Loading...</div>}>{el}</Suspense>;
 
 function App() {
   return (
@@ -79,7 +79,7 @@ function App() {
           datanya di menu Menu dengan `component` = path & `resource` yang sama. */}
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/map" element={guard('map', lazyPage(<MapPage />))} />
+        <Route path="/map" element={guard('map', <MapPage />)} />
         <Route path="/kategori" element={guard('kategori', <Kategori />)} />
         <Route path="/produk" element={guard('produk', <Produk />)} />
         <Route path="/produk/:id" element={guard('produk', <ProdukDetail />)} />

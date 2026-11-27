@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AuthContext } from './AuthContext';
 import { setUnauthorizedHandler, setForbiddenHandler } from '../utils/axiosSetup';
 import { getMe } from '../services/authService';
-
-const AuthContext = createContext();
 
 // Cek field `exp` di payload JWT (detik) tanpa perlu verifikasi signature
 const isTokenExpired = (token) => {
@@ -31,7 +30,7 @@ const REFRESH_THROTTLE_MS = 2000;
  * user = { _id, name, email, theme, role: { _id, name, isSystem }, permissions: { produk: ['view', ...] }, token }
  * `permissions` undefined = belum dimuat (mis. data login lama sebelum fitur role ada).
  */
-export const AuthProvider = ({ children }) => {
+export default function AuthProvider({ children }) {
   const [user, setUser] = useState(loadStoredUser);
   const [sessionExpired, setSessionExpired] = useState(false);
 
@@ -99,6 +98,4 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => useContext(AuthContext);
+}

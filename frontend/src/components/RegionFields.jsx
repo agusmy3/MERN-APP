@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyWithReload } from '../utils/lazyPage';
 import FormField from './FormField';
 import { inputClass, labelClass } from '../utils/formStyles';
 import { parsePoint, formatPoint } from '../utils/mapMeta';
@@ -14,7 +15,7 @@ import {
  * alamat kirim SO. Alamat jalan ada di field masing-masing form. `setForm` = setter (updater function).
  */
 // Leaflet hanya dimuat saat modal peta pertama kali dibuka (chunk terpisah)
-const MapPickerModal = lazy(() => import('./map/MapPickerModal'));
+const MapPickerModal = lazyWithReload(() => import('./map/MapPickerModal'));
 
 export default function RegionFields({ form, setForm, idPrefix, showCoordinates = true, mapTitle }) {
   const { user } = useAuth();

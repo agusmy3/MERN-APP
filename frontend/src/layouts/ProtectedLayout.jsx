@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MainLayout from './MainLayout';
@@ -17,7 +18,10 @@ export default function ProtectedLayout() {
   return (
     <MenuProvider>
       <MainLayout>
-        <Outlet />
+        {/* halaman dimuat lazy (App.jsx): navbar & sidebar tetap tampil selama chunk halaman diunduh */}
+        <Suspense fallback={<div className="p-6 text-muted">Loading...</div>}>
+          <Outlet />
+        </Suspense>
       </MainLayout>
     </MenuProvider>
   );
