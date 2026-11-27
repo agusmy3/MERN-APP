@@ -174,7 +174,7 @@ export default function Customer() {
           <textarea id="cust-address" name="address" rows={2} placeholder="Jalan, nomor, RT/RW" value={form.address} onChange={crud.handleChange} className={inputClass} />
         </FormField>
 
-        <RegionFields form={form} setForm={crud.setForm} idPrefix="cust" />
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="cust" mapTitle={`Lokasi customer ${form.name || 'baru'}`} />
 
         <FormField label="Payment term (days)" htmlFor="cust-term" hint="Jatuh tempo invoice = tanggal invoice + termin. 0 = tunai.">
           <input id="cust-term" name="termDays" type="number" min="0" max="365" step="1" value={form.termDays} onChange={crud.handleChange} className={inputClass} />

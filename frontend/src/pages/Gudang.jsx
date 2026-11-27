@@ -166,7 +166,7 @@ export default function Gudang() {
           />
         </FormField>
 
-        <RegionFields form={form} setForm={crud.setForm} idPrefix="gudang" />
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="gudang" mapTitle={`Lokasi gudang ${form.name || form.code || 'baru'}`} />
 
         <FormField label="Description" htmlFor="gudang-deskripsi">
           <textarea

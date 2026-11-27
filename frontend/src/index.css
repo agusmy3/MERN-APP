@@ -240,3 +240,11 @@
     color: var(--t-fg);
   }
 }
+
+/* ---------- Peta (Leaflet) ---------- */
+.leaflet-container { font: inherit; }
+.leaflet-div-icon.map-pin { background: none; border: none; }
+.map-pin i {
+  display: block; width: 32px; line-height: 40px; text-align: center; font-size: 34px;
+  color: var(--t-primary); filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35));
+}

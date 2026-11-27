@@ -122,7 +122,7 @@ export default function Vendor() {
           />
         </FormField>
 
-        <RegionFields form={form} setForm={crud.setForm} idPrefix="vendor" />
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="vendor" mapTitle={`Lokasi vendor ${form.companyName || 'baru'}`} />
 
         <h3 className="text-sm font-semibold text-fg border-b border-line pb-1 pt-2">PIC (Person in Charge)</h3>
 

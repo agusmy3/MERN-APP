@@ -310,3 +310,20 @@ test('themes: every theme in themes.js has a complete CSS block in index.css', a
   assert.ok(isValidTheme('aurora') && isValidTheme(DEFAULT_THEME) && !isValidTheme('nope'));
   assert.equal(THEMES.length, 10);
 });
+
+test('map picker helpers: point parsing, rounding, initial view, geolocation errors', async () => {
+  const { parsePoint, roundCoord, formatPoint, pickerView, INDONESIA_VIEW, geoErrorMessage } = await import('../src/utils/mapMeta.js');
+  assert.deepEqual(parsePoint('-6.2', '106.8'), { lat: -6.2, lng: 106.8 });
+  assert.equal(parsePoint('', '106.8'), null);
+  assert.equal(parsePoint('abc', '1'), null);
+  assert.equal(parsePoint('95', '1'), null);
+  assert.deepEqual(parsePoint(0, 0), { lat: 0, lng: 0 });
+  assert.equal(roundCoord(-6.123456789), -6.123457);
+  assert.equal(formatPoint({ lat: -6.9, lng: 107.6 }), '-6.900000, 107.600000');
+  assert.deepEqual(pickerView({ lat: -6.9, lng: 107.6 }, { lat: 1, lng: 2, level: 2 }), { lat: -6.9, lng: 107.6, zoom: 17 });
+  assert.deepEqual(pickerView(null, { lat: -6.91, lng: 107.61, level: 2 }), { lat: -6.91, lng: 107.61, zoom: 13 });
+  assert.equal(pickerView(null, { lat: -6.9, lng: 107.6, level: 1 }).zoom, 8);
+  assert.deepEqual(pickerView(null, null), INDONESIA_VIEW);
+  assert.match(geoErrorMessage(1), /Izin lokasi ditolak/);
+  assert.match(geoErrorMessage(99), /Gagal/);
+});

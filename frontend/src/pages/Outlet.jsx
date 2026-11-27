@@ -200,7 +200,7 @@ export default function Outlet() {
           />
         </FormField>
 
-        <RegionFields form={form} setForm={crud.setForm} idPrefix="outlet" />
+        <RegionFields form={form} setForm={crud.setForm} idPrefix="outlet" mapTitle={`Lokasi outlet ${form.name || form.code || 'baru'}`} />
 
         <fieldset className="rounded border border-line p-3 space-y-3">
           <legend className="px-1 text-sm font-semibold text-fg">POS & receipt</legend>

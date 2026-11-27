@@ -609,7 +609,7 @@ export default function SalesOrderDetail() {
                   </FormField>
                 </div>
                 <div className="sm:col-span-2 lg:col-span-4 grid gap-4">
-                  <RegionFields form={form.shipTo} idPrefix="ship" showCoordinates={false}
+                  <RegionFields form={form.shipTo} idPrefix="ship" mapTitle={`Alamat kirim ${form.shipTo.name || ''}`.trim()}
                     setForm={(update) => setForm((f) => ({ ...f, shipTo: typeof update === 'function' ? update(f.shipTo) : update }))} />
                 </div>
               </fieldset>

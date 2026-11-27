@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import FormField from './FormField';
-import { inputClass } from '../utils/formStyles';
+import { inputClass, labelClass } from '../utils/formStyles';
+import { parsePoint, formatPoint } from '../utils/mapMeta';
 import { useAuth } from '../context/AuthContext';
 import { getRegionChildren, getRegion, searchRegions } from '../services/regionService';
 import {
@@ -9,10 +10,13 @@ import {
 
 /**
  * Wilayah dari master (Provinsi -> Kota/Kab -> Kecamatan -> Kelurahan/Desa, dropdown berantai + cari cepat),
- * kode pos (otomatis dari kelurahan, bisa diubah) & koordinat. Dipakai Customer, Vendor, Gudang, Outlet,
+ * kode pos (otomatis dari kelurahan, bisa diubah) & titik lokasi ("Pilih di peta" = MapPickerModal, atau isi manual). Dipakai Customer, Vendor, Gudang, Outlet,
  * alamat kirim SO. Alamat jalan ada di field masing-masing form. `setForm` = setter (updater function).
  */
-export default function RegionFields({ form, setForm, idPrefix, showCoordinates = true }) {
+// Leaflet hanya dimuat saat modal peta pertama kali dibuka (chunk terpisah)
+const MapPickerModal = lazy(() => import('./map/MapPickerModal'));
+
+export default function RegionFields({ form, setForm, idPrefix, showCoordinates = true, mapTitle }) {
   const { user } = useAuth();
   const chain = regionChain(form.regionCode);
   const parents = ['', ...chain].slice(0, 4); // parent untuk daftar tiap tingkat
@@ -21,6 +25,8 @@ export default function RegionFields({ form, setForm, idPrefix, showCoordinates 
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const parentKey = parents.join('|');
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function RegionFields({ form, setForm, idPrefix, showCoordinates 
 
   const set = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
   const legacy = legacyRegionText(form);
-  const validCoord = form.latitude && form.longitude && !Number.isNaN(Number(form.latitude)) && !Number.isNaN(Number(form.longitude));
+  const point = parsePoint(form.latitude, form.longitude);
 
   return (
     <>
@@ -126,30 +132,64 @@ export default function RegionFields({ form, setForm, idPrefix, showCoordinates 
       </FormField>
 
       {showCoordinates && (
-        <FormField label="Coordinates" htmlFor={`${idPrefix}-lat`}
-          hint={'Derajat desimal (WGS84). Bisa tempel langsung "lat, long" dari Google Maps ke kolom Latitude.'}>
-          <div className="grid grid-cols-2 gap-4">
-            <input id={`${idPrefix}-lat`} aria-label="Latitude" inputMode="decimal" autoComplete="off" placeholder="Latitude, e.g. -6.2088"
-              value={form.latitude}
-              onChange={(e) => {
-                const v = e.target.value;
-                // "lat, long" ditempel sekaligus -> pecah ke dua kolom
-                const parts = v.split(',').map((x) => x.trim());
-                if (parts.length === 2 && parts.every((x) => x !== '' && !Number.isNaN(Number(x)))) {
-                  setForm((prev) => ({ ...prev, latitude: parts[0], longitude: parts[1] }));
-                } else set('latitude', v);
-              }}
-              className={inputClass} />
-            <input aria-label="Longitude" inputMode="decimal" autoComplete="off" placeholder="Longitude, e.g. 106.8456"
-              value={form.longitude} onChange={(e) => set('longitude', e.target.value)} className={inputClass} />
+        <div>
+          <span className={labelClass}>Location point</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {point ? (
+              <span className="text-sm tabular-nums text-fg">
+                <i className="fa fa-location-dot text-primary mr-1.5" aria-hidden="true"></i>{formatPoint(point)}
+              </span>
+            ) : <span className="text-sm text-muted">Belum ada titik</span>}
+            <button type="button" onClick={() => setPicking(true)}
+              className="px-3 py-1.5 rounded-md border border-line text-sm hover:bg-subtle disabled:opacity-60">
+              <i className="fa fa-map-location-dot mr-1.5" aria-hidden="true"></i>{point ? 'Ubah di peta' : 'Pilih di peta'}
+            </button>
+            {point && (
+              <button type="button" onClick={() => setForm((prev) => ({ ...prev, latitude: '', longitude: '' }))}
+                className="px-2 py-1.5 text-sm text-muted hover:text-danger disabled:opacity-60">Hapus titik</button>
+            )}
           </div>
-          {validCoord && (
-            <a href={mapUrl(form.latitude, form.longitude)} target="_blank" rel="noopener noreferrer"
+          {point && (
+            <a href={mapUrl(point.lat, point.lng)} target="_blank" rel="noopener noreferrer"
               className="inline-block mt-1 text-xs text-primary hover:underline">
-              <i className="fa fa-location-dot mr-1"></i>Lihat di Google Maps
+              <i className="fa fa-arrow-up-right-from-square mr-1" aria-hidden="true"></i>Lihat di Google Maps
             </a>
           )}
-        </FormField>
+          <details className="mt-2 group" open={manualOpen} onToggle={(e) => setManualOpen(e.currentTarget.open)}>
+            <summary className="cursor-pointer text-xs text-muted hover:text-fg select-none">Isi koordinat manual</summary>
+            <div className="mt-2 grid grid-cols-2 gap-4">
+              <input id={`${idPrefix}-lat`} aria-label="Latitude" inputMode="decimal" autoComplete="off" placeholder="Latitude, e.g. -6.2088"
+                value={form.latitude}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // "lat, long" ditempel sekaligus -> pecah ke dua kolom
+                  const parts = v.split(',').map((x) => x.trim());
+                  if (parts.length === 2 && parts.every((x) => x !== '' && !Number.isNaN(Number(x)))) {
+                    setForm((prev) => ({ ...prev, latitude: parts[0], longitude: parts[1] }));
+                  } else set('latitude', v);
+                }}
+                className={inputClass} />
+              <input aria-label="Longitude" inputMode="decimal" autoComplete="off" placeholder="Longitude, e.g. 106.8456"
+                value={form.longitude} onChange={(e) => set('longitude', e.target.value)} className={inputClass} />
+            </div>
+            <p className="text-xs text-muted mt-1">Derajat desimal (WGS84). Bisa tempel langsung &quot;lat, long&quot; dari Google Maps ke kolom Latitude.</p>
+          </details>
+          {picking && (
+            <Suspense fallback={null}>
+            <MapPickerModal
+              title={mapTitle || 'Pilih lokasi'}
+              subtitle={[form.kelurahan, form.kecamatan, form.kota, form.provinsi].filter(Boolean).join(', ') || undefined}
+              point={point}
+              regionCode={form.regionCode}
+              onClose={() => setPicking(false)}
+              onPick={(p) => {
+                setForm((prev) => ({ ...prev, latitude: String(p.lat), longitude: String(p.lng) }));
+                setPicking(false);
+              }}
+            />
+            </Suspense>
+          )}
+        </div>
       )}
     </>
   );
