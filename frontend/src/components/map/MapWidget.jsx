@@ -44,7 +44,7 @@ export default function MapWidget() {
             {overdue > 0 && <span className="text-danger">{formatNumber(overdue)} customer lewat jatuh tempo</span>}
             {missingTotal > 0 && <Link to="/map" className="text-warning-fg hover:underline">{formatNumber(missingTotal)} belum ada titik</Link>}
           </div>
-          <div className="relative h-72 rounded-md border border-line overflow-hidden">
+          <div className="relative isolate h-72 rounded-md border border-line overflow-hidden">
             <LocationMap points={points} fitKey={points.length} className="absolute inset-0" />
           </div>
         </>

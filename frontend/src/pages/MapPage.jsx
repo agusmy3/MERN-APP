@@ -82,15 +82,16 @@ export default function MapPage() {
   const toggle = (t) => setVisible((v) => (v.includes(t) ? v.filter((x) => x !== t) : LAYER_ORDER.filter((x) => x === t || v.includes(x))));
 
   return (
-    <div className="h-full p-4 flex flex-col gap-4 min-h-0">
+    // mobile: halaman bisa di-scroll (peta tinggi tetap, filter di bawahnya); lg: setinggi layar, panel filter scroll sendiri
+    <div className="h-full p-4 flex flex-col gap-4 min-h-0 overflow-y-auto lg:overflow-hidden">
       <PageHeader fallbackTitle="Map" />
       {!layers ? (
         <div className="p-6 text-muted">Loading...</div>
       ) : available.length === 0 ? (
         <p className="text-muted">Tidak ada lapisan peta untuk role Anda (butuh izin lihat Outlet, Warehouse, Vendor, atau Customer).</p>
       ) : (
-        <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[18rem_1fr]">
-          <aside className="space-y-4 lg:overflow-y-auto min-w-0">
+        <div className="grid gap-4 lg:flex-1 lg:min-h-0 lg:grid-cols-[18rem_1fr]">
+          <aside className="space-y-4 lg:overflow-y-auto min-w-0 order-2 lg:order-none">
             <section className="rounded-lg border border-line bg-surface p-3 space-y-2">
               <h3 className="text-xs uppercase tracking-wider text-muted">Layers</h3>
               {available.map((t) => (
@@ -156,7 +157,8 @@ export default function MapPage() {
             )}
           </aside>
 
-          <div className="relative min-h-[26rem] rounded-lg border border-line overflow-hidden">
+          {/* mobile: peta di atas dengan tinggi tetap supaya sisa layar tetap bisa di-scroll dengan sentuhan */}
+          <div className="relative isolate h-[55vh] min-h-[20rem] lg:h-auto lg:min-h-[26rem] rounded-lg border border-line overflow-hidden order-1 lg:order-none">
             <LocationMap points={points} selectedKey={selected?.key} onSelect={setSelected} fitKey={fitKey} className="absolute inset-0" />
             {points.length === 0 && (
               <div className="absolute inset-x-0 top-3 flex justify-center pointer-events-none z-[500]">

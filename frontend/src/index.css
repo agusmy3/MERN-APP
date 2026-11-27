@@ -242,7 +242,9 @@
 }
 
 /* ---------- Peta (Leaflet) ---------- */
-.leaflet-container { font: inherit; }
+/* Lapisan Leaflet memakai z-index 400-1000: isolate supaya tetap di dalam kotak peta, tidak menutupi
+   sidebar (z-40), navbar (z-20), drawer & modal aplikasi. */
+.leaflet-container { font: inherit; isolation: isolate; }
 .leaflet-div-icon.map-pin { background: none; border: none; }
 .map-pin i {
   display: block; width: 32px; line-height: 40px; text-align: center; font-size: 34px;
