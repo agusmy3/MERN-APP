@@ -23,10 +23,10 @@ export default function DataPage({
   const entity = entityName.toLowerCase();
 
   return (
-    <div className='h-full p-4 flex flex-col'>
+    <div className='h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden'>
       <PageHeader fallbackTitle={fallbackTitle} />
 
-      <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
         {/* toolbar: search di kiri, tombol Add di kanan, sejajar */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="relative flex-1 min-w-48 max-w-md">

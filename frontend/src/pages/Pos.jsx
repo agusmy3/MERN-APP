@@ -331,7 +331,7 @@ export default function Pos() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+          <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
             <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 640 }}>
               <thead className="bg-head text-head-fg text-left sticky top-0">
                 <tr>

@@ -15,6 +15,7 @@ import { formatRupiah } from '../utils/formatHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { QUOTATION_STATUS_META, quotationStatus } from '../utils/salesMeta';
 
+import FilterBar from '../components/FilterBar';
 const EMPTY_FILTERS = { status: '', customer: '', from: '', to: '' };
 const selectClass = `${inputClass} sm:w-auto`;
 
@@ -101,7 +102,7 @@ export default function Quotation() {
   ];
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader
         fallbackTitle="Quotation"
         actions={perm.canCreate && (
@@ -112,8 +113,8 @@ export default function Quotation() {
         )}
       />
 
-      <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+        <FilterBar>
           <div className="relative flex-1 min-w-48 max-w-sm">
             <i className="fa fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
             <input type="search" placeholder="Search no., customer, prospect..." aria-label="Search quotation"
@@ -140,7 +141,7 @@ export default function Quotation() {
               <i className="fa fa-xmark"></i> Reset
             </button>
           )}
-        </div>
+        </FilterBar>
 
         <DataTable columns={columns} data={table.items} sortField={table.sortField} sortOrder={table.sortOrder}
           onSort={table.toggleSort} onSortSelect={table.setSort} startIndex={table.startIndex} loading={table.loading} emptyText="No quotation" />

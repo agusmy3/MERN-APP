@@ -16,6 +16,7 @@ import { formatDay } from '../utils/dateHelper';
 import { AUDIT_SORT_OPTIONS } from '../utils/auditSort';
 import { GR_STATUS_META } from '../utils/purchaseMeta';
 
+import FilterBar from '../components/FilterBar';
 const EMPTY_FILTERS = { status: '', billed: '', vendor: '', gudang: '', from: '', to: '' };
 const BILLED_FILTERS = { false: 'Belum ditagih', true: 'Sudah ditagih' };
 const selectClass = `${inputClass} sm:w-auto`;
@@ -93,7 +94,7 @@ export default function GoodsReceipt() {
   ];
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader
         fallbackTitle="Goods Receipt"
         actions={perm.canCreate && (
@@ -107,8 +108,8 @@ export default function GoodsReceipt() {
         )}
       />
 
-      <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+        <FilterBar>
           <div className="relative flex-1 min-w-48 max-w-sm">
             <i className="fa fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
             <input
@@ -158,7 +159,7 @@ export default function GoodsReceipt() {
               <i className="fa fa-xmark"></i> Reset
             </button>
           )}
-        </div>
+        </FilterBar>
 
         <DataTable
           columns={columns}

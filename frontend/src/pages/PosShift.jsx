@@ -17,6 +17,7 @@ import { formatRupiah } from '../utils/formatHelper';
 import { formatDate2 } from '../utils/dateHelper';
 import { PAYMENT_METHODS } from '../utils/salesMeta';
 
+import FilterBar from '../components/FilterBar';
 const EMPTY_FILTERS = { status: '', outlet: '', from: '', to: '' };
 const selectClass = `${inputClass} sm:w-auto`;
 
@@ -160,8 +161,8 @@ function CashierReport({ token, outlets }) {
   const th = 'px-3 py-2 border-b border-line font-semibold text-right';
   const td = 'px-3 py-1.5 border-t border-line-soft text-right tabular-nums';
   return (
-    <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+    <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+      <FilterBar>
         <input type="date" aria-label="From date" value={q.from} onChange={(e) => set('from', e.target.value)} className={selectClass} />
         <span className="text-muted text-sm">–</span>
         <input type="date" aria-label="To date" value={q.to} onChange={(e) => set('to', e.target.value)} className={selectClass} />
@@ -173,8 +174,8 @@ function CashierReport({ token, outlets }) {
         <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className="ml-auto px-4 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer disabled:opacity-50">
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      </FilterBar>
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 900 }}>
           <thead className="bg-head text-head-fg sticky top-0">
             <tr>
@@ -249,7 +250,7 @@ export default function PosShift() {
   ];
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader fallbackTitle="POS Shift" />
       <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
         {[['shifts', 'Shifts', 'fa-clock'], ['report', 'Cashier report', 'fa-chart-column']].map(([k, l, icon]) => (
@@ -260,8 +261,8 @@ export default function PosShift() {
         ))}
       </div>
       {tab === 'report' ? <CashierReport token={user.token} outlets={outlets} /> : (
-      <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+        <FilterBar>
           <input type="search" placeholder="Search shift no..." aria-label="Search shift" value={table.searchInput}
             onChange={(e) => table.setSearchInput(e.target.value)} className={`${inputClass} max-w-xs`} />
           <select aria-label="Status" value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className={selectClass}>
@@ -278,7 +279,7 @@ export default function PosShift() {
             <span className="text-muted text-sm">–</span>
             <input type="date" aria-label="To date" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className={selectClass} />
           </div>
-        </div>
+        </FilterBar>
         <DataTable columns={columns} data={table.items} startIndex={table.startIndex} loading={table.loading} emptyText="No shift" />
         <Pagination currentPage={table.currentPage} totalItems={table.totalItems} pageSize={table.pageSize}
           onPageChange={table.setCurrentPage} onPageSizeChange={table.setPageSize} />

@@ -12,6 +12,7 @@ import { formatDay, toDateInput } from '../utils/dateHelper';
 import { downloadCsv } from '../utils/csvExport';
 import { DELIVERY_METHODS } from '../utils/salesMeta';
 
+import FilterBar from '../components/FilterBar';
 const selectClass = `${inputClass} sm:w-auto`;
 const GROUPS = { day: 'Day', month: 'Month', customer: 'Customer', produk: 'Product', sku: 'SKU', kategori: 'Category' };
 const BUCKETS = [['current', 'Not due'], ['d1_30', '1–30'], ['d31_60', '31–60'], ['d61_90', '61–90'], ['d90', '> 90']];
@@ -77,7 +78,7 @@ function SalesTab({ token, gudangs, customers }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <FilterBar>
         <div className="flex items-center gap-2">
           <input type="date" aria-label="From date" value={q.from} max={q.to || undefined} onChange={(e) => set('from', e.target.value)} className={selectClass} />
           <span className="text-muted text-sm">–</span>
@@ -97,7 +98,7 @@ function SalesTab({ token, gudangs, customers }) {
         <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className={`${btnGhost} ml-auto`}>
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
+      </FilterBar>
 
       {data && (
         <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-5">
@@ -132,7 +133,7 @@ function SalesTab({ token, gudangs, customers }) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: cost ? 980 : 720 }}>
           <thead className="bg-head text-head-fg text-left sticky top-0">
             <tr>
@@ -212,7 +213,7 @@ function AgingTab({ token, gudangs }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <FilterBar>
         <select aria-label="Warehouse" value={gudang} onChange={(e) => setGudang(e.target.value)} className={selectClass}>
           <option value="">All warehouses</option>
           {gudangs.map((g) => <option key={g._id} value={g._id}>{g.code}</option>)}
@@ -221,8 +222,8 @@ function AgingTab({ token, gudangs }) {
         <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className={`${btnGhost} ml-auto`}>
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+      </FilterBar>
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 900 }}>
           <thead className="bg-head text-head-fg text-left sticky top-0">
             <tr>
@@ -310,7 +311,7 @@ function BackorderTab({ token, gudangs, customers }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <FilterBar>
         <input type="search" aria-label="Search backorder" placeholder="SO no., customer PO, customer..." value={search}
           onChange={(e) => setSearch(e.target.value)} className={`${inputClass} max-w-xs`} />
         <select aria-label="Warehouse" value={filters.gudang} onChange={(e) => setFilters((f) => ({ ...f, gudang: e.target.value }))} className={selectClass}>
@@ -328,7 +329,7 @@ function BackorderTab({ token, gudangs, customers }) {
         <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className={`${btnGhost} ml-auto`}>
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
+      </FilterBar>
       {data && (
         <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-4">
           {[['Sales orders', formatNumber(data.totals.soCount)], ['Lines', formatNumber(data.totals.lineCount)],
@@ -340,7 +341,7 @@ function BackorderTab({ token, gudangs, customers }) {
           ))}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 1100 }}>
           <thead className="bg-head text-head-fg text-left sticky top-0">
             <tr>
@@ -413,7 +414,7 @@ function DeliveryTab({ token, gudangs, customers }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <FilterBar>
         <div className="flex items-center gap-2">
           <input type="date" aria-label="From date" value={filters.from} max={filters.to} onChange={(e) => set('from', e.target.value)} className={selectClass} />
           <span className="text-muted text-sm">–</span>
@@ -439,7 +440,7 @@ function DeliveryTab({ token, gudangs, customers }) {
         <button type="button" onClick={exportCsv} disabled={!data?.rows.length} className={`${btnGhost} ml-auto`}>
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
+      </FilterBar>
       {data && (
         <div className="mb-4 grid gap-3 grid-cols-2 lg:grid-cols-4">
           {[['Delivery orders', `${formatNumber(data.totals.count)}`, `${data.totals.delivery} dikirim · ${data.totals.pickup} diambil`],
@@ -454,7 +455,7 @@ function DeliveryTab({ token, gudangs, customers }) {
           ))}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 1100 }}>
           <thead className="bg-head text-head-fg text-left sticky top-0">
             <tr>
@@ -531,7 +532,7 @@ export default function SalesReport() {
   );
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader fallbackTitle="Sales Report" />
       <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
         {tabBtn('sales', 'Sales', 'fa-chart-column')}
@@ -539,7 +540,7 @@ export default function SalesReport() {
         {tabBtn('backorder', 'Backorder', 'fa-boxes-stacked')}
         {tabBtn('delivery', 'Deliveries', 'fa-truck-fast')}
       </div>
-      <div className="min-h-0 flex-1 flex flex-col">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1">
         {tab === 'sales' && <SalesTab token={user.token} gudangs={gudangs} customers={customers} />}
         {tab === 'aging' && <AgingTab token={user.token} gudangs={gudangs} />}
         {tab === 'backorder' && <BackorderTab token={user.token} gudangs={gudangs} customers={customers} />}

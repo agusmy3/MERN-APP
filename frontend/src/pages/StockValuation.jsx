@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader';
 import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper';
 
+import FilterBar from '../components/FilterBar';
 const GROUPS = [
   { key: 'sku', label: 'SKU', icon: 'fa-layer-group' },
   { key: 'produk', label: 'Product', icon: 'fa-box' },
@@ -202,8 +203,8 @@ export default function StockValuation() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+        <FilterBar>
           <div role="tablist" aria-label="Group by" className="inline-flex rounded-md border border-line overflow-hidden">
             {GROUPS.map((g) => (
               <button key={g.key} type="button" role="tab" aria-selected={groupBy === g.key} onClick={() => setGroupBy(g.key)}
@@ -225,9 +226,9 @@ export default function StockValuation() {
             <option value="">All categories</option>
             {options.kategoris.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}
           </select>
-        </div>
+        </FilterBar>
 
-        <div className="overflow-auto flex-1 min-h-0">
+        <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1">
           <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 760 }}>
             <thead className="bg-head text-head-fg text-left sticky top-0 z-10">
               <tr>

@@ -65,7 +65,7 @@ export default function PriceList() {
   ];
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader
         fallbackTitle="Price List"
         actions={perm.canCreate && (
@@ -75,7 +75,7 @@ export default function PriceList() {
           </button>
         )}
       />
-      <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
         <div className="mb-4 relative max-w-sm">
           <i className="fa fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
           <input type="search" placeholder="Search code, name..." aria-label="Search price list" value={table.searchInput}

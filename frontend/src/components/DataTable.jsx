@@ -53,7 +53,7 @@ export default function DataTable({
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto rounded-md border border-line">
+    <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-md border border-line">
       <table
         className="w-full table-fixed bg-surface border-separate border-spacing-0"
         style={{ minWidth: totalWidth }}

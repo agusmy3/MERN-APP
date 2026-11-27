@@ -19,6 +19,7 @@ import { PAYMENT_STATUS_META } from '../utils/salesMeta';
 import { BILL_STATUS_META } from '../utils/purchaseMeta';
 import { downloadCsv } from '../utils/csvExport';
 
+import FilterBar from '../components/FilterBar';
 const EMPTY_FILTERS = { status: '', paymentStatus: '', vendor: '', from: '', to: '' };
 const PAY_FILTERS = { OPEN: 'Belum lunas', OVERDUE: 'Lewat jatuh tempo', UNPAID: 'Unpaid', PARTIAL: 'Partially paid', PAID: 'Paid', OVERPAID: 'Overpaid' };
 const BUCKETS = [['current', 'Not due'], ['d1_30', '1–30'], ['d31_60', '31–60'], ['d61_90', '61–90'], ['d90', '> 90']];
@@ -54,7 +55,7 @@ function AgingTab({ token, vendors }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <FilterBar>
         <select aria-label="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} className={selectClass}>
           <option value="">All vendors</option>
           {vendors.map((v) => <option key={v._id} value={v._id}>{v.companyName}</option>)}
@@ -64,8 +65,8 @@ function AgingTab({ token, vendors }) {
           className="ml-auto px-4 py-2 rounded border border-line hover:bg-subtle text-sm cursor-pointer disabled:opacity-50">
           <i className="fa fa-file-csv"></i> Export CSV
         </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface">
+      </FilterBar>
+      <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1 rounded-lg border border-line bg-surface">
         <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: 900 }}>
           <thead className="bg-head text-head-fg text-left sticky top-0">
             <tr>
@@ -183,7 +184,7 @@ export default function PurchaseInvoice() {
   );
 
   return (
-    <div className="h-full p-4 flex flex-col">
+    <div className="h-full p-4 flex flex-col overflow-y-auto lg:overflow-hidden">
       <PageHeader
         fallbackTitle="Vendor Bill"
         actions={perm.canCreate && (
@@ -198,10 +199,10 @@ export default function PurchaseInvoice() {
         {tabBtn('aging', 'Payables aging', 'fa-hourglass-half')}
       </div>
       {tab === 'aging' ? (
-        <div className="min-h-0 flex-1 flex flex-col"><AgingTab token={user.token} vendors={vendorList} /></div>
+        <div className="flex flex-col lg:min-h-0 lg:flex-1"><AgingTab token={user.token} vendors={vendorList} /></div>
       ) : (
-        <div className="min-h-0 flex-1 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+          <FilterBar>
             <div className="relative flex-1 min-w-48 max-w-sm">
               <i className="fa fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
               <input type="search" placeholder="Search bill no., vendor invoice, vendor..." aria-label="Search vendor bill"
@@ -230,7 +231,7 @@ export default function PurchaseInvoice() {
                 <i className="fa fa-xmark"></i> Reset
               </button>
             )}
-          </div>
+          </FilterBar>
           <DataTable columns={columns} data={table.items} sortField={table.sortField} sortOrder={table.sortOrder}
             onSort={table.toggleSort} onSortSelect={table.setSort} startIndex={table.startIndex} loading={table.loading} emptyText="No vendor bill" />
           <Pagination currentPage={table.currentPage} totalItems={table.totalItems} pageSize={table.pageSize}

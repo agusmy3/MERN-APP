@@ -15,6 +15,7 @@ import { inputClass } from '../utils/formStyles';
 import { formatNumber, formatRupiah, variantLabel } from '../utils/formatHelper';
 import { REORDER_STATUS } from '../utils/reorderMeta';
 
+import FilterBar from '../components/FilterBar';
 const selectClass = `${inputClass} sm:w-auto`;
 const cellInput = `w-full bg-input text-fg border border-line rounded px-2 py-1 text-sm
   focus:outline-none focus:border-primary`;
@@ -190,8 +191,8 @@ export default function Reorder() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col p-4 bg-surface border border-line rounded-lg shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 p-4 bg-surface border border-line rounded-lg shadow-sm">
+        <FilterBar>
           <div className="relative flex-1 min-w-48 max-w-xs">
             <i className="fa fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
             <input type="search" aria-label="Search SKU or product" placeholder="Search SKU / product..." value={searchInput}
@@ -210,9 +211,9 @@ export default function Reorder() {
             <option value="">All categories</option>
             {options.kategoris.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}
           </select>
-        </div>
+        </FilterBar>
 
-        <div className="overflow-auto flex-1 min-h-0">
+        <div className="overflow-auto max-h-[70vh] lg:max-h-none lg:min-h-0 lg:flex-1">
           <table className="w-full text-sm border-separate border-spacing-0" style={{ minWidth: poPerm.canCreate ? 1380 : 1000 }}>
             <thead className="bg-head text-head-fg text-left sticky top-0 z-10">
               <tr>
