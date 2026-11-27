@@ -50,7 +50,9 @@ export default function PageHeader({ fallbackTitle, parentPath, title: childTitl
             <p className="mt-1 text-sm text-muted line-clamp-2">{shownSubtitle}</p>
           )}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
+        {/* mobile: baris sendiri selebar layar & tombol turun ke baris berikutnya (dulu shrink-0 -> terpotong, tidak bisa
+            digeser); >= 640px: di kanan judul, rata kanan, tetap boleh wrap bila tombolnya banyak */}
+        {actions && <div className="flex flex-wrap items-center gap-2 min-w-0 w-full sm:w-auto sm:max-w-full sm:justify-end">{actions}</div>}
       </div>
     </header>
   );
